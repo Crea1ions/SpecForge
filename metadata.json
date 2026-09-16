@@ -1,0 +1,6 @@
+{
+  "name": "SpecForge — Architecture & Scaffolding",
+  "description": "Plateforme de conception, validation et génération de projets logiciels pilotée par spécification.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
