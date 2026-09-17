@@ -15,6 +15,16 @@ export interface ArchitecturePreset {
   spec: ProjectSpecification;
 }
 
+export const findPreset = (
+  profile: ProjectSpecification['profile'],
+  template: ProjectSpecification['template'],
+): ArchitecturePreset | undefined =>
+  PRESETS.find(
+    (preset) =>
+      preset.spec.profile === profile &&
+      preset.spec.template === template,
+  );
+
 export const PRESETS: ArchitecturePreset[] = [
   {
     id: 'rust-react-sqlite',
