@@ -31,7 +31,13 @@ export function resolveArchitecture(
   }
 
   if (spec.frontend.enabled) {
-    if (spec.frontend.framework === 'react') activeBrickIds.push('react-vite');
+    if (spec.frontend.framework === 'react') {
+      activeBrickIds.push('react-vite');
+    }
+
+    if (spec.frontend.framework === 'askama') {
+      activeBrickIds.push('rust-web-frontend');
+    }
   }
 
   if (spec.frontend.tauri && spec.project.type === 'desktop') {

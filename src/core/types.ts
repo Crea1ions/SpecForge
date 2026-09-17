@@ -42,9 +42,9 @@ export interface BackendConfig {
 
 export interface FrontendConfig {
   enabled: boolean;
-  framework: 'react' | 'vue' | 'none';
-  bundler: 'vite';
-  language: 'typescript' | 'javascript';
+  framework: 'react' | 'vue' | 'askama' | 'none';
+  bundler: 'vite' | 'none';
+  language: 'typescript' | 'javascript' | 'rust';
   styling: 'tailwind' | 'css';
   tauri: boolean;
 }

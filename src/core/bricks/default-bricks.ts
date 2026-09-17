@@ -1829,8 +1829,258 @@ significatives du projet.
   },
 };
 
+
+const rustWebFrontendBrick: BrickDefinition = {
+  id: 'rust-web-frontend',
+  name: 'Rust Web Frontend',
+  category: 'frontend',
+  version: '1.0.0',
+  description:
+    'Frontend web server-rendered en Rust avec Axum, Askama, JavaScript vanilla et CSS.',
+  iconName: 'Layout',
+  provides: ['server_rendered_ui', 'html_templates', 'web_frontend'],
+  requires: [],
+  compatibleWith: [],
+  conflictsWith: ['react-vite', 'tauri-desktop'],
+  options: [],
+  templateFiles: [
+    'Cargo.toml',
+    'src/main.rs',
+    'src/config.rs',
+    'templates/layout.html',
+    'templates/index.html',
+    'templates/components/header.html',
+    'templates/components/footer.html',
+    'static/css/style.css',
+    'static/js/app.js',
+  ],
+  tags: ['rust', 'axum', 'askama', 'html', 'css', 'vanilla-js'],
+  generateFiles: (ctx) => {
+    const files: GeneratedFile[] = [];
+
+    files.push(
+      makeFile(
+        'Cargo.toml',
+        `[package]
+name = "${ctx.spec.project.slug}"
+version = "${ctx.spec.project.version}"
+edition = "2021"
+
+[dependencies]
+axum = "0.6"
+askama = "0.12"
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.4", features = ["fs", "trace"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+`,
+        'toml',
+        'rust-web-frontend',
+        'Rust Web Frontend',
+        '1.0.0',
+        'Runtime web Rust avec rendu serveur Askama.'
+      )
+    );
+
+    files.push(
+      makeFile(
+        'src/main.rs',
+        `use askama::Template;
+use axum::{
+    response::Html,
+    routing::get,
+    Router,
+};
+use tower_http::services::ServeDir;
+
+#[derive(Template)]
+#[template(path = "index.html")]
+struct IndexTemplate<'a> {
+    project_name: &'a str,
+    project_description: &'a str,
+}
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
+
+    let app = Router::new()
+        .route("/", get(index))
+        .nest_service("/static", ServeDir::new("static"));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
+        .await
+        .expect("failed to bind server");
+
+    tracing::info!("Rust Web Frontend listening on http://127.0.0.1:8080");
+
+    axum::serve(listener, app)
+        .await
+        .expect("server error");
+}
+
+async fn index() -> Html<String> {
+    let template = IndexTemplate {
+        project_name: "${ctx.spec.project.name}",
+        project_description: "${ctx.spec.project.description}",
+    };
+
+    Html(template.render().expect("template rendering failed"))
+}
+`,
+        'rust',
+        'rust-web-frontend',
+        'Rust Web Frontend',
+        '1.0.0',
+        'Point d’entrée Axum et rendu serveur Askama.'
+      )
+    );
+
+    files.push(
+      makeFile(
+        'src/config.rs',
+        `pub const HOST: &str = "127.0.0.1";
+pub const PORT: u16 = 8080;
+`,
+        'rust',
+        'rust-web-frontend',
+        'Rust Web Frontend',
+        '1.0.0',
+        'Configuration réseau minimale du frontend web Rust.'
+      )
+    );
+
+    files.push(
+      makeFile(
+        'templates/layout.html',
+        `<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ project_name }}{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/app.js" defer></script>
+</head>
+<body>
+    {% include "components/header.html" %}
+
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
+
+    {% include "components/footer.html" %}
+</body>
+</html>
+`,
+        'html',
+        'rust-web-frontend',
+        'Rust Web Frontend',
+        '1.0.0',
+        'Layout HTML commun aux pages server-rendered.'
+      )
+    );
+
+    files.push(
+      makeFile(
+        'templates/index.html',
+        `{% extends "layout.html" %}
+
+{% block title %}{{ project_name }}{% endblock %}
+
+{% block content %}
+<section>
+    <h1>{{ project_name }}</h1>
+    <p>{{ project_description }}</p>
+</section>
+{% endblock %}
+`,
+        'html',
+        'rust-web-frontend',
+        'Rust Web Frontend',
+        '1.0.0',
+        'Page d’accueil minimale server-rendered.'
+      )
+    );
+
+    files.push(
+      makeFile(
+        'templates/components/header.html',
+        `<header class="site-header">
+    <strong>{{ project_name }}</strong>
+</header>
+`,
+        'html',
+        'rust-web-frontend',
+        'Rust Web Frontend',
+        '1.0.0',
+        'En-tête HTML minimal.'
+      )
+    );
+
+    files.push(
+      makeFile(
+        'templates/components/footer.html',
+        `<footer class="site-footer">
+    <small>{{ project_name }}</small>
+</footer>
+`,
+        'html',
+        'rust-web-frontend',
+        'Rust Web Frontend',
+        '1.0.0',
+        'Pied de page HTML minimal.'
+      )
+    );
+
+    files.push(
+      makeFile(
+        'static/css/style.css',
+        `:root {
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.content {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+`,
+        'css',
+        'rust-web-frontend',
+        'Rust Web Frontend',
+        '1.0.0',
+        'Feuille de style CSS minimale.'
+      )
+    );
+
+    files.push(
+      makeFile(
+        'static/js/app.js',
+        `document.addEventListener('DOMContentLoaded', () => {
+  console.log('Rust Web Frontend ready');
+});
+`,
+        'javascript',
+        'rust-web-frontend',
+        'Rust Web Frontend',
+        '1.0.0',
+        'Point d’entrée JavaScript vanilla.'
+      )
+    );
+
+    return files;
+  },
+};
+
 export const DEFAULT_BRICKS: BrickDefinition[] = [
   rustBackendBrick,
+  rustWebFrontendBrick,
   pythonBackendBrick,
   reactViteBrick,
   tauriDesktopBrick,
