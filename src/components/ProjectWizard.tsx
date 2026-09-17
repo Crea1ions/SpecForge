@@ -13,7 +13,8 @@ import {
   HelpCircle,
   CheckCircle,
 } from 'lucide-react';
-import { ProjectSpecification, ResolvedArchitecture, ProjectType } from '../types/spec';
+import { ApplicationTemplate, ProjectSpecification, ResolvedArchitecture } from '../types/spec';
+import { findPreset } from '../engine/presets';
 
 interface ProjectWizardProps {
   spec: ProjectSpecification;
@@ -35,31 +36,19 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
     });
   };
 
-  const handleTypeChange = (type: ProjectType) => {
-    const isDesktop = type === 'desktop';
-    const isBackendOnly = type === 'backend-only';
-    const isFrontendOnly = type === 'frontend-only';
+  const handleTemplateChange = (template: ApplicationTemplate) => {
+    const preset = findPreset(spec.profile, template);
+
+    if (!preset) {
+      return;
+    }
 
     onChange({
-      ...spec,
-      project: { ...spec.project, type },
-      frontend: {
-        ...spec.frontend,
-        enabled: !isBackendOnly,
-        tauri: isDesktop,
-      },
-      backend: {
-        ...spec.backend,
-        enabled: !isFrontendOnly,
-      },
-      database: {
-        ...spec.database,
-        enabled: !isFrontendOnly && spec.database.enabled,
-        type: isDesktop ? 'sqlite' : spec.database.type,
-      },
-      infrastructure: {
-        ...spec.infrastructure,
-        docker: !isDesktop && (spec.infrastructure.docker || !isFrontendOnly),
+      ...preset.spec,
+      project: {
+        ...spec.project,
+        description: preset.spec.project.description,
+        type: preset.spec.project.type,
       },
     });
   };
@@ -205,28 +194,41 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
           <label className="block text-xs font-medium text-neutral-300 mb-2">
             Type d'application
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
             {[
-              { id: 'fullstack', label: 'Fullstack', desc: 'Backend + UI Web' },
+              { id: 'web-frontend', label: 'Web Frontend', desc: 'Client web seul' },
+              { id: 'web-app', label: 'Web App', desc: 'Backend + UI Web' },
+              { id: 'web-platform', label: 'Web Platform', desc: 'Frontend + Backend séparés' },
+              { id: 'api-service', label: 'API Service', desc: 'Service backend pur' },
               { id: 'desktop', label: 'Desktop', desc: 'Tauri + Rust + UI' },
-              { id: 'backend-only', label: 'Backend API', desc: 'Microservice pur' },
-              { id: 'frontend-only', label: 'Frontend SPA', desc: 'Client web seul' },
-              { id: 'cli', label: 'CLI / Outil', desc: 'Binaire terminal' },
-            ].map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => handleTypeChange(t.id as ProjectType)}
-                className={`p-3 rounded-lg border text-left transition ${
-                  spec.project.type === t.id
-                    ? 'bg-indigo-950/60 border-indigo-600 text-white shadow-sm'
-                    : 'bg-neutral-950/60 border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
-                }`}
-              >
-                <div className="font-semibold text-xs text-white">{t.label}</div>
-                <div className="text-[10px] text-neutral-400 mt-0.5 leading-tight">{t.desc}</div>
-              </button>
-            ))}
+              { id: 'mobile', label: 'Mobile', desc: 'Application mobile' },
+            ].map((t) => {
+              const template = t.id as ApplicationTemplate;
+              const preset = findPreset(spec.profile, template);
+              const isActive = spec.template === template;
+              const isAvailable = !!preset;
+
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  disabled={!isAvailable}
+                  onClick={() => handleTemplateChange(template)}
+                  className={`p-3 rounded-lg border text-left transition ${
+                    isActive
+                      ? 'bg-indigo-950/60 border-indigo-600 text-white shadow-sm'
+                      : isAvailable
+                        ? 'bg-neutral-950/60 border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
+                        : 'bg-neutral-950/30 border-neutral-900 text-neutral-600 cursor-not-allowed'
+                  }`}
+                >
+                  <div className="font-semibold text-xs text-white">{t.label}</div>
+                  <div className="text-[10px] text-neutral-400 mt-0.5 leading-tight">
+                    {isAvailable ? t.desc : 'Template non disponible'}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </section>

@@ -11,14 +11,14 @@ import {
   AlertTriangle,
   CheckCircle2,
 } from 'lucide-react';
-import { PRESETS } from '../engine/presets';
+import { TechnicalProfile } from '../types/spec';
 import { ProjectSpecification, ResolvedArchitecture } from '../types/spec';
 
 interface HeaderProps {
   currentTab: 'wizard' | 'spec' | 'architecture' | 'files' | 'bricks' | 'audit';
   setCurrentTab: (tab: 'wizard' | 'spec' | 'architecture' | 'files' | 'bricks' | 'audit') => void;
   spec: ProjectSpecification;
-  onSelectPreset: (presetId: string) => void;
+  onSelectProfile: (profile: TechnicalProfile) => void;
   architecture: ResolvedArchitecture;
   onOpenAiAssist: () => void;
   onDownloadZip: () => void;
@@ -29,7 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   currentTab,
   setCurrentTab,
   spec,
-  onSelectPreset,
+  onSelectProfile,
   architecture,
   onOpenAiAssist,
   onDownloadZip,
@@ -39,24 +39,79 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-40 bg-neutral-950/90 backdrop-blur-md border-b border-neutral-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-4">
-          {/* Logo & Title */}
-          <div className="flex items-center gap-3 shrink-0">
+          {/* Logo */}
+          <div className="flex items-center shrink-0">
             <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-md shadow-indigo-500/20 text-white font-bold">
               <Boxes className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-white text-base tracking-tight">SpecForge</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-semibold bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">
-                  v1.0 Core
-                </span>
-              </div>
-              <p className="text-xs text-neutral-400 hidden sm:block">
-                Plateforme d'Architecture &amp; Scaffolding
-              </p>
-            </div>
           </div>
 
+          {/* Action Bar */}
+          <div className="flex items-center gap-2.5">
+            {/* Technical Profile Select */}
+            <div className="relative shrink-0">
+              <select
+                value={spec.profile}
+                onChange={(e) => onSelectProfile(e.target.value as TechnicalProfile)}
+                className="bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-neutral-700 cursor-pointer"
+                title="Profil technique"
+              >
+                <option value="rust">Profil : Rust</option>
+                <option value="python">Profil : Python</option>
+                <option value="typescript">Profil : TypeScript</option>
+                <option value="go">Profil : Go</option>
+              </select>
+            </div>
+
+            {/* AI Assistant Button */}
+            <button
+              onClick={onOpenAiAssist}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-950/70 border border-indigo-700/60 text-indigo-200 hover:bg-indigo-900/80 transition"
+              title="Générer une spécification depuis une intention en langage naturel"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden md:inline">Assistant IA</span>
+            </button>
+
+            {/* Status Health Indicator */}
+            <div
+              onClick={() => setCurrentTab('architecture')}
+              className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer border ${
+                architecture.isValid
+                  ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50'
+                  : 'bg-amber-950/40 text-amber-300 border-amber-800/50'
+              }`}
+            >
+              {architecture.isValid ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Cohérent ({architecture.activeBricks.length} briques)</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                  <span>
+                    {architecture.issues.filter((i) => i.severity === 'error').length} conflit(s)
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Download Zip CTA */}
+            <button
+              onClick={onDownloadZip}
+              disabled={isDownloading || !architecture.isValid}
+              className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:pointer-events-none text-white shadow-sm shadow-indigo-600/30 transition"
+            >
+              <Download className={`w-3.5 h-3.5 ${isDownloading ? 'animate-bounce' : ''}`} />
+              <span className="hidden sm:inline whitespace-nowrap">
+                {isDownloading ? 'Génération...' : 'Télécharger (.ZIP)'}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div className="hidden md:flex justify-center py-2 border-t border-neutral-900">
           {/* Navigation Tabs */}
           <nav className="hidden md:flex items-center gap-1 bg-neutral-900/80 p-1 rounded-lg border border-neutral-800 text-xs font-medium">
             <button
@@ -134,78 +189,11 @@ export const Header: React.FC<HeaderProps> = ({
               Audit (12 Tests)
             </button>
           </nav>
-
-          {/* Action Bar */}
-          <div className="flex items-center gap-2.5">
-            {/* Presets Select */}
-            <div className="relative hidden lg:block">
-              <select
-                onChange={(e) => onSelectPreset(e.target.value)}
-                defaultValue=""
-                className="bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-neutral-700 cursor-pointer"
-              >
-                <option value="" disabled>
-                  Modèles cibles...
-                </option>
-                {PRESETS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.badge})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* AI Assistant Button */}
-            <button
-              onClick={onOpenAiAssist}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-950/70 border border-indigo-700/60 text-indigo-200 hover:bg-indigo-900/80 transition"
-              title="Générer une spécification depuis une intention en langage naturel"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden sm:inline">Assistant IA</span>
-            </button>
-
-            {/* Status Health Indicator */}
-            <div
-              onClick={() => setCurrentTab('architecture')}
-              className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer border ${
-                architecture.isValid
-                  ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50'
-                  : 'bg-amber-950/40 text-amber-300 border-amber-800/50'
-              }`}
-            >
-              {architecture.isValid ? (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Cohérent ({architecture.activeBricks.length} briques)</span>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                  <span>
-                    {architecture.issues.filter((i) => i.severity === 'error').length} conflit(s)
-                  </span>
-                </>
-              )}
-            </div>
-
-            {/* Download Zip CTA */}
-            <button
-              onClick={onDownloadZip}
-              disabled={isDownloading || !architecture.isValid}
-              className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:pointer-events-none text-white shadow-sm shadow-indigo-600/30 transition"
-            >
-              <Download className={`w-3.5 h-3.5 ${isDownloading ? 'animate-bounce' : ''}`} />
-              <span className="whitespace-nowrap">
-                {isDownloading ? 'Génération...' : 'Télécharger (.ZIP)'}
-              </span>
-            </button>
-          </div>
         </div>
 
         {/* Mobile Navigation */}
         <div className="flex md:hidden overflow-x-auto py-2 border-t border-neutral-900 gap-2">
-          {(['wizard', 'spec', 'architecture', 'files', 'bricks'] as const).map((tab) => (
+          {(['wizard', 'spec', 'architecture', 'files', 'bricks', 'audit'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setCurrentTab(tab)}

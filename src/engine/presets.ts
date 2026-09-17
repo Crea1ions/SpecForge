@@ -38,12 +38,12 @@ export const PRESETS: ArchitecturePreset[] = [
       template: 'web-app',
       specVersion: '1.0.0',
       project: {
-        name: 'Lexi Core',
-        slug: 'lexi-core',
-        description: 'Plateforme fullstack haute performance avec Axum et React 19.',
+        name: 'Mon projet',
+        slug: 'mon-projet',
+        description: 'Projet Rust + React + SQLite.',
         type: 'fullstack',
         version: '0.1.0',
-        author: 'SpecForge Builder',
+        author: '',
         license: 'MIT',
       },
       backend: {
