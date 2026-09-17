@@ -1,94 +1,225 @@
 # SpecForge
 
-SpecForge est une plateforme de conception et de génération de projets logiciels basée sur une approche **Specification → Architecture → Generation**.
+**Specification → Architecture → Generation**
 
-L'objectif est de transformer une intention de projet en une spécification structurée, puis de laisser un moteur déterministe résoudre l'architecture et générer les fichiers correspondants.
+SpecForge est un outil de conception et de génération de squelettes de projets logiciels.
 
-> **La spécification est la source de vérité. Le Core est l'autorité technique.**
+Son objectif est de transformer une intention structurée en une **architecture cohérente** et en un **squelette de projet exploitable**, sans chercher à générer un produit fini ni à remplacer le développeur.
 
-## État du projet
-
-**V1 POC — fonctionnelle**
-
-La V1 permet actuellement de :
-
-* sélectionner un profil technique ;
-* sélectionner un type d'application ;
-* charger le template correspondant au couple profil × application ;
-* éditer la spécification du projet ;
-* résoudre l'architecture ;
-* valider les contraintes et dépendances ;
-* visualiser les briques actives ;
-* générer les fichiers du projet ;
-* télécharger le résultat sous forme d'archive ZIP ;
-* utiliser une assistance IA pour proposer une spécification ;
-* vérifier le comportement du moteur avec l'audit intégré.
-
-Le profil **Rust** est actuellement le seul profil réellement implémenté.
-
-Les six types d'application prévus sont :
-
-* Web Frontend
-* Web App
-* Web Platform
-* API Service
-* Desktop
-* Mobile
-
-Certaines combinaisons profil × application restent volontairement indisponibles dans cette V1.
+---
 
 ## Principe
 
 ```text
-Intention
-   ↓
-Spécification
-   ↓
-Profil technique + Type d'application
-   ↓
-Template de référence
-   ↓
-Core
- ├── Validation
- ├── Résolution
- └── Génération
-   ↓
-Projet généré
+Profil technique
+        +
+Type d'application
+        ↓
+Template adapté
+        ↓
+ProjectSpecification
+        ↓
+        CORE
+ ┌─────────────────┐
+ │ Validate        │
+ │ Resolve         │
+ │ Generate        │
+ └─────────────────┘
+        ↓
+Squelette du projet
+        ↓
+Développeur
 ```
 
-L'IA peut aider à construire une spécification à partir d'une intention en langage naturel.
+La **ProjectSpecification** constitue la source de vérité.
 
-Elle ne décide cependant pas de l'architecture finale : la validation, la résolution des dépendances et la génération appartiennent au **Core déterministe**.
+Le **Core** constitue l'autorité technique : il valide la Specification, résout les dépendances et génère le résultat.
 
-## Architecture générale
+---
+
+## Philosophie
+
+SpecForge repose sur quelques principes simples :
+
+* **Specification first** — l'intention est formalisée avant la génération.
+* **Core first** — la logique technique appartient au Core, pas à l'interface.
+* **Déterministe** — une même Specification doit produire un résultat prévisible.
+* **Explicable** — les choix et erreurs doivent rester compréhensibles.
+* **Modulaire** — les capacités techniques sont représentées par des briques.
+* **Progressif** — la complexité n'est ajoutée que lorsqu'elle devient nécessaire.
+* **Développeur libre** — le projet généré reste indépendant de SpecForge.
+
+> SpecForge génère une base saine. Le développeur construit le produit.
+
+---
+
+## Profils techniques
+
+SpecForge est conçu pour supporter plusieurs profils :
+
+* Rust
+* Python
+* TypeScript
+* Go
+
+**Actuellement, seul le profil Rust est implémenté.**
+
+Les autres profils font partie du modèle cible, mais ne sont pas encore développés.
+
+---
+
+## Types d'applications
+
+Chaque profil peut proposer ses propres templates pour les mêmes grandes catégories d'applications :
+
+| Type             | Description                        |
+| ---------------- | ---------------------------------- |
+| **Web Frontend** | Application web côté client        |
+| **Web App**      | Frontend + backend                 |
+| **Web Platform** | Frontend et backend séparés        |
+| **API Service**  | Service backend sans interface web |
+| **Desktop**      | Application bureau native          |
+| **Mobile**       | Application mobile                 |
+
+Tous les types sont visibles dans l'interface. Un type peut simplement être indisponible lorsqu'aucun template n'est encore défini pour le profil sélectionné.
+
+---
+
+## Templates
+
+Les templates décrivent des architectures de référence adaptées à un couple :
 
 ```text
-┌──────────────────────────────────────┐
-│              Interface               │
-│          React + TypeScript          │
-└──────────────────┬───────────────────┘
-                   │
-                   ▼
-┌──────────────────────────────────────┐
-│          Application / Bridge        │
-│           Node.js + Express          │
-└──────────────────┬───────────────────┘
-                   │
-                   ▼
-┌──────────────────────────────────────┐
-│                 Core                 │
-│                                      │
-│ Types → Registry → Validator         │
-│              ↓                       │
-│           Resolver                   │
-│              ↓                       │
-│          Generator                   │
-└──────────────────────────────────────┘
+Profil technique
+        +
+Type d'application
 ```
 
-Le Core ne dépend pas de l'interface React.
+Ils sont actuellement définis dans :
 
-## Stack
+```text
+src/engine/presets.ts
+```
+
+Templates Rust actuellement disponibles :
+
+* Rust + React + SQLite → Web App
+* Rust + React + PostgreSQL → Web Platform
+* Rust + Tauri + React → Desktop
+* Rust Backend Only → API Service
+
+D'autres templates Rust seront ajoutés progressivement.
+
+---
+
+## Core
+
+Le Core est indépendant de l'interface.
+
+```text
+src/core/
+├── types.ts
+├── utils.ts
+├── registry.ts
+├── validator.ts
+├── resolver.ts
+├── generator.ts
+├── index.ts
+└── bricks/
+    └── default-bricks.ts
+```
+
+### Validator
+
+Vérifie que la Specification est cohérente et que les capacités demandées sont supportées.
+
+### Registry
+
+Contient les briques techniques connues par SpecForge.
+
+Une brique peut déclarer :
+
+* ses capacités ;
+* ses dépendances ;
+* ses compatibilités ;
+* ses conflits ;
+* ses fichiers ;
+* ses conditions d'activation.
+
+### Resolver
+
+Transforme la Specification en architecture résolue.
+
+### Generator
+
+Produit les fichiers du squelette à partir de l'architecture résolue.
+
+---
+
+## IA
+
+L'IA est une **couche d'assistance**, pas l'autorité technique.
+
+Elle peut notamment :
+
+* aider à formaliser une intention ;
+* proposer une Specification ;
+* expliquer une architecture ;
+* aider à comprendre les choix du système.
+
+Le flux reste :
+
+```text
+Intention
+    ↓
+IA
+    ↓
+Proposition
+    ↓
+ProjectSpecification
+    ↓
+Core
+    ↓
+Validation / Résolution / Génération
+```
+
+L'IA peut proposer.
+
+Le Core décide techniquement.
+
+L'utilisateur valide.
+
+---
+
+## Architecture technique
+
+```text
+┌───────────────────────────────┐
+│           React UI            │
+│  Wizard / Specification /     │
+│  Architecture / Files / Audit│
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│     Node / Express Bridge     │
+│                               │
+│  API / IA / Vite middleware   │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│             Core              │
+│                               │
+│ Validate → Resolve → Generate  │
+└───────────────────────────────┘
+```
+
+Le bridge applicatif ne doit pas devenir une seconde implémentation du Core.
+
+---
+
+## Stack actuelle
 
 ### Frontend
 
@@ -96,158 +227,158 @@ Le Core ne dépend pas de l'interface React.
 * TypeScript
 * Vite
 * Tailwind CSS
-* Lucide React
+* Lucide
 * Motion
 
-### Backend / Bridge
+### Application / Bridge
 
 * Node.js
 * Express
-* TypeScript
 * Vite middleware
-
-Le serveur expose notamment les endpoints nécessaires à l'assistance IA.
 
 ### Core
 
-Le moteur principal est écrit en TypeScript et contient notamment :
+* TypeScript
+* architecture indépendante de React
+* YAML pour les besoins de parsing/configuration
 
-* modèles de spécification ;
-* registre de briques ;
-* validation ;
-* résolution d'architecture ;
-* génération ;
-* calcul de hash déterministe.
+---
 
-## Arborescence
+## Structure principale
 
 ```text
-src/
-├── components/       Interface React
-├── core/              Moteur déterministe
-│   ├── bricks/        Briques natives du Core
-│   ├── generator.ts
-│   ├── registry.ts
-│   ├── resolver.ts
-│   ├── types.ts
-│   ├── utils.ts
-│   └── validator.ts
-├── engine/            Compatibilité / presets / façade historique
-├── types/             Réexport des types de spécification
-├── App.tsx
-└── main.tsx
-
-docs/
-├── SpecForge-Templates-référence-V1.md
-├── INFRASTRUCTURE.md
-└── MAINTENANCE-EVOLUTION.md
+SpecForge/
+├── docs/
+│   ├── FICHE-PRODUIT.md
+│   ├── ROADMAP.md
+│   ├── HANDOFF.md
+│   ├── INFRASTRUCTURE.md
+│   ├── MAINTENANCE-EVOLUTION.md
+│   └── SpecForge-Templates-référence-V1.md
+│
+├── src/
+│   ├── core/
+│   │   ├── bricks/
+│   │   ├── generator.ts
+│   │   ├── index.ts
+│   │   ├── registry.ts
+│   │   ├── resolver.ts
+│   │   ├── types.ts
+│   │   ├── utils.ts
+│   │   └── validator.ts
+│   │
+│   ├── components/
+│   ├── engine/
+│   │   └── presets.ts
+│   └── types/
+│
+├── server.ts
+├── package.json
+└── README.md
 ```
 
+---
+
 ## Installation
-
-### Prérequis
-
-* Node.js
-* npm
-
-### Installation
 
 ```bash
 npm install
 ```
 
-### Développement
+## Développement
 
 ```bash
 npm run dev
 ```
 
-### Build
+## Build
 
 ```bash
 npm run build
 ```
 
-Le build produit le frontend Vite ainsi que le serveur Node bundlé.
-
-## Assistance IA
-
-L'assistance IA permet de transformer une intention en spécification structurée.
-
-Elle constitue une **aide à la conception**, et non une autorité technique.
-
-Le principe est :
-
-```text
-Intention utilisateur
-        ↓
-      IA
-        ↓
-Proposition de Spec
-        ↓
-Validation Core
-        ↓
-Architecture résolue
-```
-
-Une spécification invalide reste invalide, même si elle a été proposée par l'IA.
-
-## Templates et profils
-
-Les templates de référence sont actuellement définis dans :
-
-```text
-src/engine/presets.ts
-```
-
-Ils sont sélectionnés par :
-
-```text
-Profil technique
-        +
-Type d'application
-        ↓
-Template
-        ↓
-ProjectSpecification
-```
-
-Le document de référence des templates V1 se trouve dans :
-
-```text
-docs/SpecForge-Templates-référence-V1.md
-```
-
-## Limites actuelles de la V1
-
-La V1 est un POC et ne cherche pas encore à couvrir toutes les possibilités.
-
-Notamment :
-
-* le profil Rust est le seul profil réellement implémenté ;
-* plusieurs types d'application sont encore indisponibles pour Rust ;
-* certaines capacités demandées par les templates ne disposent pas encore de brique correspondante ;
-* le registre de briques va continuer à évoluer ;
-* les profils Python, TypeScript et Go sont prévus par le modèle mais ne constituent pas encore des implémentations V1.
-
-Ces limitations sont volontairement visibles dans l'interface et dans les diagnostics du Core.
+---
 
 ## Documentation
 
-* `docs/SpecForge-Templates-référence-V1.md` — templates de référence
-* `docs/INFRASTRUCTURE.md` — architecture et infrastructure
-* `docs/MAINTENANCE-EVOLUTION.md` — règles d'évolution et de maintenance
+La documentation du projet est volontairement séparée par responsabilité.
 
-## Philosophie
+* **[FICHE-PRODUIT.md](docs/FICHE-PRODUIT.md)** — vision, périmètre et principes du produit.
+* **[ROADMAP.md](docs/ROADMAP.md)** — évolutions prévues et ordre des priorités.
+* **[HANDOFF.md](docs/HANDOFF.md)** — état courant et point de reprise du développement.
+* **[INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md)** — architecture technique.
+* **[MAINTENANCE-EVOLUTION.md](docs/MAINTENANCE-EVOLUTION.md)** — règles de maintenance et d'évolution.
+* **[SpecForge-Templates-référence-V1.md](docs/SpecForge-Templates-référence-V1.md)** — templates et architectures de référence.
 
-SpecForge privilégie :
+---
 
-* la déterminisme ;
-* la simplicité ;
-* la traçabilité ;
-* la séparation des responsabilités ;
-* la validation explicite ;
-* des architectures compréhensibles ;
-* une évolution progressive.
+## État actuel
 
-**La complexité doit être ajoutée lorsqu'elle est nécessaire, pas par anticipation.**
+SpecForge est actuellement un **prototype fonctionnel en évolution**.
+
+Le socle suivant est en place :
+
+* Core indépendant de l'interface ;
+* validation des Specifications ;
+* résolution d'architecture ;
+* génération déterministe ;
+* Registry de briques ;
+* système de profils techniques ;
+* système de templates par profil et type d'application ;
+* quatre templates Rust fonctionnels ;
+* génération Desktop Tauri ;
+* interface de vérification et d'audit ;
+* assistance IA séparée du Core.
+
+Le développement actuel porte principalement sur la **consolidation du Core et de ses capacités techniques** avant l'ajout des couches de configuration complémentaires.
+
+---
+
+## Direction future
+
+Une configuration complémentaire permettra progressivement de préciser certains aspects du projet, notamment :
+
+```text
+Projet
+  ↓
+Interface
+  ├── Navigation
+  ├── Hubs
+  └── Sous-hubs
+  ↓
+Thème
+  ├── Mode
+  ├── Style
+  ├── Couleur principale
+  └── Couleur accent
+```
+
+Cette configuration restera volontairement simple.
+
+Elle servira à enrichir la **ProjectSpecification** avant son passage dans le Core.
+
+---
+
+## Principe de développement
+
+SpecForge évolue de manière incrémentale :
+
+```text
+Besoin
+  ↓
+Investigation ciblée
+  ↓
+Modification minimale
+  ↓
+Build / Vérification
+  ↓
+Validation
+  ↓
+Checkpoint
+```
+
+La priorité est de conserver une architecture :
+
+**simple, déterministe, lisible, modulaire et évolutive.**
+
+La complexité n'est introduite que lorsqu'un besoin réel la justifie.
