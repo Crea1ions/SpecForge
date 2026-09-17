@@ -95,14 +95,17 @@ export function validateSpecification(
     }
   }
 
-  if (spec.database.enabled && !spec.backend.enabled) {
+  const hasLocalDesktopRuntime =
+    spec.project.type === 'desktop' && spec.frontend.tauri;
+
+  if (spec.database.enabled && !spec.backend.enabled && !hasLocalDesktopRuntime) {
     issues.push({
       id: 'db-without-backend',
       severity: 'error',
       title: 'Base de données orpheline',
-      message: 'Une base de données a été activée sans aucun service backend pour la piloter.',
+      message: 'Une base de données a été activée sans aucun service backend ou runtime local pour la piloter.',
       source: 'dependency',
-      fixSuggestion: 'Activez le backend pour exposer vos requêtes et modèles de données.',
+      fixSuggestion: 'Activez le backend ou utilisez un runtime local compatible avec la base de données.',
     });
   }
 

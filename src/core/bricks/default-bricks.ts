@@ -706,8 +706,8 @@ const tauriDesktopBrick: BrickDefinition = {
   version: '1.4.2',
   description: 'Pont d\'application de bureau ultra-léger reliant l\'interface web au binaire Rust.',
   iconName: 'Monitor',
-  provides: ['desktop_runtime', 'native_fs_access', 'system_tray'],
-  requires: ['rust-backend', 'react-vite'],
+  provides: ['desktop_runtime', 'backend_runtime', 'native_fs_access', 'system_tray'],
+  requires: ['react-vite'],
   compatibleWith: ['rust-backend', 'react-vite', 'sqlite-storage'],
   conflictsWith: ['python-backend', 'docker-infra'],
   options: [
@@ -785,6 +785,10 @@ edition = "2021"
 tauri = { version = "2.0", features = [] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+${spec.database.enabled && spec.database.type === 'sqlite' && spec.database.orm === 'sqlx'
+  ? `tokio = { version = "1.38", features = ["macros", "rt-multi-thread"] }
+sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "macros", "chrono"${spec.database.migrations ? ', "migrate"' : ''}] }`
+  : ''}
 `;
     files.push(
       makeFile(
@@ -806,12 +810,20 @@ fn greet(name: &str) -> String {
     format!("Bonjour {}, bienvenue sur {} !", name, "${spec.project.name}")
 }
 
-fn main() {
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![greet])
-        .run(tauri::generate_context!())
-        .expect("Erreur lors de l'exécution de l'application Tauri");
-}
+  mod db;
+
+  #[tokio::main]
+  async fn main() -> Result<(), Box<dyn std::error::Error>> {
+      let db_pool = db::init_database().await?;
+
+      tauri::Builder::default()
+          .manage(db_pool)
+          .invoke_handler(tauri::generate_handler![greet])
+          .run(tauri::generate_context!())
+          .expect("Erreur lors de l'exécution de l'application Tauri");
+
+      Ok(())
+  }
 `;
     files.push(
       makeFile(
@@ -860,6 +872,14 @@ const sqliteStorageBrick: BrickDefinition = {
   generateFiles: (ctx) => {
     const files: GeneratedFile[] = [];
     if (ctx.spec.backend.language === 'rust') {
+      const isTauriDesktop =
+        ctx.spec.project.type === 'desktop' && ctx.spec.frontend.tauri;
+      const dbPath = isTauriDesktop ? 'src-tauri/db.rs' : 'src/db.rs';
+      const migrationPath = isTauriDesktop
+        ? 'src-tauri/migrations/0001_initial.sql'
+        : 'migrations/0001_initial.sql';
+      const migrationDir = isTauriDesktop ? '../migrations' : './migrations';
+
       const dbRs = `//! Initialisation SQLite avec SQLx
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -889,7 +909,7 @@ pub async fn init_database() -> Result<SqlitePool, Box<dyn std::error::Error>> {
     ${
       ctx.spec.database.migrations
         ? `// Exécution des migrations SQLx versionnées
-    sqlx::migrate!("./migrations")
+    sqlx::migrate!("${migrationDir}")
         .run(&pool)
         .await?;`
         : `// Création directe sans mécanisme de migration
@@ -910,7 +930,7 @@ pub async fn init_database() -> Result<SqlitePool, Box<dyn std::error::Error>> {
 `;
       files.push(
         makeFile(
-          'src/db.rs',
+            dbPath,
           dbRs,
           'rust',
           'sqlite-storage',
@@ -932,7 +952,7 @@ CREATE TABLE IF NOT EXISTS items (
 `;
         files.push(
           makeFile(
-            'migrations/0001_initial.sql',
+            migrationPath,
             migrationSql,
             'sql',
             'sqlite-storage',

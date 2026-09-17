@@ -181,7 +181,7 @@ export const PRESETS: ArchitecturePreset[] = [
         license: 'MIT',
       },
       backend: {
-        enabled: true,
+        enabled: false,
         language: 'rust',
         framework: 'axum',
         port: 8080,
@@ -204,7 +204,7 @@ export const PRESETS: ArchitecturePreset[] = [
         pooling: false,
       },
       api: {
-        style: 'rest',
+        style: 'none',
         auth: false,
         openapi: false,
         rateLimiting: false,
