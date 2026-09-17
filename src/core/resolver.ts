@@ -55,13 +55,12 @@ export function resolveArchitecture(
     activeBrickIds.push('quality-suite');
   }
 
-  if (
-    spec.documentation.readme ||
-    spec.documentation.architectureDoc ||
-    spec.documentation.installDoc ||
-    spec.documentation.decisionsLog
-  ) {
+  if (spec.documentation.readme) {
     activeBrickIds.push('docs-pack');
+  }
+
+  if (spec.documentation.workStructure) {
+    activeBrickIds.push('work-structure');
   }
 
   // Deduplicate and lookup active bricks

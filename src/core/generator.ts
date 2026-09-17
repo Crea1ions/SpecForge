@@ -16,6 +16,58 @@ import { resolveArchitecture } from './resolver';
 import { getContentByteLength } from './utils';
 import YAML from 'yaml';
 
+function renderMarkdown(value: unknown, level = 1): string {
+  if (value === null || value === undefined) {
+    return String(value);
+  }
+
+  if (typeof value !== 'object') {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (item !== null && typeof item === 'object') {
+          return `- ${renderMarkdown(item, level + 1).trim()}`;
+        }
+
+        return `- ${String(item)}`;
+      })
+      .join('\n');
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  const simpleEntries = entries.filter(
+    ([, entry]) =>
+      entry === null ||
+      entry === undefined ||
+      typeof entry !== 'object',
+  );
+  const complexEntries = entries.filter(
+    ([, entry]) => entry !== null && typeof entry === 'object',
+  );
+
+  let markdown = '';
+
+  if (simpleEntries.length > 0) {
+    markdown += '| Propriété | Valeur |\n';
+    markdown += '|---|---|\n';
+
+    for (const [key, entry] of simpleEntries) {
+      markdown += `| ${key} | ${String(entry)} |\n`;
+    }
+  }
+
+  for (const [key, entry] of complexEntries) {
+    markdown += `\n${'#'.repeat(level)} ${key}\n\n`;
+    markdown += renderMarkdown(entry, level + 1);
+    markdown += '\n';
+  }
+
+  return markdown.trim();
+}
+
 export function generateProjectFiles(
   spec: ProjectSpecification,
   architecture?: ResolvedArchitecture,
@@ -92,7 +144,25 @@ ${YAML.stringify(spec, { indent: 2 })}`;
     decisionRef: 'SPEC-ROOT',
   });
 
-  // 2. Generation Context passed to bricks
+  // 2. Emit readable Markdown representation of the canonical specification
+  const markdownContent = `# Project Specification
+
+${renderMarkdown(spec, 2)}
+`;
+
+  files.push({
+    path: 'project.md',
+    content: markdownContent,
+    language: 'markdown',
+    size: getContentByteLength(markdownContent),
+    brickId: 'core-engine',
+    brickName: 'SpecForge Core Engine',
+    brickVersion: '1.0.0',
+    reason: 'Représentation Markdown de la spécification canonique.',
+    decisionRef: 'SPEC-ROOT',
+  });
+
+  // 3. Generation Context passed to bricks
   const ctx: GenerationContext = {
     spec,
     activeBricks: resolved.activeBricks,

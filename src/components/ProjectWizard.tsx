@@ -580,10 +580,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
           {[
             { key: 'tests', label: 'Tests Unitaires & Intégration', category: 'quality' },
             { key: 'ci', label: 'GitHub Actions CI', category: 'quality' },
-            { key: 'readme', label: 'README.md Complet', category: 'documentation' },
-            { key: 'architectureDoc', label: 'Dossier d\'Architecture', category: 'documentation' },
-            { key: 'installDoc', label: 'Guide d\'Installation', category: 'documentation' },
-            { key: 'decisionsLog', label: 'Registre des Décisions (ADR)', category: 'documentation' },
+            { key: 'readme', label: 'README.md', category: 'documentation' },
           ].map((item) => {
             const isQuality = item.category === 'quality';
             const isChecked = isQuality

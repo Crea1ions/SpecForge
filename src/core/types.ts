@@ -87,9 +87,7 @@ export interface QualityConfig {
 
 export interface DocsConfig {
   readme: boolean;
-  architectureDoc: boolean;
-  installDoc: boolean;
-  decisionsLog: boolean;
+  workStructure: boolean;
 }
 
 export interface ProjectSpecification {
