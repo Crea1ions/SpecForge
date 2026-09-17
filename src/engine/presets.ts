@@ -24,6 +24,8 @@ export const PRESETS: ArchitecturePreset[] = [
     badge: 'Recommandé',
     category: 'fullstack',
     spec: {
+      profile: 'rust',
+      template: 'web-app',
       specVersion: '1.0.0',
       project: {
         name: 'Lexi Core',
@@ -97,6 +99,8 @@ export const PRESETS: ArchitecturePreset[] = [
     badge: 'Enterprise',
     category: 'fullstack',
     spec: {
+      profile: 'rust',
+      template: 'web-platform',
       specVersion: '1.0.0',
       project: {
         name: 'Enterprise Hub',
@@ -170,6 +174,8 @@ export const PRESETS: ArchitecturePreset[] = [
     badge: 'Desktop',
     category: 'desktop',
     spec: {
+      profile: 'rust',
+      template: 'desktop',
       specVersion: '1.0.0',
       project: {
         name: 'OmniDesktop',
@@ -243,6 +249,8 @@ export const PRESETS: ArchitecturePreset[] = [
     badge: 'API / Microservice',
     category: 'backend',
     spec: {
+      profile: 'rust',
+      template: 'api-service',
       specVersion: '1.0.0',
       project: {
         name: 'FastMicro',
@@ -316,6 +324,8 @@ export const PRESETS: ArchitecturePreset[] = [
     badge: 'Client SPA',
     category: 'frontend',
     spec: {
+      profile: 'typescript',
+      template: 'web-frontend',
       specVersion: '1.0.0',
       project: {
         name: 'GlassApp',

@@ -7,6 +7,20 @@
 
 export type ProjectType = 'fullstack' | 'desktop' | 'backend-only' | 'frontend-only' | 'cli';
 
+export type TechnicalProfile =
+  | 'rust'
+  | 'python'
+  | 'typescript'
+  | 'go';
+
+export type ApplicationTemplate =
+  | 'web-frontend'
+  | 'web-app'
+  | 'web-platform'
+  | 'api-service'
+  | 'desktop'
+  | 'mobile';
+
 export interface ProjectInfo {
   name: string;
   slug: string;
@@ -80,6 +94,8 @@ export interface DocsConfig {
 
 export interface ProjectSpecification {
   specVersion: string;
+  profile: TechnicalProfile;
+  template: ApplicationTemplate;
   project: ProjectInfo;
   backend: BackendConfig;
   frontend: FrontendConfig;
