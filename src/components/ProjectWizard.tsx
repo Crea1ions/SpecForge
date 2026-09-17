@@ -359,8 +359,9 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
                   <input
                     type="checkbox"
                     checked={spec.frontend.tauri}
+                    disabled={spec.project.type !== 'desktop'}
                     onChange={(e) => updateSpec('frontend', { tauri: e.target.checked })}
-                    className="rounded bg-neutral-900 border-neutral-700 text-sky-600 focus:ring-0"
+                    className="rounded bg-neutral-900 border-neutral-700 text-sky-600 focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   <div>
                     <span className="text-white font-medium">Empaquetage Bureau Tauri</span>

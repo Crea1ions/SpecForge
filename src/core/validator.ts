@@ -60,6 +60,18 @@ export function validateSpecification(
   }
 
   // 3. Domain Compatibility Constraints
+  // Tauri is only supported for desktop projects.
+  if (spec.frontend.tauri && spec.project.type !== 'desktop') {
+    issues.push({
+      id: 'tauri-requires-desktop',
+      severity: 'error',
+      title: 'Tauri nécessite un projet Desktop',
+      message: `La couche Tauri n'est supportée que pour les projets de type 'desktop'. Le projet actuel est de type '${spec.project.type}'.`,
+      source: 'compatibility',
+      fixSuggestion: "Changez le type du projet en 'desktop' ou désactivez Tauri.",
+    });
+  }
+
   if (spec.project.type === 'desktop') {
     if (!spec.frontend.enabled) {
       issues.push({
