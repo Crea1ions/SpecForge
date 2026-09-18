@@ -58,6 +58,10 @@ export function resolveArchitecture(
     activeBrickIds.push('rest-api');
   }
 
+  if (spec.authentication.enabled) {
+    activeBrickIds.push('jwt-auth');
+  }
+
   if (spec.infrastructure.docker) {
     activeBrickIds.push('docker-infra');
   }

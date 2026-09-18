@@ -143,14 +143,14 @@ export function validateSpecification(
   }
 
   // 4. Authentication Support Constraints
-  if (spec.authentication.enabled) {
+  if (spec.authentication.enabled && spec.authentication.provider !== 'jwt') {
     issues.push({
       id: `unsupported-authentication-${spec.authentication.provider}`,
       severity: 'error',
       title: `Authentification non supportée (${spec.authentication.provider})`,
-      message: `L'authentification '${spec.authentication.provider}' est demandée mais aucune brique d'authentification correspondante n'est actuellement disponible dans le registre Core.`,
+      message: `L'authentification '${spec.authentication.provider}' est demandée mais seule l'authentification JWT est actuellement disponible dans le registre Core.`,
       source: 'configuration',
-      fixSuggestion: "Désactivez l'authentification ('authentication.enabled: false') ou définissez 'provider: none'.",
+      fixSuggestion: "Utilisez 'provider: jwt' ou désactivez l'authentification ('authentication.enabled: false').",
     });
   }
 
