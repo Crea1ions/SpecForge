@@ -58,15 +58,14 @@ export interface DatabaseConfig {
 }
 
 export interface ApiConfig {
-  style: 'rest' | 'websocket' | 'graphql' | 'none';
+  style: 'rest' | 'websocket' | 'none';
   auth: boolean;
   openapi: boolean;
-  rateLimiting: boolean;
 }
 
 export interface AuthConfig {
   enabled: boolean;
-  provider: 'jwt' | 'oauth' | 'telegram' | 'none';
+  provider: 'jwt' | 'none';
   sessionStore: boolean;
 }
 
@@ -74,8 +73,6 @@ export interface InfraConfig {
   docker: boolean;
   compose: boolean;
   systemd: boolean;
-  vpsScript: boolean;
-  nginx: boolean;
 }
 
 export interface QualityConfig {

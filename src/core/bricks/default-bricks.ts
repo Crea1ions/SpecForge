@@ -1082,7 +1082,77 @@ CREATE TABLE IF NOT EXISTS items (
   },
 };
 
-// 7. REST API Brick
+// 7. JWT Authentication Brick
+const jwtAuthBrick: BrickDefinition = {
+  id: 'jwt-auth',
+  name: 'JWT Authentication',
+  category: 'authentication',
+  version: '1.0.0',
+  description: 'Authentification stateless basée sur des JSON Web Tokens (JWT).',
+  iconName: 'ShieldCheck',
+  provides: ['jwt_authentication', 'token_authentication'],
+  requires: ['backend_runtime'],
+  compatibleWith: ['rust-backend', 'python-backend', 'rest-api', 'react-vite'],
+  conflictsWith: [],
+  options: [],
+  templateFiles: ['src/auth.rs'],
+  tags: ['auth', 'jwt', 'security', 'token'],
+
+  generateDecisions: () => [
+    {
+      id: 'ADR-JWT-001',
+      title: 'Authentification par JSON Web Token',
+      status: 'Accepted',
+      context:
+        'Le projet nécessite un mécanisme d’authentification permettant de sécuriser les accès à l’application et à son API.',
+      decision:
+        'Adoption de JSON Web Tokens (JWT) comme mécanisme d’authentification stateless.',
+      consequences: [
+        'Les informations d’authentification sont portées par un token signé.',
+        'Le backend n’a pas besoin de maintenir une session serveur pour chaque client authentifié.',
+        'La gestion et la protection de la clé de signature deviennent une responsabilité de configuration du backend.',
+      ],
+      generatingBrick: 'jwt-auth',
+    },
+  ],
+
+  generateFiles: (ctx) => {
+    const files: GeneratedFile[] = [];
+
+    if (ctx.spec.backend.language === 'rust') {
+      const authRs = `//! Authentification JWT
+//!
+//! Point d'intégration de l'authentification par JSON Web Token.
+//! Les détails de configuration et les handlers pourront être complétés
+//! par le générateur lorsque les options d'authentification seront définies.
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub sub: String,
+    pub exp: usize,
+}
+`;
+
+      files.push(
+        makeFile(
+          'src/auth.rs',
+          authRs,
+          'rust',
+          'jwt-auth',
+          'JWT Authentication',
+          '1.0.0',
+          'Modèle de claims et point d’intégration de l’authentification JWT.'
+        )
+      );
+    }
+
+    return files;
+  },
+};
+
+// 8. REST API Brick
 const restApiBrick: BrickDefinition = {
   id: 'rest-api',
   name: 'RESTful API Engine',
@@ -1234,7 +1304,194 @@ pub async fn create_item(Json(payload): Json<CreateItemRequest>) -> impl IntoRes
   },
 };
 
-// 8. Docker Infrastructure Brick
+// 9. OpenAPI Brick
+const openapiBrick: BrickDefinition = {
+  id: 'openapi',
+  name: 'OpenAPI Contract',
+  category: 'api',
+  version: '1.0.0',
+  description: 'Contrat et documentation d’API au format OpenAPI.',
+  iconName: 'FileJson',
+  provides: ['openapi_contract', 'api_documentation'],
+  requires: ['rest_server'],
+  compatibleWith: ['rust-backend', 'python-backend', 'rest-api', 'react-vite'],
+  conflictsWith: [],
+  options: [],
+  templateFiles: ['openapi.yaml'],
+  tags: ['openapi', 'api', 'documentation', 'swagger'],
+
+  generateDecisions: () => [
+    {
+      id: 'ADR-OPENAPI-001',
+      title: 'Contrat d’API avec OpenAPI',
+      status: 'Accepted',
+      context:
+        'Le projet expose une API et nécessite un contrat formel permettant de décrire ses endpoints, ses paramètres et ses schémas de données.',
+      decision:
+        'Adoption du standard OpenAPI pour décrire et documenter le contrat de l’API.',
+      consequences: [
+        'Le contrat de l’API est versionné avec le projet.',
+        'La documentation des endpoints peut être générée ou consommée par des outils compatibles OpenAPI.',
+        'Les évolutions du contrat d’API deviennent explicites et vérifiables.',
+      ],
+      generatingBrick: 'openapi',
+    },
+  ],
+
+  generateFiles: (ctx) => {
+    const files: GeneratedFile[] = [];
+
+    if (ctx.spec.api.style === 'rest') {
+      const openapiYaml = `openapi: 3.0.3
+info:
+  title: ${ctx.spec.project.name}
+  version: ${ctx.spec.project.version}
+  description: ${ctx.spec.project.description}
+
+servers:
+  - url: http://localhost:${ctx.spec.backend.port}
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service disponible
+
+  /items:
+    get:
+      summary: Liste des items
+      responses:
+        '200':
+          description: Liste des items
+
+    post:
+      summary: Créer un item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateItemRequest'
+      responses:
+        '201':
+          description: Item créé
+
+components:
+  schemas:
+    Item:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        completed:
+          type: boolean
+      required:
+        - id
+        - title
+        - completed
+
+    CreateItemRequest:
+      type: object
+      properties:
+        title:
+          type: string
+      required:
+        - title
+`;
+
+      files.push(
+        makeFile(
+          'openapi.yaml',
+          openapiYaml,
+          'yaml',
+          'openapi',
+          'OpenAPI Contract',
+          '1.0.0',
+          'Contrat OpenAPI décrivant les endpoints REST et leurs schémas.'
+        )
+      );
+    }
+
+    return files;
+  },
+};
+
+// 10. Systemd Infrastructure Brick
+const systemdInfraBrick: BrickDefinition = {
+  id: 'systemd-infra',
+  name: 'Systemd Service',
+  category: 'infrastructure',
+  version: '1.0.0',
+  description: 'Configuration d’un service Linux systemd pour exécuter le backend.',
+  iconName: 'ServerCog',
+  provides: ['systemd_service', 'linux_service'],
+  requires: ['backend_runtime'],
+  compatibleWith: ['rust-backend', 'python-backend'],
+  conflictsWith: [],
+  options: [],
+  templateFiles: ['deploy/systemd/app.service'],
+  tags: ['systemd', 'linux', 'service', 'deployment'],
+
+  generateDecisions: () => [
+    {
+      id: 'ADR-SYSTEMD-001',
+      title: 'Déploiement du backend avec systemd',
+      status: 'Accepted',
+      context:
+        'Le projet nécessite un mécanisme natif Linux permettant d’exécuter et de superviser le backend comme un service système.',
+      decision:
+        'Utilisation de systemd pour gérer le cycle de vie du service backend.',
+      consequences: [
+        'Le backend peut être démarré, arrêté et redémarré comme un service système.',
+        'Le service bénéficie des mécanismes de supervision et de journalisation de systemd.',
+        'La configuration du service dépend de l’environnement Linux cible.',
+      ],
+      generatingBrick: 'systemd-infra',
+    },
+  ],
+
+  generateFiles: (ctx) => {
+    const files: GeneratedFile[] = [];
+
+    if (ctx.spec.backend.enabled) {
+      const serviceFile = `[Unit]
+Description=${ctx.spec.project.name} backend service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/${ctx.spec.project.name}
+ExecStart=/opt/${ctx.spec.project.name}/${ctx.spec.project.name}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+`;
+
+      files.push(
+        makeFile(
+          'deploy/systemd/app.service',
+          serviceFile,
+          'bash',
+          'systemd-infra',
+          'Systemd Service',
+          '1.0.0',
+          'Service systemd pour l’exécution du backend.'
+        )
+      );
+    }
+
+    return files;
+  },
+};
+
+// 11. Docker Infrastructure Brick
 const dockerInfraBrick: BrickDefinition = {
   id: 'docker-infra',
   name: 'Docker & Multi-Stage Compose',
@@ -1348,7 +1605,7 @@ volumes:
   },
 };
 
-// 9. Quality Suite Brick
+// 12. Quality Suite Brick
 const qualitySuiteBrick: BrickDefinition = {
   id: 'quality-suite',
   name: 'Quality, Tests & GitHub Actions CI',
@@ -1523,7 +1780,7 @@ jobs:
   },
 };
 
-// 10. Documentation Pack Brick
+// 13. Documentation Pack Brick
 const docsPackBrick: BrickDefinition = {
   id: 'docs-pack',
   name: 'Project README',
@@ -1580,7 +1837,7 @@ Une représentation lisible de cette spécification est disponible dans
   },
 };
 
-// 11. Project Work Structure Brick
+// 14. Project Work Structure Brick
 const workStructureBrick: BrickDefinition = {
   id: 'work-structure',
   name: 'Project Work Structure',
@@ -1832,7 +2089,7 @@ significatives du projet.
   },
 };
 
-// 12. Project RUST Web Frontend Brick
+// 15. Project RUST Web Frontend Brick
 const rustWebFrontendBrick: BrickDefinition = {
   id: 'rust-web-frontend',
   name: 'Rust Web Frontend',
@@ -3013,7 +3270,7 @@ button {
   },
 };
 
-// 13. Rust Web App Brick
+// 16. Rust Web App Brick
 const rustWebAppBrick: BrickDefinition = {
   id: 'rust-web-app',
   name: 'Rust Web App',
@@ -3949,7 +4206,10 @@ export const DEFAULT_BRICKS: BrickDefinition[] = [
   tauriDesktopBrick,
   sqliteStorageBrick,
   postgresStorageBrick,
+  jwtAuthBrick,
   restApiBrick,
+  openapiBrick,
+  systemdInfraBrick,
   dockerInfraBrick,
   qualitySuiteBrick,
   docsPackBrick,

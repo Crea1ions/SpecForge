@@ -73,7 +73,6 @@ export const PRESETS: ArchitecturePreset[] = [
       style: 'rest',
       auth: true,
       openapi: true,
-      rateLimiting: false,
     },
     authentication: {
       enabled: true,
@@ -84,8 +83,6 @@ export const PRESETS: ArchitecturePreset[] = [
       docker: true,
       compose: false,
       systemd: true,
-      vpsScript: false,
-      nginx: false,
     },
     quality: {
       tests: true,
@@ -146,7 +143,6 @@ export const PRESETS: ArchitecturePreset[] = [
         style: 'rest',
         auth: true,
         openapi: true,
-        rateLimiting: true,
       },
       authentication: {
         enabled: true,
@@ -157,8 +153,6 @@ export const PRESETS: ArchitecturePreset[] = [
         docker: true,
         compose: true,
         systemd: false,
-        vpsScript: false,
-        nginx: true,
       },
       quality: {
         tests: true,
@@ -219,7 +213,6 @@ export const PRESETS: ArchitecturePreset[] = [
         style: 'none',
         auth: false,
         openapi: false,
-        rateLimiting: false,
       },
       authentication: {
         enabled: false,
@@ -230,8 +223,6 @@ export const PRESETS: ArchitecturePreset[] = [
         docker: false,
         compose: false,
         systemd: false,
-        vpsScript: false,
-        nginx: false,
       },
       quality: {
         tests: true,
@@ -292,7 +283,6 @@ export const PRESETS: ArchitecturePreset[] = [
         style: 'rest',
         auth: true,
         openapi: true,
-        rateLimiting: true,
       },
       authentication: {
         enabled: true,
@@ -303,8 +293,6 @@ export const PRESETS: ArchitecturePreset[] = [
         docker: true,
         compose: false,
         systemd: true,
-        vpsScript: true,
-        nginx: false,
       },
       quality: {
         tests: true,
@@ -365,7 +353,6 @@ export const PRESETS: ArchitecturePreset[] = [
         style: 'none',
         auth: false,
         openapi: false,
-        rateLimiting: false,
       },
       authentication: {
         enabled: false,
@@ -376,8 +363,6 @@ export const PRESETS: ArchitecturePreset[] = [
         docker: true,
         compose: false,
         systemd: false,
-        vpsScript: false,
-        nginx: true,
       },
       quality: {
         tests: true,
@@ -439,7 +424,6 @@ export const PRESETS: ArchitecturePreset[] = [
         style: 'none',
         auth: false,
         openapi: false,
-        rateLimiting: false,
       },
       authentication: {
         enabled: false,
@@ -450,8 +434,6 @@ export const PRESETS: ArchitecturePreset[] = [
         docker: false,
         compose: false,
         systemd: false,
-        vpsScript: false,
-        nginx: false,
       },
       quality: {
         tests: true,
