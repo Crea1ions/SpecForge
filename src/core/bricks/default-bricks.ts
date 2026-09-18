@@ -134,7 +134,7 @@ strip = true
 
     const mainRs = `//! ${spec.project.name} - Point d'entrée principal du backend Rust
 use axum::{
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use std::net::SocketAddr;
@@ -1178,7 +1178,9 @@ use axum::{
     extract::State,
     http::StatusCode,
     response::IntoResponse,
+    routing::get,
     Json,
+    Router,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -1239,9 +1241,21 @@ pub async fn create_item(
     };
     Ok((StatusCode::CREATED, Json(item)))
 }
+
+pub fn router() -> Router<SqlitePool> {
+    Router::new()
+        .route("/api/health", get(health_check))
+        .route("/api/items", get(list_items).post(create_item))
+}
 `
         : `//! Contrôleurs REST
-use axum::{http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    http::StatusCode,
+    response::IntoResponse,
+    routing::get,
+    Json,
+    Router,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
@@ -1286,6 +1300,12 @@ pub async fn create_item(Json(payload): Json<CreateItemRequest>) -> impl IntoRes
         completed: false,
     };
     (StatusCode::CREATED, Json(item))
+}
+
+pub fn router() -> Router {
+    Router::new()
+        .route("/api/health", get(health_check))
+        .route("/api/items", get(list_items).post(create_item))
 }
 `;
       files.push(
@@ -1341,7 +1361,7 @@ const openapiBrick: BrickDefinition = {
   generateFiles: (ctx) => {
     const files: GeneratedFile[] = [];
 
-    if (ctx.spec.api.style === 'rest') {
+    if (ctx.activeBricks.some((brick) => brick.id === 'rest-api')) {
       const openapiYaml = `openapi: 3.0.3
 info:
   title: ${ctx.spec.project.name}
@@ -1352,14 +1372,14 @@ servers:
   - url: http://localhost:${ctx.spec.backend.port}
 
 paths:
-  /health:
+  /api/health:
     get:
       summary: Health check
       responses:
         '200':
           description: Service disponible
 
-  /items:
+  /api/items:
     get:
       summary: Liste des items
       responses:
@@ -3391,6 +3411,7 @@ const rustWebAppBrick: BrickDefinition = {
     const brickId = 'rust-web-app';
     const brickName = 'Rust Web App';
     const brickVersion = '1.0.0';
+    const hasRestApi = ctx.activeBricks.some((brick) => brick.id === 'rest-api');
 
     files.push(
       makeFile(
@@ -3424,7 +3445,7 @@ dotenvy = "0.15"
       makeFile(
         'src/main.rs',
         `mod config;
-mod db;
+${hasRestApi ? 'mod api;\n' : ''}mod db;
 mod handlers;
 mod models;
 mod routes;
@@ -3552,11 +3573,14 @@ pub async fn connect(
 use sqlx::SqlitePool;
 
 use crate::handlers;
+${hasRestApi ? 'use crate::api;\n' : ''}
 
 pub fn router() -> Router<SqlitePool> {
-    Router::new()
+    let router = Router::new()
         .route("/", get(handlers::index))
-        .route("/dashboard", get(handlers::dashboard))
+        .route("/dashboard", get(handlers::dashboard));
+
+    ${hasRestApi ? 'router.merge(api::router())' : 'router'}
 }
 `,
         'rust',
