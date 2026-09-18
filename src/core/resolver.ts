@@ -58,12 +58,20 @@ export function resolveArchitecture(
     activeBrickIds.push('rest-api');
   }
 
+  if (spec.api.openapi) {
+    activeBrickIds.push('openapi');
+  }
+
   if (spec.authentication.enabled) {
     activeBrickIds.push('jwt-auth');
   }
 
   if (spec.infrastructure.docker) {
     activeBrickIds.push('docker-infra');
+  }
+
+  if (spec.infrastructure.systemd) {
+    activeBrickIds.push('systemd-infra');
   }
 
   if (spec.quality.ci || spec.quality.tests || spec.quality.lint) {
