@@ -1544,17 +1544,20 @@ const dockerInfraBrick: BrickDefinition = {
     const files: GeneratedFile[] = [];
 
     const dockerfile = `# Dockerfile multi-étapes généré par SpecForge
-FROM rust:1.80-alpine AS builder
+FROM rust:1.94-alpine AS builder
 RUN apk add --no-cache musl-dev
 WORKDIR /app
-COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-RUN cargo build --release
+COPY templates ./templates
+COPY migrations ./migrations
+RUN cargo build --release --locked
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /app/target/release/${spec.project.slug} /app/server
+COPY static ./static
 ENV PORT=${spec.backend.port}
 EXPOSE ${spec.backend.port}
 CMD ["/app/server"]
@@ -3673,18 +3676,25 @@ pub struct AppInfo {
       makeFile(
         'migrations/0001_initial.sql',
         `CREATE TABLE IF NOT EXISTS app_metadata (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    version TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+       );
 
-INSERT INTO app_metadata (name, version)
-SELECT 'Rust Web App', '0.1.0'
-WHERE NOT EXISTS (
-    SELECT 1 FROM app_metadata
-);
-`,
+        INSERT INTO app_metadata (name, version)
+        SELECT 'Rust Web App', '0.1.0'
+        WHERE NOT EXISTS (
+            SELECT 1 FROM app_metadata
+       );
+
+       CREATE TABLE IF NOT EXISTS items (
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+           title TEXT NOT NULL,
+           completed BOOLEAN NOT NULL DEFAULT 0,
+           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+       );
+       `,
         'sql',
         brickId,
         brickName,
