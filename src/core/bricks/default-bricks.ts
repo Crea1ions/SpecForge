@@ -88,9 +88,13 @@ const rustBackendBrick: BrickDefinition = {
   ],
 
   generateFiles: (ctx) => {
-    const { spec } = ctx;
+        const { spec } = ctx;
     const files: GeneratedFile[] = [];
 
+    // Détection d'un frontend à servir (React/Vite ou Askama SSR)
+    const hasFrontend = ctx.activeBricks.some(
+      (b) => b.id === 'react-vite' || b.id === 'rust-web-app'
+    );
     const cargoToml = `[package]
 name = "${spec.project.slug}"
 version = "${spec.project.version}"
@@ -102,7 +106,7 @@ license = "${spec.project.license}"
 [dependencies]
 tokio = { version = "1.38", features = ["full"] }
 axum = { version = "0.7", features = ["json", "macros"] }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.5", features = [${hasFrontend ? '"cors", "trace", "fs"' : '"cors", "trace"'}] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"
@@ -132,13 +136,10 @@ strip = true
       )
     );
 
-    const mainRs = `//! ${spec.project.name} - Point d'entrée principal du backend Rust
-use axum::{
-    routing::get,
-    Router,
-};
+            const mainRs = `//! ${spec.project.name} - Point d'entrée principal du backend Rust
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
+${hasFrontend ? 'use tower_http::services::{ServeDir, ServeFile};' : ''}
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod config;
@@ -160,7 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     ${
       spec.database.enabled
-        ? `let db_pool = db::init_database().await?;
+        ? `let db_pool = db::init_database(&config.database_url).await?;
     tracing::info!("📦 Couche de persistance ${spec.database.type.toUpperCase()} connectée avec succès.");`
         : '// Aucune base de données requise.'
     }
@@ -168,16 +169,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
 
     ${
+      hasFrontend
+        ? `// Sert le frontend buildé (dist/ copié dans ./static)
+    let static_service = ServeDir::new("static")
+        .not_found_service(ServeFile::new("static/index.html"));
+
+    ${
       spec.database.enabled
-        ? `let app = Router::new()
-        .route("/api/health", get(api::health_check))
-        .route("/api/items", get(api::list_items).post(api::create_item))
+        ? `let app = api::router()
+        .fallback_service(static_service)
         .layer(cors)
         .with_state(db_pool);`
-        : `let app = Router::new()
-        .route("/api/health", get(api::health_check))
-        .route("/api/items", get(api::list_items).post(api::create_item))
+        : `let app = api::router()
+        .fallback_service(static_service)
         .layer(cors);`
+    }`
+        : `${
+            spec.database.enabled
+              ? `let app = api::router()
+        .layer(cors)
+        .with_state(db_pool);`
+              : `let app = api::router()
+        .layer(cors);`
+          }`
     }
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
@@ -231,6 +245,27 @@ impl AppConfig {
         'Rust Backend Service',
         '1.2.0',
         'Chargeur de configuration environnementale découplé avec variables typées.'
+      )
+    );
+
+        // .env.example — variables d'environnement de référence
+    files.push(
+      makeFile(
+        '.env.example',
+        `# Configuration locale — copier en .env et adapter
+PORT=${spec.backend.port}
+DATABASE_URL=${
+          spec.database.type === 'sqlite'
+            ? 'sqlite://data.db'
+            : 'postgres://postgres:postgres@localhost:5432/app'
+        }
+RUST_LOG=info
+`,
+        'bash',
+        'rust-backend',
+        'Rust Backend Service',
+        '1.2.0',
+        'Variables d’environnement de référence pour le développement local.'
       )
     );
 
@@ -449,7 +484,7 @@ const reactViteBrick: BrickDefinition = {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${spec.project.name}</title>
   </head>
-  <body class="bg-neutral-950 text-neutral-100">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
@@ -578,7 +613,7 @@ export default defineConfig({
       )
     );
 
-    const mainTsx = `import React, { StrictMode } from 'react';
+    const mainTsx = `import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
@@ -603,20 +638,178 @@ if (rootElement) {
         'Point d\'entrée applicatif montant le composant racine App dans le DOM.'
       )
     );
+    const indexCss = `@import "tailwindcss";
 
-    const appTsx = `import React, { useState, useEffect } from 'react';
-import { Server, Database, ShieldCheck, RefreshCw } from 'lucide-react';
+:root {
+  color-scheme: dark;
+
+  --background: #0d1117;
+  --surface-1: #151b23;
+  --surface-2: #1b232d;
+  --surface-hover: #232d38;
+  --surface-raised: #202a35;
+
+  --text-primary: #edf3f5;
+  --text-secondary: #a7b4bb;
+  --text-muted: #71808a;
+
+  --accent: #1aa8c0;
+  --accent-hover: #28c2d8;
+  --accent-soft: rgba(26, 168, 192, 0.12);
+
+  --accent-orange: #f59e0b;
+  --accent-orange-soft: rgba(245, 158, 11, 0.12);
+
+  --border: rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.12);
+
+  --success: #4ade80;
+  --warning: #facc15;
+  --danger: #f87171;
+
+  --radius: 14px;
+  --radius-small: 10px;
+
+  --shadow:
+    0 14px 35px rgba(0, 0, 0, 0.28);
+
+  --sidebar-width: 260px;
+
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --background: #f3f5f6;
+  --surface-1: #ffffff;
+  --surface-2: #eef1f3;
+  --surface-hover: #e4e9ec;
+  --surface-raised: #ffffff;
+
+  --text-primary: #172027;
+  --text-secondary: #52616a;
+  --text-muted: #7a8790;
+
+  --accent: #147f94;
+  --accent-hover: #0f6d80;
+  --accent-soft: rgba(20, 127, 148, 0.10);
+
+  --accent-orange: #d97706;
+  --accent-orange-soft: rgba(217, 119, 6, 0.10);
+
+  --border: rgba(15, 23, 30, 0.10);
+  --border-strong: rgba(15, 23, 30, 0.16);
+
+  --shadow:
+    0 14px 35px rgba(15, 23, 30, 0.08);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-raised: var(--surface-raised);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-accent-orange: var(--accent-orange);
+  --color-accent-orange-soft: var(--accent-orange-soft);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --radius-card: var(--radius);
+  --radius-control: var(--radius-small);
+
+  --shadow-card: var(--shadow);
+}
+
+html {
+  background: var(--background);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(
+      circle at 15% 10%,
+      var(--accent-soft),
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at 90% 80%,
+      var(--accent-orange-soft),
+      transparent 24rem
+    ),
+    var(--background);
+  color: var(--text-primary);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+`;
+          const appTsx = `import { useEffect, useState, type ReactNode } from 'react';
+import {
+  Database,
+  LayoutDashboard,
+  Menu,
+  Moon,
+  RefreshCw,
+  Server,
+  Settings,
+  ShieldCheck,
+  Sun,
+  X,
+} from 'lucide-react';
 
 export default function App() {
   const [health, setHealth] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dark, setDark] = useState(true);
+  const [menu, setMenu] = useState(false);
 
   const fetchStatus = async () => {
     try {
       setLoading(true);
+
       const res = await fetch('/api/health');
       if (res.ok) setHealth(await res.json());
+
       const itemsRes = await fetch('/api/items');
       if (itemsRes.ok) setItems(await itemsRes.json());
     } catch (err) {
@@ -630,43 +823,245 @@ export default function App() {
     fetchStatus();
   }, []);
 
+  function toggleTheme() {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.dataset.theme = next ? 'dark' : 'light';
+  }
+
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 p-8 font-sans">
-      <header className="max-w-4xl mx-auto mb-8 flex justify-between items-center border-b border-neutral-800 pb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">${spec.project.name}</h1>
-          <p className="text-xs text-neutral-400 mt-0.5">${spec.project.description}</p>
+    <div className="min-h-screen">
+      <aside className="fixed left-0 top-0 bottom-0 z-10 w-[260px] border-r border-border bg-gradient-to-b from-surface-1 to-surface-2 px-[18px] py-6 shadow-[8px_0_30px_rgba(0,0,0,0.08)] max-[900px]:hidden">
+        <div className="mb-[34px] flex items-center px-2 text-xl font-extrabold tracking-[-0.03em] text-text-primary">
+          <span className="mr-2 inline-flex gap-1">
+            <span className="h-2 w-2 rounded-[3px] bg-accent" />
+            <span className="h-2 w-2 rounded-[3px] bg-accent-orange" />
+          </span>
+          ${spec.project.name}
         </div>
+
+        <nav className="flex flex-col gap-1">
+          <Nav
+            icon={<LayoutDashboard />}
+            label="Overview"
+            active
+          />
+          <Nav
+            icon={<Server />}
+            label="Backend"
+          />
+          <Nav
+            icon={<Database />}
+            label="Data"
+          />
+          <Nav
+            icon={<ShieldCheck />}
+            label="Security"
+          />
+
+          <div className="my-4 mx-2 h-px bg-gradient-to-r from-transparent via-border-strong to-transparent" />
+
+          <Nav
+            icon={<Settings />}
+            label="Settings"
+          />
+        </nav>
+      </aside>
+
+      <header className="hidden fixed left-0 right-0 top-0 z-[15] h-[60px] items-center justify-between border-b border-border bg-surface-1/90 px-[14px] py-2 backdrop-blur-md max-[900px]:flex">
         <button
-          onClick={fetchStatus}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs"
+          type="button"
+          onClick={() => setMenu(true)}
+          aria-label="Ouvrir le menu"
+          className="flex h-10 w-10 items-center justify-center rounded-control border-0 bg-transparent text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
         >
-          <RefreshCw className={\`w-3 h-3 \${loading ? 'animate-spin' : ''}\`} />
-          Rafraîchir
+          <Menu className="h-5 w-5" />
+        </button>
+
+        <strong className="text-[15px] tracking-[-0.02em]">
+          ${spec.project.name}
+        </strong>
+
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={dark ? 'Activer le thème clair' : 'Activer le thème sombre'}
+          className="flex h-10 w-10 items-center justify-center rounded-control border-0 bg-surface-2 text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+        >
+          {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         </button>
       </header>
-      <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-neutral-900/60 p-4 rounded-xl border border-neutral-800">
-          <div className="flex items-center gap-2 text-indigo-400 font-semibold text-xs mb-2">
-            <Server className="w-4 h-4" /> Backend
+
+      {menu && (
+        <div className="fixed inset-0 z-20 flex flex-col gap-2 bg-surface-1 p-[18px]">
+          <div className="mb-[18px] flex justify-end">
+            <button
+              type="button"
+              onClick={() => setMenu(false)}
+              aria-label="Fermer le menu"
+              className="flex h-10 w-10 items-center justify-center rounded-control border-0 bg-surface-2 text-text-secondary hover:text-text-primary"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
-          <p className="text-xs text-neutral-300">Runtime : ${spec.backend.language.toUpperCase()}</p>
-          <p className="text-xs text-neutral-300 mt-1">Port : ${spec.backend.port}</p>
+
+          <Nav
+            icon={<LayoutDashboard />}
+            label="Overview"
+            active
+            onClick={() => setMenu(false)}
+          />
+          <Nav
+            icon={<Server />}
+            label="Backend"
+            onClick={() => setMenu(false)}
+          />
+          <Nav
+            icon={<Database />}
+            label="Data"
+            onClick={() => setMenu(false)}
+          />
+          <Nav
+            icon={<ShieldCheck />}
+            label="Security"
+            onClick={() => setMenu(false)}
+          />
+          <Nav
+            icon={<Settings />}
+            label="Settings"
+            onClick={() => setMenu(false)}
+          />
         </div>
-        <div className="bg-neutral-900/60 p-4 rounded-xl border border-neutral-800">
-          <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs mb-2">
-            <Database className="w-4 h-4" /> Persistance
+      )}
+
+      <main className="min-h-screen ml-[260px] px-12 py-[52px] max-[900px]:ml-0 max-[900px]:px-5 max-[900px]:pb-10 max-[900px]:pt-[88px]">
+        <header className="mb-[34px] flex items-center justify-between gap-6 border-b border-border pb-5 max-[600px]:items-start">
+          <div>
+            <h1 className="m-0 text-[30px] font-bold leading-[1.15] tracking-[-0.035em] text-text-primary max-[600px]:text-2xl">
+              ${spec.project.name}
+            </h1>
+            <p className="mt-[9px] mb-0 text-sm text-text-secondary">
+              ${spec.project.description}
+            </p>
           </div>
-          <p className="text-xs text-neutral-300">${spec.database.enabled ? spec.database.type.toUpperCase() : 'Aucune'}</p>
-        </div>
-        <div className="bg-neutral-900/60 p-4 rounded-xl border border-neutral-800">
-          <div className="flex items-center gap-2 text-purple-400 font-semibold text-xs mb-2">
-            <ShieldCheck className="w-4 h-4" /> Authentification
-          </div>
-          <p className="text-xs text-neutral-300">${spec.authentication.enabled ? spec.authentication.provider.toUpperCase() : 'Désactivée'}</p>
-        </div>
+
+          <button
+            type="button"
+            onClick={fetchStatus}
+            className="flex shrink-0 items-center gap-2 rounded-control border border-border bg-surface-2 px-3 py-2 text-xs font-medium text-text-secondary shadow-sm transition-colors hover:border-border-strong hover:bg-surface-hover hover:text-text-primary"
+          >
+            <RefreshCw
+              className={loading
+                ? 'h-4 w-4 animate-spin motion-reduce:animate-none'
+                : 'h-4 w-4'}
+            />
+            Rafraîchir
+          </button>
+        </header>
+
+        <section className="grid grid-cols-3 gap-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-3">
+          <Card
+            icon={<Server />}
+            title="Backend"
+            accent="accent"
+          >
+            <p>
+              Runtime : <strong>${spec.backend.language.toUpperCase()}</strong>
+            </p>
+            <p>
+              Port : <strong>${spec.backend.port}</strong>
+            </p>
+            <p>
+              État : <strong>{health?.status ?? 'En attente'}</strong>
+            </p>
+          </Card>
+
+          <Card
+            icon={<Database />}
+            title="Persistance"
+            accent="orange"
+          >
+            <p>
+              Type : <strong>${spec.database.enabled ? spec.database.type.toUpperCase() : 'Aucune'}</strong>
+            </p>
+            <p>
+              Éléments chargés : <strong>{items.length}</strong>
+            </p>
+          </Card>
+
+          <Card
+            icon={<ShieldCheck />}
+            title="Authentification"
+            accent="accent"
+          >
+            <p>
+              Provider : <strong>${spec.authentication.enabled ? spec.authentication.provider.toUpperCase() : 'Désactivée'}</strong>
+            </p>
+          </Card>
+        </section>
       </main>
     </div>
+  );
+}
+
+function Nav({
+  icon,
+  label,
+  active = false,
+  onClick,
+}: {
+  icon?: ReactNode;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        'flex w-full items-center gap-3 rounded-control border px-3 py-[10px] text-left text-sm transition-[background,border-color,color,transform] duration-150 ' +
+        (active
+          ? 'border-accent/20 bg-accent-soft text-text-primary'
+          : 'border-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary') +
+        ' active:translate-y-px'
+      }
+    >
+      <span className={active ? 'text-accent' : ''}>
+        {icon}
+      </span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function Card({
+  icon,
+  title,
+  accent = 'accent',
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  accent?: 'accent' | 'orange';
+  children: ReactNode;
+}) {
+  return (
+    <article className="relative overflow-hidden rounded-card border border-border bg-gradient-to-br from-surface-raised to-surface-1 p-[22px] shadow-card transition-[border-color,transform] duration-150 hover:-translate-y-px hover:border-border-strong before:absolute before:left-[22px] before:top-0 before:h-[2px] before:w-[34px] before:rounded-b-[3px] before:bg-accent">
+      <div
+        className={
+          'mb-4 flex items-center gap-2 text-xs font-bold ' +
+          (accent === 'orange' ? 'text-accent-orange' : 'text-accent')
+        }
+      >
+        {icon}
+        {title}
+      </div>
+
+      <div className="space-y-2 text-sm text-text-secondary">
+        {children}
+      </div>
+    </article>
   );
 }
 `;
@@ -685,7 +1080,7 @@ export default function App() {
     files.push(
       makeFile(
         'frontend/src/index.css',
-        '@import "tailwindcss";\n',
+        indexCss,
         'css',
         'react-vite',
         'React 19 + Vite Frontend',
@@ -885,11 +1280,13 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     SqlitePool,
 };
-use std::{env, str::FromStr};
+use std::str::FromStr;
 
-pub async fn init_database() -> Result<SqlitePool, Box<dyn std::error::Error>> {
-    let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://data.db".to_string());
-    let options = SqliteConnectOptions::from_str(&db_url)?
+pub async fn init_database(
+    database_url: &str,
+) -> Result<SqlitePool, Box<dyn std::error::Error>> {
+    let db_url = database_url;
+    let options = SqliteConnectOptions::from_str(db_url)?
         .create_if_missing(true);
 
     ${
@@ -1001,22 +1398,22 @@ const postgresStorageBrick: BrickDefinition = {
     if (ctx.spec.backend.language === 'rust') {
       const dbRs = `//! Initialisation PostgreSQL
 use sqlx::{postgres::PgPoolOptions, PgPool};
-use std::env;
 
-pub async fn init_database() -> Result<PgPool, Box<dyn std::error::Error>> {
-    let db_url = env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/app".to_string());
+pub async fn init_database(
+    database_url: &str,
+) -> Result<PgPool, Box<dyn std::error::Error>> {
+    let db_url = database_url;
     ${
       ctx.spec.database.pooling
         ? `// Pooling activé : gestion dynamique d'un pool de 10 connexions
     let pool = PgPoolOptions::new()
         .max_connections(10)
-        .connect(&db_url)
+        .connect(db_url)
         .await?;`
         : `// Mode sans pooling : connexion dédiée stricte (max_connections = 1, pas de pool dynamique)
     let pool = PgPoolOptions::new()
         .max_connections(1)
-        .connect(&db_url)
+        .connect(db_url)
         .await?;`
     }
 
@@ -1171,9 +1568,16 @@ const restApiBrick: BrickDefinition = {
   generateFiles: (ctx) => {
     const files: GeneratedFile[] = [];
     if (ctx.spec.backend.language === 'rust') {
-      const isSqlite = ctx.spec.database.enabled && ctx.spec.database.type === 'sqlite';
-      const apiRs = isSqlite
-        ? `//! Contrôleurs REST connectés à SQLite via SQLx
+      const isSqlite =
+  ctx.spec.database.enabled &&
+  ctx.spec.database.type === 'sqlite';
+
+const isPostgres =
+  ctx.spec.database.enabled &&
+  ctx.spec.database.type === 'postgresql';
+
+const apiRs = isSqlite
+  ? `//! Contrôleurs REST connectés à SQLite via SQLx
 use axum::{
     extract::State,
     http::StatusCode,
@@ -1195,7 +1599,7 @@ pub struct HealthResponse {
 pub async fn health_check() -> impl IntoResponse {
     Json(HealthResponse {
         status: "healthy",
-        service: "${ctx.spec.project.name}",
+        service: "${ctx.spec.project.slug}",
         version: "${ctx.spec.project.version}",
     })
 }
@@ -1215,10 +1619,12 @@ pub struct CreateItemRequest {
 pub async fn list_items(
     State(pool): State<SqlitePool>,
 ) -> Result<Json<Vec<Item>>, StatusCode> {
-    let items = sqlx::query_as::<_, Item>("SELECT id, title, completed FROM items ORDER BY id ASC")
-        .fetch_all(&pool)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let items = sqlx::query_as::<_, Item>(
+        "SELECT id, title, completed FROM items ORDER BY id ASC"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(items))
 }
@@ -1227,18 +1633,22 @@ pub async fn create_item(
     State(pool): State<SqlitePool>,
     Json(payload): Json<CreateItemRequest>,
 ) -> Result<(StatusCode, Json<Item>), StatusCode> {
-    let result = sqlx::query("INSERT INTO items (title, completed) VALUES (?, 0)")
-        .bind(&payload.title)
-        .execute(&pool)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let result = sqlx::query(
+        "INSERT INTO items (title, completed) VALUES (?, 0)"
+    )
+    .bind(&payload.title)
+    .execute(&pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let id = result.last_insert_rowid();
+
     let item = Item {
         id,
         title: payload.title,
         completed: false,
     };
+
     Ok((StatusCode::CREATED, Json(item)))
 }
 
@@ -1248,7 +1658,83 @@ pub fn router() -> Router<SqlitePool> {
         .route("/api/items", get(list_items).post(create_item))
 }
 `
-        : `//! Contrôleurs REST
+  : isPostgres
+    ? `//! Contrôleurs REST connectés à PostgreSQL via SQLx
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::IntoResponse,
+    routing::get,
+    Json,
+    Router,
+};
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+
+#[derive(Serialize)]
+pub struct HealthResponse {
+    pub status: &'static str,
+    pub service: &'static str,
+    pub version: &'static str,
+}
+
+pub async fn health_check() -> impl IntoResponse {
+    Json(HealthResponse {
+        status: "healthy",
+        service: "${ctx.spec.project.slug}",
+        version: "${ctx.spec.project.version}",
+    })
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Item {
+    pub id: i64,
+    pub title: String,
+    pub completed: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateItemRequest {
+    pub title: String,
+}
+
+pub async fn list_items(
+    State(pool): State<PgPool>,
+) -> Result<Json<Vec<Item>>, StatusCode> {
+    let items = sqlx::query_as::<_, Item>(
+        "SELECT id, title, completed FROM items ORDER BY id ASC"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(items))
+}
+
+pub async fn create_item(
+    State(pool): State<PgPool>,
+    Json(payload): Json<CreateItemRequest>,
+) -> Result<(StatusCode, Json<Item>), StatusCode> {
+    let item = sqlx::query_as::<_, Item>(
+        "INSERT INTO items (title, completed)
+         VALUES ($1, FALSE)
+         RETURNING id, title, completed"
+    )
+    .bind(&payload.title)
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok((StatusCode::CREATED, Json(item)))
+}
+
+pub fn router() -> Router<PgPool> {
+    Router::new()
+        .route("/api/health", get(health_check))
+        .route("/api/items", get(list_items).post(create_item))
+}
+`
+    : `//! Contrôleurs REST
 use axum::{
     http::StatusCode,
     response::IntoResponse,
@@ -1268,7 +1754,7 @@ pub struct HealthResponse {
 pub async fn health_check() -> impl IntoResponse {
     Json(HealthResponse {
         status: "healthy",
-        service: "${ctx.spec.project.name}",
+        service: "${ctx.spec.project.slug}",
         version: "${ctx.spec.project.version}",
     })
 }
@@ -1287,18 +1773,33 @@ pub struct CreateItemRequest {
 
 pub async fn list_items() -> impl IntoResponse {
     let items = vec![
-        Item { id: 1, title: "Spécification validée".to_string(), completed: true },
-        Item { id: 2, title: "Moteur déterministe".to_string(), completed: true },
+        Item {
+            id: 1,
+            title: "Spécification validée".to_string(),
+            completed: true,
+        },
+        Item {
+            id: 2,
+            title: "Moteur déterministe".to_string(),
+            completed: true,
+        },
     ];
+
     Json(items)
 }
 
-pub async fn create_item(Json(payload): Json<CreateItemRequest>) -> impl IntoResponse {
+pub async fn create_item(
+    Json(payload): Json<CreateItemRequest>,
+) -> impl IntoResponse {
     let item = Item {
-        id: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,
+        id: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64,
         title: payload.title,
         completed: false,
     };
+
     (StatusCode::CREATED, Json(item))
 }
 
@@ -1539,30 +2040,70 @@ const dockerInfraBrick: BrickDefinition = {
     },
   ],
 
-  generateFiles: (ctx) => {
-    const { spec } = ctx;
-    const files: GeneratedFile[] = [];
+generateFiles: (ctx) => {
+  const { spec } = ctx;
+  const files: GeneratedFile[] = [];
 
-    const dockerfile = `# Dockerfile multi-étapes généré par SpecForge
+    // Détection des bricks actifs pour adapter le Dockerfile
+    const activeIds = ctx.activeBricks.map((b) => b.id);
+    const hasRustWebApp = activeIds.includes('rust-web-app');
+    const hasRustBackend = activeIds.includes('rust-backend');
+    const hasReactVite = activeIds.includes('react-vite');
+    const hasPythonBackend = activeIds.includes('python-backend');
+
+    const isRustProject = hasRustWebApp || hasRustBackend || (!hasPythonBackend && !hasReactVite && spec.backend.language === 'rust');
+    const needsTemplates = hasRustWebApp;
+    const needsStatic = hasRustWebApp;
+
+    const copyTemplatesLine = needsTemplates ? 'COPY templates ./templates\n' : '';
+
+    // Étape frontend (react-vite) : build Vite puis copie du dist dans /app/static
+    const frontendBuilderStage = hasReactVite
+      ? `# --- Étape 1 : build du frontend React/Vite ---
+FROM node:22-alpine AS frontend-builder
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci || npm install
+COPY frontend/ ./
+RUN npm run build
+
+`
+      : '';
+
+    const frontendCopyLine = hasReactVite
+      ? `COPY --from=frontend-builder /frontend/dist /app/static\n`
+      : (needsStatic ? 'COPY static ./static\n' : '');
+
+    const dockerfile = isRustProject
+      ? `${frontendBuilderStage}# --- Étape ${hasReactVite ? '2' : '1'} : build du backend Rust ---
 FROM rust:1.94-alpine AS builder
 RUN apk add --no-cache musl-dev
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-COPY templates ./templates
-COPY migrations ./migrations
+${copyTemplatesLine}COPY migrations ./migrations
 RUN cargo build --release --locked
 
+# --- Étape finale ---
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /app/target/release/${spec.project.slug} /app/server
-COPY static ./static
-ENV PORT=${spec.backend.port}
+${frontendCopyLine}ENV PORT=${spec.backend.port}
 EXPOSE ${spec.backend.port}
 CMD ["/app/server"]
+`
+      : `# Dockerfile généré par SpecForge (backend non-Rust — à adapter)
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates
+WORKDIR /app
+ENV PORT=${spec.backend.port}
+EXPOSE ${spec.backend.port}
+# TODO: adapter le build pour le backend ${spec.backend.language}
+CMD ["sh", "-c", "echo 'Dockerfile à compléter pour ${spec.backend.language}' && sleep infinity"]
 `;
-    files.push(
+
+      files.push(
       makeFile(
         'Dockerfile',
         dockerfile,
@@ -1571,6 +2112,30 @@ CMD ["/app/server"]
         'Docker & Multi-Stage Compose',
         '1.5.0',
         'Définition de conteneur multi-étapes légère et sécurisée (Alpine Linux).',
+        'ADR-005'
+      )
+    );
+
+    // .dockerignore pour exclure les artefacts lourds du contexte de build
+    files.push(
+      makeFile(
+        '.dockerignore',
+        `target/
+frontend/node_modules/
+frontend/dist/
+.git/
+.gitignore
+*.log
+.env
+.env.*
+work/
+docs/
+`,
+        'dockerfile',
+        'docker-infra',
+        'Docker & Multi-Stage Compose',
+        '1.5.0',
+        'Exclusions du contexte de build Docker (artefacts, dépendances, secrets).',
         'ADR-005'
       )
     );
