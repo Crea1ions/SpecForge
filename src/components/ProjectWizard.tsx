@@ -27,26 +27,38 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
     key: K,
     val: Partial<ProjectSpecification[K]>
   ) => {
+    const currentValue = spec[key];
+    const updatedValue =
+      typeof currentValue === 'object' && currentValue !== null
+        ? { ...currentValue, ...val }
+        : val;
+
     onChange({
       ...spec,
-      [key]: {
-        ...spec[key],
-        ...val,
-      },
+      [key]: updatedValue,
     });
   };
 
-  const handleTemplateChange = (template: ApplicationTemplate) => {
+const handleTemplateChange = (template: ApplicationTemplate) => {
     const preset = findPreset(spec.profile, template);
 
     if (!preset) {
       return;
     }
 
+    const newSlug = preset.spec.project.slug;
+    const defaultIdentifier =
+      spec.project.identifier && !spec.project.identifier.startsWith('com.example.')
+        ? spec.project.identifier
+        : `com.acme.${newSlug.replace(/[^a-z0-9]/g, '')}`;
+
     onChange({
       ...preset.spec,
       project: {
         ...spec.project,
+        name: preset.spec.project.name,
+        slug: newSlug,
+        identifier: template === 'mobile' ? defaultIdentifier : spec.project.identifier,
         description: preset.spec.project.description,
         type: preset.spec.project.type,
       },
@@ -72,7 +84,8 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
               {spec.project.name || 'Projet sans nom'}
             </h2>
             <p className="text-xs text-neutral-400 mt-1 max-w-2xl">
-              {spec.project.description || 'Définissez les capacités requises ci-dessous. Le moteur déduit l\'architecture et les briques nécessaires.'}
+              {spec.project.description ||
+                "Définissez les capacités requises ci-dessous. Le moteur déduit l'architecture et les briques nécessaires."}
             </p>
           </div>
 
@@ -187,6 +200,22 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
               placeholder="ex: Plateforme haute performance de streaming et de traitement audio."
             />
           </div>
+
+          {/* Champ Identifiant Reverse-DNS / Bundle ID (activé pour mobile) */}
+          {(spec.template === 'mobile' || spec.project.type === 'mobile') && (
+            <div className="md:col-span-3">
+              <label className="block text-xs font-medium text-neutral-300 mb-1.5">
+                Identifiant d'application Mobile (Bundle ID / Reverse-DNS)
+              </label>
+              <input
+                type="text"
+                value={spec.project.identifier || ''}
+                onChange={(e) => updateSpec('project', { identifier: e.target.value })}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-indigo-500"
+                placeholder="ex: com.acme.monapp"
+              />
+            </div>
+          )}
         </div>
 
         {/* Project Type Selectors */}
@@ -573,7 +602,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
       <section className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 space-y-4">
         <div className="flex items-center gap-2 text-white font-semibold border-b border-neutral-800 pb-3">
           <CheckSquare className="w-4 h-4 text-emerald-400" />
-          <h4 className="text-sm">Assurance Qualité &amp; Documentation (Section 10)</h4>
+          <h4 className="text-sm">Assurance Qualité &amp; Documentation</h4>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
