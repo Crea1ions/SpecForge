@@ -95,6 +95,43 @@ export function validateSpecification(
     }
   }
 
+  // Mobile : l'identifiant (bundle id iOS / applicationId Android) est lu par la brique
+  // rust-dioxus-mobile, elle-même sélectionnée d'après spec.template.
+  if (spec.template === 'mobile') {
+    const identifier = spec.project.identifier;
+    // Intersection stricte Android/iOS : segments alphanumériques commençant par une lettre.
+    const identifierPattern = /^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)+$/;
+
+    if (!identifier || identifier.trim() === '') {
+      issues.push({
+        id: 'mobile-identifier-missing',
+        severity: 'error',
+        title: 'Identifiant mobile manquant',
+        message: "Un projet mobile exige un identifiant d'application (bundle identifier iOS / applicationId Android), par exemple 'com.acme.monapp'.",
+        source: 'configuration',
+        fixSuggestion: "Renseignez 'project.identifier' au format reverse-DNS.",
+      });
+    } else if (!identifierPattern.test(identifier)) {
+      issues.push({
+        id: 'mobile-identifier-invalid',
+        severity: 'error',
+        title: `Identifiant mobile invalide (${identifier})`,
+        message: "L'identifiant doit contenir au moins deux segments séparés par des points ; chaque segment commence par une lettre et ne contient que des lettres et des chiffres (ni tiret, ni underscore, compatibles Android et iOS).",
+        source: 'configuration',
+        fixSuggestion: "Utilisez un format comme 'com.acme.monapp'.",
+      });
+    } else if (/^com\.example(\.|$)/i.test(identifier)) {
+      issues.push({
+        id: 'mobile-identifier-placeholder',
+        severity: 'warning',
+        title: 'Identifiant mobile provisoire',
+        message: `L'identifiant '${identifier}' est un placeholder (com.example.*). Il devra être remplacé avant toute signature ou publication.`,
+        source: 'configuration',
+        fixSuggestion: "Remplacez-le par un identifiant reverse-DNS que vous contrôlez (ex: 'com.votreorg.monapp').",
+      });
+    }
+  }
+
   const hasLocalDesktopRuntime =
     spec.project.type === 'desktop' && spec.frontend.tauri;
 
