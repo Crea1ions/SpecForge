@@ -2415,6 +2415,14 @@ use_small_heuristics = "Default"
     }
 
     if (spec.quality.ci) {
+      const mobileSystemDeps =
+        spec.template === 'mobile'
+          ? `      - name: System dependencies (Dioxus WebView)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev libudev-dev libayatana-appindicator3-dev libxdo-dev libglib2.0-dev
+`
+          : '';
       const ci = `name: CI Pipeline
 
 on:
@@ -2434,7 +2442,7 @@ jobs:
           components: clippy, rustfmt
       - name: Format
         run: cargo fmt --check
-      - name: Tests
+${mobileSystemDeps}      - name: Tests
         run: cargo test
 `;
       files.push(
@@ -4908,9 +4916,258 @@ a {
   },
 };
 
+// 16. Rust Dioxus Mobile Brick
+function sanitizeText(value: string | undefined): string {
+  return (value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function tomlString(value: string | undefined): string {
+  const escaped = sanitizeText(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return `"${escaped}"`;
+}
+
+function rsxText(value: string | undefined): string {
+  const escaped = sanitizeText(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\{/g, '{{')
+    .replace(/\}/g, '}}');
+  return `"${escaped}"`;
+}
+
+function mobileFallbackIdentifier(slug: string): string {
+  const segment = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `com.example.${/^[a-z]/.test(segment) ? segment : `app${segment}`}`;
+}
+
+const rustDioxusMobileBrick: BrickDefinition = {
+  id: 'rust-dioxus-mobile',
+  name: 'Rust Dioxus Mobile',
+  category: 'frontend',
+  version: '1.0.0',
+  description:
+    'Application mobile Rust avec Dioxus : interface HTML/CSS écrite en Rust, affichée dans la WebView Android et iOS.',
+  iconName: 'Smartphone',
+  provides: ['mobile_ui', 'dioxus_ui', 'webview_frontend'],
+  requires: [],
+  compatibleWith: [],
+  conflictsWith: ['react-vite', 'tauri-desktop'],
+  options: [],
+  templateFiles: [
+    'Cargo.toml',
+    'Dioxus.toml',
+    'src/main.rs',
+    'assets/main.css',
+    'MOBILE.md',
+  ],
+  tags: ['rust', 'dioxus', 'mobile', 'android', 'ios', 'webview'],
+
+  generateFiles: (ctx) => {
+    const { project } = ctx.spec;
+    const files: GeneratedFile[] = [];
+
+    const brickId = 'rust-dioxus-mobile';
+    const brickName = 'Rust Dioxus Mobile';
+    const brickVersion = '1.0.0';
+
+    const identifier =
+      sanitizeText(project.identifier) || mobileFallbackIdentifier(project.slug);
+    const publisher = sanitizeText(project.author) || sanitizeText(project.name);
+
+    files.push(
+      makeFile(
+        'Cargo.toml',
+        `[package]
+name = ${tomlString(project.slug)}
+version = ${tomlString(project.version)}
+edition = "2021"
+
+[dependencies]
+dioxus = "0.7.10"
+
+[features]
+default = ["mobile"]
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]
+`,
+        'toml',
+        brickId,
+        brickName,
+        brickVersion,
+        'Manifeste Cargo avec Dioxus 0.7 (aligné sur dx 0.7.x) et feature mobile par défaut.'
+      )
+    );
+
+    files.push(
+      makeFile(
+        'Dioxus.toml',
+        `[application]
+
+[bundle]
+identifier = ${tomlString(identifier)}
+publisher = ${tomlString(publisher)}
+`,
+        'toml',
+        brickId,
+        brickName,
+        brickVersion,
+        "Configuration dx : identifiant d'application (bundle id iOS / applicationId Android) et éditeur."
+      )
+    );
+
+    files.push(
+      makeFile(
+        'src/main.rs',
+        `use dioxus::prelude::*;
+
+const MAIN_CSS: Asset = asset!("/assets/main.css");
+
+fn main() {
+    dioxus::launch(App);
+}
+
+#[component]
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+
+    rsx! {
+        document::Link { rel: "stylesheet", href: MAIN_CSS }
+        main { id: "app",
+            h1 { ${rsxText(project.name)} }
+            p { ${rsxText(project.description)} }
+            button { onclick: move |_| count += 1, "Compteur : {count}" }
+        }
+    }
+}
+`,
+        'rust',
+        brickId,
+        brickName,
+        brickVersion,
+        'Point d\'entrée Dioxus : composant racine affiché dans la WebView mobile.'
+      )
+    );
+
+    files.push(
+      makeFile(
+        'assets/main.css',
+        `:root {
+  color-scheme: light dark;
+  --accent: #4f46e5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  text-align: center;
+}
+
+button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: var(--accent);
+  color: white;
+  font-size: 1rem;
+}
+`,
+        'css',
+        brickId,
+        brickName,
+        brickVersion,
+        'Feuille de style de base adaptée à la WebView mobile (marges safe-area).'
+      )
+    );
+
+    files.push(
+      makeFile(
+        'MOBILE.md',
+        `# ${sanitizeText(project.name)} : application mobile (Dioxus)
+
+Application Rust affichée dans la WebView d'Android et d'iOS avec Dioxus 0.7. L'interface est écrite en Rust (macro §rsx!§) et stylée en CSS (§assets/main.css§).
+
+Identifiant d'application : §${identifier}§ (section §[bundle]§ de §Dioxus.toml§).
+
+## Outils
+
+Installer la CLI Dioxus en version 0.7.x, comme la dépendance §dioxus§ du §Cargo.toml§ :
+
+§§§bash
+cargo install dioxus-cli --version '^0.7' --locked
+dx doctor
+§§§
+
+La compilation de la CLI prend plusieurs minutes. §dx doctor§ diagnostique l'installation (Rust, WebView, Android, iOS).
+
+## Lancer sur Android
+
+Prérequis : Android Studio, le SDK et le NDK. §dx§ cherche le SDK dans §ANDROID_SDK_ROOT§, §ANDROID_SDK§ puis §ANDROID_HOME§, et le NDK dans §NDK_HOME§ puis §ANDROID_NDK_HOME§. À défaut, il prend le NDK le plus récent du dossier §ndk/§ du SDK. En cas d'erreur, définir §ANDROID_HOME§ et §ANDROID_NDK_HOME§.
+
+§§§bash
+dx serve --platform android
+§§§
+
+Si la cible Rust Android manque, §dx§ l'installe lui-même avec §rustup target add§.
+
+## Lancer sur iOS
+
+Uniquement sur macOS, avec Xcode, un SDK iOS récent et les cibles Rust §aarch64-apple-ios§ et §aarch64-apple-ios-sim§ :
+
+§§§bash
+dx serve --platform ios
+§§§
+
+## Identifiant et icône
+
+L'identifiant se modifie dans §Dioxus.toml§. Si sa valeur est invalide (pas de point, point en début ou en fin, §..§), §dx§ retombe silencieusement sur §com.example.<nom>§. Remplacer §com.example.*§ avant toute signature ou publication.
+
+Aucune icône n'est générée : §dx§ 0.7.10 n'utilise §[bundle] icon§ que pour les bundles de bureau, et les applications mobiles gardent l'icône par défaut de §dx§.
+
+## Signature et publication
+
+La signature et la publication sur les stores sont hors du périmètre de ce squelette. Elles sont obligatoires pour distribuer une application mobile.
+
+## Personnalisation avancée
+
+Permissions, §AndroidManifest.xml§ et §Info.plist§ se règlent dans §Dioxus.toml§ (sections §[permissions]§, §[android]§ et §[ios]§) : voir la documentation Dioxus 0.7.
+
+## Intégration continue
+
+Le workflow §.github/workflows/ci.yml§ installe les paquets système Linux requis par la WebView avant §cargo test§, car la feature §mobile§ compile aussi sur l'hôte.
+`.replace(/§/g, '\x60'),
+        'markdown',
+        brickId,
+        brickName,
+        brickVersion,
+        'Guide de développement mobile : outils, lancement Android et iOS, identifiant, limites.'
+      )
+    );
+
+    return files;
+  },
+};
+
 export const DEFAULT_BRICKS: BrickDefinition[] = [
   rustBackendBrick,
   rustWebFrontendBrick,
+  rustDioxusMobileBrick,
   rustWebAppBrick,
   pythonBackendBrick,
   reactViteBrick,
