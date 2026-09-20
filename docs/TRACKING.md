@@ -31,9 +31,9 @@
 - [x] Finaliser Rust Web Frontend
 - [x] Auditer Rust Backend Only
 - [x] Finaliser Rust Backend Only
-- [ ] Auditer Rust Desktop
-- [ ] Finaliser Rust Desktop
-- [ ] Rust Mobile
+- [x] Auditer Rust Desktop
+- [x] Finaliser Rust Desktop
+- [x] Rust Mobile
 
 ## Rust Web App
 - [x] Backend Rust
