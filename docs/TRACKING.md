@@ -66,9 +66,9 @@
 - [x] Cohérence des presets
 - [x] Chaque preset correspond à un template réel
 - [x] Cohérence profil × template
-- [ ] Vérification génération de bout en bout
-- [ ] Vérification reproductibilité
-- [ ] Vérification archives
+- [x] Vérification génération de bout en bout
+- [x] Vérification reproductibilité
+- [ ] Vérification archives (ZIP non reproductible octet par octet : JSZip horodate chaque entrée ; non corrigé, jugé non prioritaire)
 
 ## Configuration
 - [ ] Interface
@@ -93,3 +93,20 @@
 - [ ] Génération
 - [ ] Vérification des erreurs Core
 - [ ] Checkpoint / commit
+
+## Évolutions identifiées (audit du 2026-09-20)
+
+### Corrigées pendant l'audit
+- [x] Resolver : `rust-web-frontend` n'est choisi que pour `framework: askama` (le preset `react-frontend-only` résolvait la mauvaise brique)
+- [x] Preset `react-frontend-only` : `docker: false` (aucune brique ne fournit `backend_runtime`)
+- [x] `MOBILE.md` généré : commandes `dx bundle` documentées (syntaxe vérifiée sur l'aide de dx 0.7.10, build non testé)
+
+### À traiter
+- [ ] Support Docker d'un frontend statique (sans backend, `docker-infra` génère un Dockerfile placeholder)
+- [ ] `docker-infra` : `react-vite` est dans `compatibleWith` mais la brique exige `backend_runtime`
+- [ ] Supprimer les shims `src/engine/{bricks,generator,resolver}.ts` (aucun import détecté, seul `engine/presets.ts` est utilisé)
+- [ ] Double lockfile `bun.lock` / `package-lock.json` : n'en garder qu'un
+- [ ] `rust-web-app` est classée `frontend` dans le registre
+- [ ] `BrickRegistry.clone()` : commentaire « deep copy » mais copie superficielle
+- [ ] Aucune brique pour le profil `go`, le type `cli` et le framework `vue`
+- [ ] Aucun script `test` dans `package.json`
