@@ -407,10 +407,12 @@ Un template répond à :
 Exemples actuels côté Rust :
 
 ``` text
-Rust + React + SQLite       → Web App
+Rust + Askama + SQLite      → Web App
 Rust + React + PostgreSQL   → Web Platform
-Rust + Tauri + React        → Desktop
+Rust + Askama (frontend)    → Web Frontend
 Rust Backend Only           → API Service
+Rust + Tauri + React        → Desktop
+Rust + Dioxus               → Mobile
 ```
 
 Le template sélectionne et structure une architecture de départ.
@@ -451,6 +453,28 @@ mécanique de briques génériques.
 Lorsqu'un template autonome existe pour un cas d'usage, le resolver peut
 l'activer directement plutôt que reconstruire le projet à partir de
 briques génériques.
+
+### Résolution actuelle par template
+
+Le resolver choisit d'abord le squelette du template (étape 1 de `resolveArchitecture`), puis ajoute les capacités optionnelles (REST, OpenAPI, JWT, Docker, systemd, qualité, documentation) d'après la spécification.
+
+| Template | Preset | Briques du squelette | Voie dans le resolver |
+| --- | --- | --- | --- |
+| `web-app` | `rust-web-app` | `rust-web-app` | branche dédiée |
+| `web-frontend` (Askama) | `rust-web-frontend` | `rust-web-frontend` | branche dédiée |
+| `mobile` | `rust-dioxus-mobile` | `rust-dioxus-mobile` | branche dédiée |
+| `web-platform` | `rust-react-postgres` | `rust-backend`, `react-vite`, `postgres-storage` | branche générique |
+| `desktop` | `rust-tauri-react` | `react-vite`, `tauri-desktop`, `sqlite-storage` | branche générique |
+| `api-service` | `rust-backend-only` | `rust-backend`, `sqlite-storage` | branche générique |
+| `web-frontend` (React) | `react-frontend-only` | `react-vite` | branche générique |
+
+Il y a 7 presets pour 6 templates : `web-frontend` a deux variantes, choisies par le profil technique (`rust` → Askama, `typescript` → React).
+
+Points à connaître :
+
+- La brique `rust-web-frontend` n'est choisie que si `frontend.framework` vaut `askama`. Avec `react`, la branche générique active `react-vite`.
+- `docker-infra` exige la capacité `backend_runtime`, fournie par `rust-backend`, `python-backend`, `tauri-desktop` et `rust-web-app`. Un preset sans backend (`react-frontend-only`, `rust-web-frontend`, `rust-dioxus-mobile`) doit donc avoir `docker: false`.
+- Le preset `rust-tauri-react` n'active pas `rust-backend` : `tauri-desktop` fournit `backend_runtime`.
 
 ------------------------------------------------------------------------
 
@@ -564,7 +588,7 @@ deviendrait rapidement déconnectée des composants réels.
 
 ## 11. Exemple des briques actuellement intégrées
 
-Le registre actuel comprend notamment :
+Le registre actuel comprend 17 briques :
 
   Brique                Domaine            Rôle
   --------------------- ------------------ --------------------------------------
@@ -581,6 +605,7 @@ Le registre actuel comprend notamment :
   `work-structure`      workflow           Structure de travail
   `rust-web-frontend`   template           Squelette web frontend Rust
   `rust-web-app`        template           Squelette web application Rust
+  `rust-dioxus-mobile`  template           Squelette application mobile Rust (Dioxus)
   `jwt-auth`            authentication     Point d'intégration JWT
   `openapi`             API                Contrat OpenAPI
   `systemd-infra`       infrastructure     Service systemd
