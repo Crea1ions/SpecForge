@@ -182,13 +182,16 @@ export interface GeneratedFile {
     | 'bash'
     | 'css'
     | 'html'
-    | 'sql';
+    | 'sql'
+    | 'binary';
   size: number;
   brickId: string;
   brickName: string;
   brickVersion: string;
   reason: string;
   decisionRef?: string;
+  /** Encodage de `content` : utf8 par défaut, base64 pour un fichier binaire (ex. PNG). */
+  encoding?: 'utf8' | 'base64';
 }
 
 export interface ArchitectureNode {

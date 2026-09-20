@@ -80,7 +80,7 @@ export default function App() {
 
       // Add all generated files to zip
       generatedFiles.forEach((file) => {
-        zip.file(file.path, file.content);
+        zip.file(file.path, file.content, file.encoding === 'base64' ? { base64: true } : undefined);
       });
 
       const blob = await zip.generateAsync({

@@ -13,6 +13,7 @@
 
 import { BrickDefinition, GenerationContext, GeneratedFile, ArchitecturalDecision } from '../types';
 import { getContentByteLength } from '../utils';
+import { TAURI_ICON_BASE64 } from '../assets/tauri-icon';
 
 function makeFile(
   path: string,
@@ -29,6 +30,31 @@ function makeFile(
     content: content.trimStart(),
     language,
     size: getContentByteLength(content),
+    brickId,
+    brickName,
+    brickVersion,
+    reason,
+    decisionRef,
+  };
+}
+
+/** Fichier binaire : `contentBase64` est stocké tel quel, `size` = octets réels décodés. */
+function makeBinaryFile(
+  path: string,
+  contentBase64: string,
+  brickId: string,
+  brickName: string,
+  brickVersion: string,
+  reason: string,
+  decisionRef?: string
+): GeneratedFile {
+  const padding = contentBase64.endsWith('==') ? 2 : contentBase64.endsWith('=') ? 1 : 0;
+  return {
+    path,
+    content: contentBase64,
+    encoding: 'base64',
+    language: 'binary',
+    size: Math.floor((contentBase64.length * 3) / 4) - padding,
     brickId,
     brickName,
     brickVersion,
@@ -438,6 +464,11 @@ const reactViteBrick: BrickDefinition = {
     const { spec } = ctx;
     const files: GeneratedFile[] = [];
 
+    // Proxy /api utile seulement si un serveur HTTP est réellement généré.
+    const hasHttpBackend =
+      spec.backend.enabled &&
+      ctx.activeBricks.some((b) => b.id === 'rest-api' || b.id === 'python-backend');
+
     const pkg = `{
   "name": "${spec.project.slug}-frontend",
   "private": true,
@@ -509,13 +540,13 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5173,
+    port: 5173,${hasHttpBackend ? `
     proxy: {
       '/api': {
         target: 'http://localhost:${spec.backend.port}',
         changeOrigin: true,
       },
-    },
+    },` : ''}
   },
 });
 `;
@@ -972,7 +1003,7 @@ export default function App() {
               Port : <strong>${spec.backend.port}</strong>
             </p>
             <p>
-              État : <strong>{health?.status ?? 'En attente'}</strong>
+              État : <strong>{health?.status ?? '${hasHttpBackend ? 'En attente' : 'Aucun backend HTTP'}'}</strong>
             </p>
           </Card>
 
@@ -1114,7 +1145,13 @@ const tauriDesktopBrick: BrickDefinition = {
       description: 'Identifiant unique de paquet pour l\'OS.',
     },
   ],
-  templateFiles: ['src-tauri/Cargo.toml', 'src-tauri/tauri.conf.json', 'src-tauri/src/main.rs'],
+templateFiles: [
+  'src-tauri/Cargo.toml',
+  'src-tauri/build.rs',
+  'src-tauri/tauri.conf.json',
+  'src-tauri/src/main.rs',
+  'src-tauri/icons/icon.png',
+],
   tags: ['desktop', 'tauri', 'rust', 'lightweight'],
 
   generateDecisions: () => [
@@ -1132,11 +1169,28 @@ const tauriDesktopBrick: BrickDefinition = {
     },
   ],
 
-  generateFiles: (ctx) => {
-    const { spec } = ctx;
-    const files: GeneratedFile[] = [];
+generateFiles: (ctx) => {
+  const { spec } = ctx;
+  const files: GeneratedFile[] = [];
 
-    const conf = `{
+  const buildRs = `fn main() {
+    tauri_build::build();
+}
+`;
+
+  files.push(
+    makeFile(
+      'src-tauri/build.rs',
+      buildRs,
+      'rust',
+      'tauri-desktop',
+      'Tauri Desktop Wrapper',
+      '1.4.2',
+      'Script de build requis par Tauri.'
+    )
+  );
+
+  const conf = `{
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "${spec.project.name}",
   "version": "${spec.project.version}",
@@ -1147,16 +1201,19 @@ const tauriDesktopBrick: BrickDefinition = {
     "devUrl": "http://localhost:5173",
     "frontendDist": "../frontend/dist"
   },
-  "app": {
-    "windows": [
-      {
-        "title": "${spec.project.name}",
-        "width": 1024,
-        "height": 720,
-        "resizable": true
-      }
-    ]
-  }
+"app": {
+  "windows": [
+    {
+      "title": "${spec.project.name}",
+      "width": 1024,
+      "height": 720,
+      "resizable": true
+    }
+  ]
+},
+"bundle": {
+  "icon": []
+}
 }
 `;
     files.push(
@@ -1171,10 +1228,13 @@ const tauriDesktopBrick: BrickDefinition = {
       )
     );
 
-    const cargo = `[package]
+const cargo = `[package]
 name = "${spec.project.slug}-tauri"
 version = "${spec.project.version}"
 edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
 tauri = { version = "2.0", features = [] }
@@ -1205,20 +1265,20 @@ fn greet(name: &str) -> String {
     format!("Bonjour {}, bienvenue sur {} !", name, "${spec.project.name}")
 }
 
-  mod db;
+mod db;
 
-  #[tokio::main]
-  async fn main() -> Result<(), Box<dyn std::error::Error>> {
-      let db_pool = db::init_database().await?;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let db_pool = db::init_database("sqlite:data.db").await?;
 
-      tauri::Builder::default()
-          .manage(db_pool)
-          .invoke_handler(tauri::generate_handler![greet])
-          .run(tauri::generate_context!())
-          .expect("Erreur lors de l'exécution de l'application Tauri");
+    tauri::Builder::default()
+        .manage(db_pool)
+        .invoke_handler(tauri::generate_handler![greet])
+        .run(tauri::generate_context!())
+        .expect("Erreur lors de l'exécution de l'application Tauri");
 
-      Ok(())
-  }
+    Ok(())
+}
 `;
     files.push(
       makeFile(
@@ -1229,6 +1289,17 @@ fn greet(name: &str) -> String {
         'Tauri Desktop Wrapper',
         '1.4.2',
         'Hôte natif Tauri déclarant les commandes IPC invocables depuis l\'UI.'
+      )
+    );
+
+    files.push(
+      makeBinaryFile(
+        'src-tauri/icons/icon.png',
+        TAURI_ICON_BASE64,
+        'tauri-desktop',
+        'Tauri Desktop Wrapper',
+        '1.4.2',
+        'Icône PNG RGBA par défaut, requise par tauri::generate_context!().'
       )
     );
 
@@ -1269,12 +1340,14 @@ const sqliteStorageBrick: BrickDefinition = {
     if (ctx.spec.backend.language === 'rust') {
       const isTauriDesktop =
         ctx.spec.project.type === 'desktop' && ctx.spec.frontend.tauri;
-      const dbPath = isTauriDesktop ? 'src-tauri/db.rs' : 'src/db.rs';
-      const migrationPath = isTauriDesktop
+      const dbPath = isTauriDesktop
+       ? 'src-tauri/src/db.rs'
+       : 'src/db.rs';
+
+       const migrationPath = isTauriDesktop
         ? 'src-tauri/migrations/0001_initial.sql'
         : 'migrations/0001_initial.sql';
-      const migrationDir = isTauriDesktop ? '../migrations' : './migrations';
-
+       const migrationDir = './migrations';
       const dbRs = `//! Initialisation SQLite avec SQLx
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
