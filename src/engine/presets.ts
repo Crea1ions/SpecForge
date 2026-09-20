@@ -11,7 +11,7 @@ export interface ArchitecturePreset {
   tagline: string;
   description: string;
   badge: string;
-  category: 'fullstack' | 'desktop' | 'backend' | 'frontend';
+  category: 'fullstack' | 'desktop' | 'backend' | 'frontend' | 'mobile';
   spec: ProjectSpecification;
 }
 

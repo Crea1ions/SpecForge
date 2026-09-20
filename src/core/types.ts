@@ -5,7 +5,7 @@
  * Independent of React, DOM, UI components, or any specific presentation framework.
  */
 
-export type ProjectType = 'fullstack' | 'desktop' | 'backend-only' | 'frontend-only' | 'cli';
+export type ProjectType = 'fullstack' | 'desktop' | 'backend-only' | 'frontend-only' | 'cli' | 'mobile';
 
 export type TechnicalProfile =
   | 'rust'
@@ -29,6 +29,7 @@ export interface ProjectInfo {
   version: string;
   author: string;
   license: string;
+  identifier?: string;
 }
 
 export interface BackendConfig {
@@ -42,7 +43,7 @@ export interface BackendConfig {
 
 export interface FrontendConfig {
   enabled: boolean;
-  framework: 'react' | 'vue' | 'askama' | 'none';
+  framework: 'react' | 'vue' | 'askama' | 'dioxus' | 'none';
   bundler: 'vite' | 'none';
   language: 'typescript' | 'javascript' | 'rust';
   styling: 'tailwind' | 'css';
