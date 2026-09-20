@@ -24,13 +24,13 @@
 - [x] Profil Rust
 
 ## Templates Rust
-- [ ] Finaliser Rust Web App
-- [ ] Auditer Rust Web Platform
-- [ ] Finaliser Rust Web Platform
-- [ ] Auditer Rust Web Frontend
-- [ ] Finaliser Rust Web Frontend
-- [ ] Auditer Rust Backend Only
-- [ ] Finaliser Rust Backend Only
+- [x] Finaliser Rust Web App
+- [x] Auditer Rust Web Platform
+- [x] Finaliser Rust Web Platform
+- [x] Auditer Rust Web Frontend
+- [x] Finaliser Rust Web Frontend
+- [x] Auditer Rust Backend Only
+- [x] Finaliser Rust Backend Only
 - [ ] Auditer Rust Desktop
 - [ ] Finaliser Rust Desktop
 - [ ] Rust Mobile
@@ -45,27 +45,27 @@
 - [x] ADRs
 - [x] Architecture résolue
 - [x] Génération
-- [ ] Audit final
-- [ ] Validation projet généré
-- [ ] Décision UI/UX finale
+- [x] Audit final
+- [x] Validation projet généré
+- [x] Décision UI/UX finale
 
 ## Rust Web Platform
-- [ ] Audit de la spec
-- [ ] Audit du preset
-- [ ] Audit des briques
-- [ ] Audit dépendances / conflits
-- [ ] Audit Resolver
-- [ ] Audit Generator
-- [ ] Génération réelle
-- [ ] Build du projet généré
-- [ ] Audit UI/UX
-- [ ] Corrections ciblées
-- [ ] Validation finale
+- [x] Audit de la spec
+- [x] Audit du preset
+- [x] Audit des briques
+- [x] Audit dépendances / conflits
+- [x] Audit Resolver
+- [x] Audit Generator
+- [x] Génération réelle
+- [x] Build du projet généré
+- [x] Audit UI/UX
+- [x] Corrections ciblées
+- [x] Validation finale
 
 ## Stabilisation Templates
-- [ ] Cohérence des presets
-- [ ] Chaque preset correspond à un template réel
-- [ ] Cohérence profil × template
+- [x] Cohérence des presets
+- [x] Chaque preset correspond à un template réel
+- [x] Cohérence profil × template
 - [ ] Vérification génération de bout en bout
 - [ ] Vérification reproductibilité
 - [ ] Vérification archives
