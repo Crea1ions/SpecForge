@@ -14,6 +14,7 @@
 import { BrickDefinition, GenerationContext, GeneratedFile, ArchitecturalDecision } from '../types';
 import { getContentByteLength } from '../utils';
 import { TAURI_ICON_BASE64 } from '../assets/tauri-icon';
+import { FAVICON_BASE64 } from '../assets/favicon';
 
 function makeFile(
   path: string,
@@ -435,6 +436,7 @@ const reactViteBrick: BrickDefinition = {
   templateFiles: [
     'frontend/package.json',
     'frontend/index.html',
+    'frontend/public/favicon.png',
     'frontend/vite.config.ts',
     'frontend/tsconfig.json',
     'frontend/tsconfig.app.json',
@@ -514,6 +516,7 @@ const reactViteBrick: BrickDefinition = {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${spec.project.name}</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
   </head>
   <body>
     <div id="root"></div>
@@ -521,6 +524,16 @@ const reactViteBrick: BrickDefinition = {
   </body>
 </html>
 `;
+    files.push(
+      makeBinaryFile(
+        'frontend/public/favicon.png',
+        FAVICON_BASE64,
+        'react-vite',
+        'React 19 + Vite Frontend',
+        '2.1.0',
+        'Favicon PNG 64x64 par défaut, copié tel quel dans dist/ par Vite.'
+      )
+    );
     files.push(
       makeFile(
         'frontend/index.html',
@@ -2785,6 +2798,7 @@ const rustWebFrontendBrick: BrickDefinition = {
     'templates/components/footer.html',
     'static/css/tokens.css',
     'static/css/style.css',
+    'static/favicon.png',
     'static/js/app.js',
   ],
   tags: [
@@ -2979,6 +2993,7 @@ async fn settings() -> Html<String> {
     <meta name="description" content="{{ project_description }}">
     <title>{{ page_title }} · {{ project_name }}</title>
 
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/css/tokens.css">
     <link rel="stylesheet" href="/static/css/style.css">
     <script src="/static/js/app.js" defer></script>
@@ -3471,6 +3486,17 @@ async fn settings() -> Html<String> {
         brickName,
         brickVersion,
         'Tokens structurels du design system SpecForge.'
+      )
+    );
+
+    files.push(
+      makeBinaryFile(
+        'static/favicon.png',
+        FAVICON_BASE64,
+        brickId,
+        brickName,
+        brickVersion,
+        'Favicon PNG 64x64 par défaut, servi sous /static/.'
       )
     );
 
@@ -3983,6 +4009,7 @@ const rustWebAppBrick: BrickDefinition = {
     'templates/components/footer.html',
     'static/css/tokens.css',
     'static/css/style.css',
+    'static/favicon.png',
     'static/js/app.js',
   ],
   tags: [
@@ -4357,6 +4384,7 @@ pub struct AppInfo {
         content="Application web Rust server-rendered."
     >
     <title>{% block title %}Rust Web App{% endblock %}</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
     <link rel="stylesheet" href="/static/css/tokens.css">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -4571,6 +4599,17 @@ pub struct AppInfo {
         brickName,
         brickVersion,
         'Tokens du design system léger et responsive.'
+      )
+    );
+
+    files.push(
+      makeBinaryFile(
+        'static/favicon.png',
+        FAVICON_BASE64,
+        brickId,
+        brickName,
+        brickVersion,
+        'Favicon PNG 64x64 par défaut, servi sous /static/.'
       )
     );
 
