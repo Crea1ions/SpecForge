@@ -62,9 +62,7 @@ SpecForge est conçu pour supporter plusieurs profils :
 * TypeScript
 * Go
 
-**Actuellement, seul le profil Rust est implémenté.**
-
-Les autres profils font partie du modèle cible, mais ne sont pas encore développés.
+**Actuellement, seul le profil Rust est complet** (six templates). Le profil TypeScript n'a qu'un template (Web Frontend, avec React). Python et Go font partie du modèle cible, mais ne sont pas encore développés.
 
 ---
 
@@ -103,12 +101,14 @@ src/engine/presets.ts
 
 Templates Rust actuellement disponibles :
 
-* Rust + React + SQLite → Web App
+* Rust + Askama + SQLite → Web App
 * Rust + React + PostgreSQL → Web Platform
-* Rust + Tauri + React → Desktop
+* Rust + Askama (frontend seul) → Web Frontend
 * Rust Backend Only → API Service
+* Rust + Tauri + React → Desktop
+* Rust + Dioxus → Mobile
 
-D'autres templates Rust seront ajoutés progressivement.
+Les six types d'applications sont couverts par un template Rust.
 
 ---
 
@@ -251,7 +251,9 @@ SpecForge/
 ├── docs/
 │   ├── FICHE-PRODUIT.md
 │   ├── ROADMAP.md
-│   ├── HANDOFF.md
+│   ├── ARCHITECTURE-CORE-BRICKS-TEMPLATES.md
+│   ├── INVENTORY.md
+│   ├── TRACKING.md
 │   ├── INFRASTRUCTURE.md
 │   ├── MAINTENANCE-EVOLUTION.md
 │   └── SpecForge-Templates-référence-V1.md
@@ -305,7 +307,9 @@ La documentation du projet est volontairement séparée par responsabilité.
 
 * **[FICHE-PRODUIT.md](docs/FICHE-PRODUIT.md)** — vision, périmètre et principes du produit.
 * **[ROADMAP.md](docs/ROADMAP.md)** — évolutions prévues et ordre des priorités.
-* **[HANDOFF.md](docs/HANDOFF.md)** — état courant et point de reprise du développement.
+* **[ARCHITECTURE-CORE-BRICKS-TEMPLATES.md](docs/ARCHITECTURE-CORE-BRICKS-TEMPLATES.md)** — architecture du Core, des briques et des templates.
+* **[INVENTORY.md](docs/INVENTORY.md)** — inventaire fonctionnel des briques.
+* **[TRACKING.md](docs/TRACKING.md)** — suivi d'avancement.
 * **[INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md)** — architecture technique.
 * **[MAINTENANCE-EVOLUTION.md](docs/MAINTENANCE-EVOLUTION.md)** — règles de maintenance et d'évolution.
 * **[SpecForge-Templates-référence-V1.md](docs/SpecForge-Templates-référence-V1.md)** — templates et architectures de référence.
@@ -325,8 +329,8 @@ Le socle suivant est en place :
 * Registry de briques ;
 * système de profils techniques ;
 * système de templates par profil et type d'application ;
-* quatre templates Rust fonctionnels ;
-* génération Desktop Tauri ;
+* six templates Rust (Web App, Web Platform, Web Frontend, API Service, Desktop, Mobile) ;
+* génération Desktop (Tauri) et Mobile (Dioxus) ;
 * interface de vérification et d'audit ;
 * assistance IA séparée du Core.
 
