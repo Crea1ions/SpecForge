@@ -97,7 +97,7 @@ export function validateSpecification(
 
   // Mobile : l'identifiant (bundle id iOS / applicationId Android) est lu par la brique
   // rust-dioxus-mobile, elle-même sélectionnée d'après spec.template.
-  if (spec.template === 'mobile') {
+  if (spec.template === 'mobile' || spec.project.type === 'mobile') {
     const identifier = spec.project.identifier;
     // Intersection stricte Android/iOS : segments alphanumériques commençant par une lettre.
     const identifierPattern = /^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)+$/;
