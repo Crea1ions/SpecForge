@@ -5023,6 +5023,17 @@ publisher = ${tomlString(publisher)}
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 
+#[derive(Clone, PartialEq)]
+struct SubHub {
+    title: &'static str,
+}
+
+#[derive(Clone, PartialEq)]
+struct Hub {
+    title: &'static str,
+    subhubs: Vec<SubHub>,
+}
+
 fn main() {
     dioxus::launch(App);
 }
@@ -5030,13 +5041,122 @@ fn main() {
 #[component]
 fn App() -> Element {
     let mut count = use_signal(|| 0);
+    let mut menu_open = use_signal(|| false);
+    let mut open_hub = use_signal(|| Option::<usize>::None);
+
+    let hubs = vec![
+        Hub {
+            title: "Vue d'ensemble",
+            subhubs: vec![
+                SubHub { title: "Tableau de bord" },
+                SubHub { title: "Statistiques" },
+            ],
+        },
+        Hub {
+            title: "Services Backend",
+            subhubs: vec![
+                SubHub { title: "API REST" },
+                SubHub { title: "Base de données" },
+                SubHub { title: "Logs & Métriques" },
+            ],
+        },
+        Hub {
+            title: "Sécurité & Profil",
+            subhubs: vec![
+                SubHub { title: "Authentification" },
+                SubHub { title: "Paramètres" },
+            ],
+        },
+    ];
 
     rsx! {
         document::Link { rel: "stylesheet", href: MAIN_CSS }
-        main { id: "app",
-            h1 { ${rsxText(project.name)} }
-            p { ${rsxText(project.description)} }
-            button { onclick: move |_| count += 1, "Compteur : {count}" }
+        div { class: "app-shell",
+            header { class: "topbar",
+                button {
+                    class: "icon-btn",
+                    aria_label: "Ouvrir le menu",
+                    onclick: move |_| menu_open.set(true),
+                    "☰"
+                }
+                div { class: "brand",
+                    span { class: "brand-dots",
+                        span { class: "dot-cyan" }
+                        span { class: "dot-orange" }
+                    }
+                    span { ${rsxText(project.name)} }
+                }
+                div { style: "width: 32px;" }
+            }
+
+            if *menu_open.read() {
+                div { class: "drawer-overlay",
+                    div { class: "drawer-header",
+                        div { class: "brand",
+                            span { class: "brand-dots",
+                                span { class: "dot-cyan" }
+                                span { class: "dot-orange" }
+                            }
+                            span { "Navigation" }
+                        }
+                        button {
+                            class: "icon-btn",
+                            aria_label: "Fermer le menu",
+                            onclick: move |_| menu_open.set(false),
+                            "✕"
+                        }
+                    }
+                    div { class: "drawer-content",
+                        for (index, hub) in hubs.iter().enumerate() {
+                            div { class: "hub-group", key: "{hub.title}",
+                                button {
+                                    class: if open_hub.read().map_or(false, |i| i == index) { "hub-button active" } else { "hub-button" },
+                                    onclick: move |_| {
+                                        if open_hub.read().map_or(false, |i| i == index) {
+                                            open_hub.set(None);
+                                        } else {
+                                            open_hub.set(Some(index));
+                                        }
+                                    },
+                                    span { "{hub.title}" }
+                                    span {
+                                        if open_hub.read().map_or(false, |i| i == index) { "▲" } else { "▼" }
+                                    }
+                                }
+                                if open_hub.read().map_or(false, |i| i == index) {
+                                    div { class: "subhubs-list",
+                                        for subhub in &hub.subhubs {
+                                            button {
+                                                class: "subhub-item",
+                                                key: "{subhub.title}",
+                                                onclick: move |_| menu_open.set(false),
+                                                "• {subhub.title}"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            main { class: "main-content",
+                section { class: "card",
+                    div { class: "card-header", "Application Mobile" }
+                    h2 { ${rsxText(project.name)} }
+                    p { ${rsxText(project.description)} }
+                }
+                section { class: "card card-orange",
+                    div { class: "card-header", "État & Compteur" }
+                    p { "Valeur du compteur : {count}" }
+                    button {
+                        class: "btn-primary",
+                        onclick: move |_| count += 1,
+                        "Incrémenter"
+                    }
+                }
+            }
         }
     }
 }
@@ -5045,7 +5165,7 @@ fn App() -> Element {
         brickId,
         brickName,
         brickVersion,
-        'Point d\'entrée Dioxus : composant racine affiché dans la WebView mobile.'
+        'Point d\'entrée Dioxus : composant racine avec menu burger et cartes UI.'
       )
     );
 
@@ -5053,46 +5173,292 @@ fn App() -> Element {
       makeFile(
         'assets/main.css',
         `:root {
-  color-scheme: light dark;
-  --accent: #4f46e5;
+  color-scheme: dark;
+
+  --background: #0d1117;
+  --surface-1: #151b23;
+  --surface-2: #1b232d;
+  --surface-hover: #232d38;
+  --surface-raised: #202a35;
+
+  --text-primary: #edf3f5;
+  --text-secondary: #a7b4bb;
+  --text-muted: #71808a;
+
+  --accent: #1aa8c0;
+  --accent-soft: rgba(26, 168, 192, 0.12);
+
+  --accent-orange: #f59e0b;
+  --accent-orange-soft: rgba(245, 158, 11, 0.12);
+
+  --border: rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.12);
+
+  --radius-card: 14px;
+  --radius-control: 10px;
+
+  font-family: Inter, system-ui, -apple-system, sans-serif;
 }
 
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background:
+    radial-gradient(
+      circle at 15% 10%,
+      var(--accent-soft),
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at 90% 80%,
+      var(--accent-orange-soft),
+      transparent 24rem
+    ),
+    var(--background);
+  color: var(--text-primary);
+  min-height: 100vh;
   line-height: 1.5;
 }
 
-#app {
+.app-shell {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
-    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
-  text-align: center;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
-button {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: 0.75rem;
+.topbar {
+  width: 100%;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.brand-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.dot-cyan {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
   background: var(--accent);
-  color: white;
-  font-size: 1rem;
+}
+
+.dot-orange {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--accent-orange);
+}
+
+.main-content {
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--surface-raised), var(--surface-1));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.28);
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 20px;
+  height: 2px;
+  width: 34px;
+  border-bottom-left-radius: 3px;
+  border-bottom-right-radius: 3px;
+  background: var(--accent);
+}
+
+.card-orange::before {
+  background: var(--accent-orange);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.card-orange .card-header {
+  color: var(--accent-orange);
+}
+
+.card h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.card p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.btn-primary {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  border: 1px solid rgba(26, 168, 192, 0.3);
+  border-radius: var(--radius-control);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-align: center;
+  cursor: pointer;
+  margin-top: 16px;
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+  background: var(--surface-hover);
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.icon-btn:active {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer-header {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+}
+
+.drawer-content {
+  flex: 1;
+  background: var(--surface-1);
+  padding: 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hub-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hub-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hub-button.active {
+  border-color: rgba(26, 168, 192, 0.4);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.subhubs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 12px;
+  margin-top: 4px;
+  border-left: 2px solid var(--border);
+}
+
+.subhub-item {
+  padding: 8px 12px;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  border-radius: 6px;
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.subhub-item:active {
+  color: var(--text-primary);
+  background: var(--surface-hover);
 }
 `,
         'css',
         brickId,
         brickName,
         brickVersion,
-        'Feuille de style de base adaptée à la WebView mobile (marges safe-area).'
+        'Feuille de style thème Dark moderne pour application mobile Specforge.'
       )
     );
 
@@ -5115,6 +5481,13 @@ dx doctor
 §§§
 
 La compilation de la CLI prend plusieurs minutes. §dx doctor§ diagnostique l'installation (Rust, WebView, Android, iOS).
+
+### Prérequis Linux (Desktop Preview)
+Si vous testez la vue desktop sous Linux (Ubuntu/Debian), installez les paquets système requis :
+
+§§§bash
+sudo apt update && sudo apt install -y build-essential pkg-config libxdo-dev libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev
+§§§
 
 ## Lancer sur Android
 

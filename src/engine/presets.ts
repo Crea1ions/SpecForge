@@ -466,7 +466,7 @@ export const PRESETS: ArchitecturePreset[] = [
         version: '0.1.0',
         author: 'SpecForge Builder',
         license: 'MIT',
-        identifier: 'com.example.rustmobileapp',
+        identifier: 'com.acme.rustmobileapp',
       },
       backend: {
         enabled: false,
