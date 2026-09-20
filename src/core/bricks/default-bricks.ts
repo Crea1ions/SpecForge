@@ -5517,6 +5517,15 @@ Aucune icône n'est générée : §dx§ 0.7.10 n'utilise §[bundle] icon§ que p
 
 La signature et la publication sur les stores sont hors du périmètre de ce squelette. Elles sont obligatoires pour distribuer une application mobile.
 
+Pour produire un artefact, §dx bundle§ compile en debug par défaut : ajouter §--release§ pour un build de distribution. §dx build --platform <cible>§ compile sans empaqueter.
+
+§§§bash
+dx bundle --platform android --release --package-types apk
+dx bundle --platform ios --release --package-types ipa
+§§§
+
+Le format Android peut aussi être §aab§ (§--package-types aab§), et §--out-dir§ choisit le dossier de sortie. La configuration de la signature reste à votre charge.
+
 ## Personnalisation avancée
 
 Permissions, §AndroidManifest.xml§ et §Info.plist§ se règlent dans §Dioxus.toml§ (sections §[permissions]§, §[android]§ et §[ios]§) : voir la documentation Dioxus 0.7.
