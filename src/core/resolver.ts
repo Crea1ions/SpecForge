@@ -30,7 +30,7 @@ export function resolveArchitecture(
   // generic bricks are only added when they represent optional capabilities.
   if (spec.template === 'web-app') {
       activeBrickIds.push('rust-web-app');
-    } else if (spec.template === 'web-frontend') {
+    } else if (spec.template === 'web-frontend' && spec.frontend.framework === 'askama') {
       activeBrickIds.push('rust-web-frontend');
     } else if (spec.template === 'mobile') {
       activeBrickIds.push('rust-dioxus-mobile');
