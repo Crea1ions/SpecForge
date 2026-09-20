@@ -1,8 +1,10 @@
 # INVENTORY.md — Inventaire Fonctionnel des Briques
 
 **Projet :** SpecForge
-**Dernière mise à jour :** 2026-09-18
-**Branche :** `fix/tauri-desktop-constraint`
+**Dernière mise à jour :** 2026-09-20
+**Branche :** `feat/rust-mobile-dioxus`
+
+> **État au 2026-09-20.** Ce document est un plan de conception historique (composition de briques). L'état réel du Core, des 17 briques et des 6 templates est décrit dans `docs/ARCHITECTURE-CORE-BRICKS-TEMPLATES.md`. Depuis ce plan, `jwt-auth`, `openapi`, `systemd-infra` et `rust-dioxus-mobile` ont été créées, et `rust-web-app` est un template autonome. Les sections ci-dessous sont conservées pour mémoire, sauf les tableaux de briques, tenus à jour.
 
 ---
 
@@ -70,16 +72,11 @@ Les briques peuvent :
 | `docs-pack`         | `README.md`                                  | Aucune à ce stade                |
 | `work-structure`    | structure projet                             | Aucune à ce stade                |
 | `rust-web-frontend` | templates / fichiers web                     | À traiter lors de la migration   |
-
-### Briques à créer
-
-| Brique          | Responsabilité                   |
-| --------------- | -------------------------------- |
-| `jwt-auth`      | Authentification JWT             |
-| `openapi`       | Contrat et documentation OpenAPI |
-| `systemd-infra` | Service systemd                  |
-
-Ces briques ne font **pas encore partie du registre**.
+| `rust-web-app`      | 18 fichiers (squelette autonome)             | Aucune à ce stade                |
+| `rust-dioxus-mobile` | `Cargo.toml`, `Dioxus.toml`, `src/main.rs`, `assets/main.css`, `MOBILE.md` | Aucune à ce stade |
+| `jwt-auth`          | `src/auth.rs`                                | Aucune à ce stade                |
+| `openapi`           | `openapi.yaml`                               | Aucune à ce stade                |
+| `systemd-infra`     | `deploy/systemd/app.service`                 | Aucune à ce stade                |
 
 ---
 
@@ -243,7 +240,7 @@ Les stratégies exactes seront définies progressivement selon les besoins réel
 
 ### `jwt-auth`
 
-À créer.
+Créée (voir le tableau des briques). Plan initial conservé ci-dessous.
 
 Responsabilités envisagées :
 
@@ -256,7 +253,7 @@ Responsabilités envisagées :
 
 ### `openapi`
 
-À créer.
+Créée (voir le tableau des briques). Plan initial conservé ci-dessous.
 
 Responsabilités envisagées :
 
@@ -269,7 +266,7 @@ Responsabilités envisagées :
 
 ### `systemd-infra`
 
-À créer.
+Créée (voir le tableau des briques). Plan initial conservé ci-dessous.
 
 Responsabilité principale :
 
