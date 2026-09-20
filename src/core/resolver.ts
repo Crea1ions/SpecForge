@@ -29,10 +29,12 @@ export function resolveArchitecture(
   // Templates such as web-app own their complete base architecture;
   // generic bricks are only added when they represent optional capabilities.
   if (spec.template === 'web-app') {
-    activeBrickIds.push('rust-web-app');
-  } else if (spec.template === 'web-frontend') {
-    activeBrickIds.push('rust-web-frontend');
-  } else {
+      activeBrickIds.push('rust-web-app');
+    } else if (spec.template === 'web-frontend') {
+      activeBrickIds.push('rust-web-frontend');
+    } else if (spec.template === 'mobile') {
+      activeBrickIds.push('rust-dioxus-mobile');
+    } else {
     if (spec.backend.enabled) {
       if (spec.backend.language === 'rust') activeBrickIds.push('rust-backend');
       if (spec.backend.language === 'python') activeBrickIds.push('python-backend');
