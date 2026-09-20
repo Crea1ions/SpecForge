@@ -60,6 +60,18 @@ export function validateSpecification(
   }
 
   // 3. Domain Compatibility Constraints
+  // Tauri is only supported for desktop projects.
+  if (spec.frontend.tauri && spec.project.type !== 'desktop') {
+    issues.push({
+      id: 'tauri-requires-desktop',
+      severity: 'error',
+      title: 'Tauri nécessite un projet Desktop',
+      message: `La couche Tauri n'est supportée que pour les projets de type 'desktop'. Le projet actuel est de type '${spec.project.type}'.`,
+      source: 'compatibility',
+      fixSuggestion: "Changez le type du projet en 'desktop' ou désactivez Tauri.",
+    });
+  }
+
   if (spec.project.type === 'desktop') {
     if (!spec.frontend.enabled) {
       issues.push({
@@ -83,14 +95,54 @@ export function validateSpecification(
     }
   }
 
-  if (spec.database.enabled && !spec.backend.enabled) {
+  // Mobile : l'identifiant (bundle id iOS / applicationId Android) est lu par la brique
+  // rust-dioxus-mobile, elle-même sélectionnée d'après spec.template.
+  if (spec.template === 'mobile' || spec.project.type === 'mobile') {
+    const identifier = spec.project.identifier;
+    // Intersection stricte Android/iOS : segments alphanumériques commençant par une lettre.
+    const identifierPattern = /^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)+$/;
+
+    if (!identifier || identifier.trim() === '') {
+      issues.push({
+        id: 'mobile-identifier-missing',
+        severity: 'error',
+        title: 'Identifiant mobile manquant',
+        message: "Un projet mobile exige un identifiant d'application (bundle identifier iOS / applicationId Android), par exemple 'com.acme.monapp'.",
+        source: 'configuration',
+        fixSuggestion: "Renseignez 'project.identifier' au format reverse-DNS.",
+      });
+    } else if (!identifierPattern.test(identifier)) {
+      issues.push({
+        id: 'mobile-identifier-invalid',
+        severity: 'error',
+        title: `Identifiant mobile invalide (${identifier})`,
+        message: "L'identifiant doit contenir au moins deux segments séparés par des points ; chaque segment commence par une lettre et ne contient que des lettres et des chiffres (ni tiret, ni underscore, compatibles Android et iOS).",
+        source: 'configuration',
+        fixSuggestion: "Utilisez un format comme 'com.acme.monapp'.",
+      });
+    } else if (/^com\.example(\.|$)/i.test(identifier)) {
+      issues.push({
+        id: 'mobile-identifier-placeholder',
+        severity: 'warning',
+        title: 'Identifiant mobile provisoire',
+        message: `L'identifiant '${identifier}' est un placeholder (com.example.*). Il devra être remplacé avant toute signature ou publication.`,
+        source: 'configuration',
+        fixSuggestion: "Remplacez-le par un identifiant reverse-DNS que vous contrôlez (ex: 'com.votreorg.monapp').",
+      });
+    }
+  }
+
+  const hasLocalDesktopRuntime =
+    spec.project.type === 'desktop' && spec.frontend.tauri;
+
+  if (spec.database.enabled && !spec.backend.enabled && !hasLocalDesktopRuntime) {
     issues.push({
       id: 'db-without-backend',
       severity: 'error',
       title: 'Base de données orpheline',
-      message: 'Une base de données a été activée sans aucun service backend pour la piloter.',
+      message: 'Une base de données a été activée sans aucun service backend ou runtime local pour la piloter.',
       source: 'dependency',
-      fixSuggestion: 'Activez le backend pour exposer vos requêtes et modèles de données.',
+      fixSuggestion: 'Activez le backend ou utilisez un runtime local compatible avec la base de données.',
     });
   }
 
@@ -128,14 +180,14 @@ export function validateSpecification(
   }
 
   // 4. Authentication Support Constraints
-  if (spec.authentication.enabled) {
+  if (spec.authentication.enabled && spec.authentication.provider !== 'jwt') {
     issues.push({
       id: `unsupported-authentication-${spec.authentication.provider}`,
       severity: 'error',
       title: `Authentification non supportée (${spec.authentication.provider})`,
-      message: `L'authentification '${spec.authentication.provider}' est demandée mais aucune brique d'authentification correspondante n'est actuellement disponible dans le registre Core.`,
+      message: `L'authentification '${spec.authentication.provider}' est demandée mais seule l'authentification JWT est actuellement disponible dans le registre Core.`,
       source: 'configuration',
-      fixSuggestion: "Désactivez l'authentification ('authentication.enabled: false') ou définissez 'provider: none'.",
+      fixSuggestion: "Utilisez 'provider: jwt' ou désactivez l'authentification ('authentication.enabled: false').",
     });
   }
 

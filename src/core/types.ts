@@ -5,7 +5,21 @@
  * Independent of React, DOM, UI components, or any specific presentation framework.
  */
 
-export type ProjectType = 'fullstack' | 'desktop' | 'backend-only' | 'frontend-only' | 'cli';
+export type ProjectType = 'fullstack' | 'desktop' | 'backend-only' | 'frontend-only' | 'cli' | 'mobile';
+
+export type TechnicalProfile =
+  | 'rust'
+  | 'python'
+  | 'typescript'
+  | 'go';
+
+export type ApplicationTemplate =
+  | 'web-frontend'
+  | 'web-app'
+  | 'web-platform'
+  | 'api-service'
+  | 'desktop'
+  | 'mobile';
 
 export interface ProjectInfo {
   name: string;
@@ -15,6 +29,7 @@ export interface ProjectInfo {
   version: string;
   author: string;
   license: string;
+  identifier?: string;
 }
 
 export interface BackendConfig {
@@ -28,9 +43,9 @@ export interface BackendConfig {
 
 export interface FrontendConfig {
   enabled: boolean;
-  framework: 'react' | 'vue' | 'none';
-  bundler: 'vite';
-  language: 'typescript' | 'javascript';
+  framework: 'react' | 'vue' | 'askama' | 'dioxus' | 'none';
+  bundler: 'vite' | 'none';
+  language: 'typescript' | 'javascript' | 'rust';
   styling: 'tailwind' | 'css';
   tauri: boolean;
 }
@@ -44,15 +59,14 @@ export interface DatabaseConfig {
 }
 
 export interface ApiConfig {
-  style: 'rest' | 'websocket' | 'graphql' | 'none';
+  style: 'rest' | 'websocket' | 'none';
   auth: boolean;
   openapi: boolean;
-  rateLimiting: boolean;
 }
 
 export interface AuthConfig {
   enabled: boolean;
-  provider: 'jwt' | 'oauth' | 'telegram' | 'none';
+  provider: 'jwt' | 'none';
   sessionStore: boolean;
 }
 
@@ -60,8 +74,6 @@ export interface InfraConfig {
   docker: boolean;
   compose: boolean;
   systemd: boolean;
-  vpsScript: boolean;
-  nginx: boolean;
 }
 
 export interface QualityConfig {
@@ -73,13 +85,13 @@ export interface QualityConfig {
 
 export interface DocsConfig {
   readme: boolean;
-  architectureDoc: boolean;
-  installDoc: boolean;
-  decisionsLog: boolean;
+  workStructure: boolean;
 }
 
 export interface ProjectSpecification {
   specVersion: string;
+  profile: TechnicalProfile;
+  template: ApplicationTemplate;
   project: ProjectInfo;
   backend: BackendConfig;
   frontend: FrontendConfig;
@@ -171,13 +183,16 @@ export interface GeneratedFile {
     | 'bash'
     | 'css'
     | 'html'
-    | 'sql';
+    | 'sql'
+    | 'binary';
   size: number;
   brickId: string;
   brickName: string;
   brickVersion: string;
   reason: string;
   decisionRef?: string;
+  /** Encodage de `content` : utf8 par défaut, base64 pour un fichier binaire (ex. PNG). */
+  encoding?: 'utf8' | 'base64';
 }
 
 export interface ArchitectureNode {

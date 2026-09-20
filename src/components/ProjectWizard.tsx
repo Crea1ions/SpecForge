@@ -13,7 +13,8 @@ import {
   HelpCircle,
   CheckCircle,
 } from 'lucide-react';
-import { ProjectSpecification, ResolvedArchitecture, ProjectType } from '../types/spec';
+import { ApplicationTemplate, ProjectSpecification, ResolvedArchitecture } from '../types/spec';
+import { findPreset } from '../engine/presets';
 
 interface ProjectWizardProps {
   spec: ProjectSpecification;
@@ -26,40 +27,40 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
     key: K,
     val: Partial<ProjectSpecification[K]>
   ) => {
+    const currentValue = spec[key];
+    const updatedValue =
+      typeof currentValue === 'object' && currentValue !== null
+        ? { ...currentValue, ...val }
+        : val;
+
     onChange({
       ...spec,
-      [key]: {
-        ...spec[key],
-        ...val,
-      },
+      [key]: updatedValue,
     });
   };
 
-  const handleTypeChange = (type: ProjectType) => {
-    const isDesktop = type === 'desktop';
-    const isBackendOnly = type === 'backend-only';
-    const isFrontendOnly = type === 'frontend-only';
+const handleTemplateChange = (template: ApplicationTemplate) => {
+    const preset = findPreset(spec.profile, template);
+
+    if (!preset) {
+      return;
+    }
+
+    const newSlug = preset.spec.project.slug;
+    const defaultIdentifier =
+      spec.project.identifier && !spec.project.identifier.startsWith('com.example.')
+        ? spec.project.identifier
+        : `com.acme.${newSlug.replace(/[^a-z0-9]/g, '')}`;
 
     onChange({
-      ...spec,
-      project: { ...spec.project, type },
-      frontend: {
-        ...spec.frontend,
-        enabled: !isBackendOnly,
-        tauri: isDesktop,
-      },
-      backend: {
-        ...spec.backend,
-        enabled: !isFrontendOnly,
-      },
-      database: {
-        ...spec.database,
-        enabled: !isFrontendOnly && spec.database.enabled,
-        type: isDesktop ? 'sqlite' : spec.database.type,
-      },
-      infrastructure: {
-        ...spec.infrastructure,
-        docker: !isDesktop && (spec.infrastructure.docker || !isFrontendOnly),
+      ...preset.spec,
+      project: {
+        ...spec.project,
+        name: preset.spec.project.name,
+        slug: newSlug,
+        identifier: template === 'mobile' ? defaultIdentifier : spec.project.identifier,
+        description: preset.spec.project.description,
+        type: preset.spec.project.type,
       },
     });
   };
@@ -83,7 +84,8 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
               {spec.project.name || 'Projet sans nom'}
             </h2>
             <p className="text-xs text-neutral-400 mt-1 max-w-2xl">
-              {spec.project.description || 'Définissez les capacités requises ci-dessous. Le moteur déduit l\'architecture et les briques nécessaires.'}
+              {spec.project.description ||
+                "Définissez les capacités requises ci-dessous. Le moteur déduit l'architecture et les briques nécessaires."}
             </p>
           </div>
 
@@ -198,6 +200,22 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
               placeholder="ex: Plateforme haute performance de streaming et de traitement audio."
             />
           </div>
+
+          {/* Champ Identifiant Reverse-DNS / Bundle ID (activé pour mobile) */}
+          {(spec.template === 'mobile' || spec.project.type === 'mobile') && (
+            <div className="md:col-span-3">
+              <label className="block text-xs font-medium text-neutral-300 mb-1.5">
+                Identifiant d'application Mobile (Bundle ID / Reverse-DNS)
+              </label>
+              <input
+                type="text"
+                value={spec.project.identifier || ''}
+                onChange={(e) => updateSpec('project', { identifier: e.target.value })}
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-indigo-500"
+                placeholder="ex: com.acme.monapp"
+              />
+            </div>
+          )}
         </div>
 
         {/* Project Type Selectors */}
@@ -205,28 +223,41 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
           <label className="block text-xs font-medium text-neutral-300 mb-2">
             Type d'application
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
             {[
-              { id: 'fullstack', label: 'Fullstack', desc: 'Backend + UI Web' },
+              { id: 'web-frontend', label: 'Web Frontend', desc: 'Client web seul' },
+              { id: 'web-app', label: 'Web App', desc: 'Backend + UI Web' },
+              { id: 'web-platform', label: 'Web Platform', desc: 'Frontend + Backend séparés' },
+              { id: 'api-service', label: 'API Service', desc: 'Service backend pur' },
               { id: 'desktop', label: 'Desktop', desc: 'Tauri + Rust + UI' },
-              { id: 'backend-only', label: 'Backend API', desc: 'Microservice pur' },
-              { id: 'frontend-only', label: 'Frontend SPA', desc: 'Client web seul' },
-              { id: 'cli', label: 'CLI / Outil', desc: 'Binaire terminal' },
-            ].map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => handleTypeChange(t.id as ProjectType)}
-                className={`p-3 rounded-lg border text-left transition ${
-                  spec.project.type === t.id
-                    ? 'bg-indigo-950/60 border-indigo-600 text-white shadow-sm'
-                    : 'bg-neutral-950/60 border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
-                }`}
-              >
-                <div className="font-semibold text-xs text-white">{t.label}</div>
-                <div className="text-[10px] text-neutral-400 mt-0.5 leading-tight">{t.desc}</div>
-              </button>
-            ))}
+              { id: 'mobile', label: 'Mobile', desc: 'Application mobile' },
+            ].map((t) => {
+              const template = t.id as ApplicationTemplate;
+              const preset = findPreset(spec.profile, template);
+              const isActive = spec.template === template;
+              const isAvailable = !!preset;
+
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  disabled={!isAvailable}
+                  onClick={() => handleTemplateChange(template)}
+                  className={`p-3 rounded-lg border text-left transition ${
+                    isActive
+                      ? 'bg-indigo-950/60 border-indigo-600 text-white shadow-sm'
+                      : isAvailable
+                        ? 'bg-neutral-950/60 border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
+                        : 'bg-neutral-950/30 border-neutral-900 text-neutral-600 cursor-not-allowed'
+                  }`}
+                >
+                  <div className="font-semibold text-xs text-white">{t.label}</div>
+                  <div className="text-[10px] text-neutral-400 mt-0.5 leading-tight">
+                    {isAvailable ? t.desc : 'Template non disponible'}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -359,8 +390,9 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
                   <input
                     type="checkbox"
                     checked={spec.frontend.tauri}
+                    disabled={spec.project.type !== 'desktop'}
                     onChange={(e) => updateSpec('frontend', { tauri: e.target.checked })}
-                    className="rounded bg-neutral-900 border-neutral-700 text-sky-600 focus:ring-0"
+                    className="rounded bg-neutral-900 border-neutral-700 text-sky-600 focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   <div>
                     <span className="text-white font-medium">Empaquetage Bureau Tauri</span>
@@ -570,17 +602,14 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
       <section className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 space-y-4">
         <div className="flex items-center gap-2 text-white font-semibold border-b border-neutral-800 pb-3">
           <CheckSquare className="w-4 h-4 text-emerald-400" />
-          <h4 className="text-sm">Assurance Qualité &amp; Documentation (Section 10)</h4>
+          <h4 className="text-sm">Assurance Qualité &amp; Documentation</h4>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           {[
             { key: 'tests', label: 'Tests Unitaires & Intégration', category: 'quality' },
             { key: 'ci', label: 'GitHub Actions CI', category: 'quality' },
-            { key: 'readme', label: 'README.md Complet', category: 'documentation' },
-            { key: 'architectureDoc', label: 'Dossier d\'Architecture', category: 'documentation' },
-            { key: 'installDoc', label: 'Guide d\'Installation', category: 'documentation' },
-            { key: 'decisionsLog', label: 'Registre des Décisions (ADR)', category: 'documentation' },
+            { key: 'readme', label: 'README.md', category: 'documentation' },
           ].map((item) => {
             const isQuality = item.category === 'quality';
             const isChecked = isQuality

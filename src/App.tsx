@@ -13,8 +13,8 @@ import { FileTreeViewer } from './components/FileTreeViewer';
 import { BrickLibraryViewer } from './components/BrickLibraryViewer';
 import { EngineVerificationAudit } from './components/EngineVerificationAudit';
 import { AiAssistModal } from './components/AiAssistModal';
-import { PRESETS } from './engine/presets';
-import { SpecForge, ProjectSpecification } from './core';
+import { findPreset, PRESETS } from './engine/presets';
+import { SpecForge, ProjectSpecification, TechnicalProfile } from './core';
 import { CheckCircle2, ShieldCheck, Terminal, Heart } from 'lucide-react';
 
 export default function App() {
@@ -42,13 +42,29 @@ export default function App() {
     return SpecForge.generate(spec, architecture);
   }, [spec, architecture]);
 
-  // Select Preset Handler
-  const handleSelectPreset = (presetId: string) => {
-    const found = PRESETS.find((p) => p.id === presetId);
-    if (found) {
-      setSpec(JSON.parse(JSON.stringify(found.spec)));
-      showToast(`Modèle cible chargé : ${found.name}`);
+  // Technical Profile Handler
+  const handleSelectProfile = (profile: TechnicalProfile) => {
+    if (profile === spec.profile) {
+      return;
     }
+
+    const preset = findPreset(profile, spec.template);
+
+    if (!preset) {
+      showToast(`Template "${spec.template}" indisponible pour le profil ${profile}.`);
+      return;
+    }
+
+    setSpec({
+      ...preset.spec,
+      project: {
+        ...preset.spec.project,
+        ...spec.project,
+        type: preset.spec.project.type,
+      },
+    });
+
+    showToast(`Profil technique chargé : ${profile}`);
   };
 
   // Download entire project as ZIP
@@ -64,7 +80,7 @@ export default function App() {
 
       // Add all generated files to zip
       generatedFiles.forEach((file) => {
-        zip.file(file.path, file.content);
+        zip.file(file.path, file.content, file.encoding === 'base64' ? { base64: true } : undefined);
       });
 
       const blob = await zip.generateAsync({
@@ -98,7 +114,7 @@ export default function App() {
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
         spec={spec}
-        onSelectPreset={handleSelectPreset}
+        onSelectProfile={handleSelectProfile}
         architecture={architecture}
         onOpenAiAssist={() => setIsAiModalOpen(true)}
         onDownloadZip={handleDownloadZip}

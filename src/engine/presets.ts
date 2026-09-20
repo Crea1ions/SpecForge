@@ -11,84 +11,91 @@ export interface ArchitecturePreset {
   tagline: string;
   description: string;
   badge: string;
-  category: 'fullstack' | 'desktop' | 'backend' | 'frontend';
+  category: 'fullstack' | 'desktop' | 'backend' | 'frontend' | 'mobile';
   spec: ProjectSpecification;
 }
 
+export const findPreset = (
+  profile: ProjectSpecification['profile'],
+  template: ProjectSpecification['template'],
+): ArchitecturePreset | undefined =>
+  PRESETS.find(
+    (preset) =>
+      preset.spec.profile === profile &&
+      preset.spec.template === template,
+  );
+
 export const PRESETS: ArchitecturePreset[] = [
-  {
-    id: 'rust-react-sqlite',
-    name: 'Rust + React + SQLite',
-    tagline: 'Fullstack Moderne & Autonome',
-    description: 'Architecture complète, ultra-rapide et autonome avec serveur Axum, interface React 19 et base de données embarquée SQLite.',
-    badge: 'Recommandé',
-    category: 'fullstack',
-    spec: {
-      specVersion: '1.0.0',
-      project: {
-        name: 'Lexi Core',
-        slug: 'lexi-core',
-        description: 'Plateforme fullstack haute performance avec Axum et React 19.',
-        type: 'fullstack',
-        version: '0.1.0',
-        author: 'SpecForge Builder',
-        license: 'MIT',
-      },
-      backend: {
-        enabled: true,
-        language: 'rust',
-        framework: 'axum',
-        port: 8080,
-        logging: true,
-        cors: true,
-      },
-      frontend: {
-        enabled: true,
-        framework: 'react',
-        bundler: 'vite',
-        language: 'typescript',
-        styling: 'tailwind',
-        tauri: false,
-      },
-      database: {
-        enabled: true,
-        type: 'sqlite',
-        orm: 'sqlx',
-        migrations: true,
-        pooling: true,
-      },
-      api: {
-        style: 'rest',
-        auth: true,
-        openapi: true,
-        rateLimiting: false,
-      },
-      authentication: {
-        enabled: true,
-        provider: 'jwt',
-        sessionStore: false,
-      },
-      infrastructure: {
-        docker: true,
-        compose: false,
-        systemd: true,
-        vpsScript: false,
-        nginx: false,
-      },
-      quality: {
-        tests: true,
-        lint: true,
-        ci: true,
-        gitHooks: true,
-      },
-      documentation: {
-        readme: true,
-        architectureDoc: true,
-        installDoc: true,
-        decisionsLog: true,
-      },
+{
+  id: 'rust-web-app',
+  name: 'Rust Web App',
+  tagline: 'Application Web Complète',
+  description: 'Application web complète en Rust avec Axum, Askama, CSS, JavaScript vanilla et SQLite.',
+  badge: 'Rust Web',
+  category: 'fullstack',
+  spec: {
+    profile: 'rust',
+    template: 'web-app',
+    specVersion: '1.0.0',
+    project: {
+      name: 'RustWebApp',
+      slug: 'rust-web-app',
+      description: 'Application web complète en Rust avec Askama et SQLite.',
+      type: 'fullstack',
+      version: '0.1.0',
+      author: 'SpecForge Builder',
+      license: 'MIT',
+    },
+    backend: {
+      enabled: true,
+      language: 'rust',
+      framework: 'axum',
+      port: 8080,
+      logging: true,
+      cors: true,
+    },
+    frontend: {
+      enabled: true,
+      framework: 'askama',
+      bundler: 'none',
+      language: 'rust',
+      styling: 'css',
+      tauri: false,
+    },
+    database: {
+      enabled: true,
+      type: 'sqlite',
+      orm: 'sqlx',
+      migrations: true,
+      pooling: true,
+    },
+    api: {
+      style: 'rest',
+      auth: true,
+      openapi: true,
+    },
+    authentication: {
+      enabled: true,
+      provider: 'jwt',
+      sessionStore: false,
+    },
+    infrastructure: {
+      docker: true,
+      compose: false,
+      systemd: true,
+    },
+    quality: {
+      tests: true,
+      lint: true,
+      ci: true,
+      gitHooks: true,
+    },
+    documentation: {
+      readme: true,
+      workStructure: true,
     },
   },
+},
   {
     id: 'rust-react-postgres',
     name: 'Rust + React + PostgreSQL',
@@ -97,6 +104,8 @@ export const PRESETS: ArchitecturePreset[] = [
     badge: 'Enterprise',
     category: 'fullstack',
     spec: {
+      profile: 'rust',
+      template: 'web-platform',
       specVersion: '1.0.0',
       project: {
         name: 'Enterprise Hub',
@@ -134,7 +143,6 @@ export const PRESETS: ArchitecturePreset[] = [
         style: 'rest',
         auth: true,
         openapi: true,
-        rateLimiting: true,
       },
       authentication: {
         enabled: true,
@@ -145,8 +153,6 @@ export const PRESETS: ArchitecturePreset[] = [
         docker: true,
         compose: true,
         systemd: false,
-        vpsScript: false,
-        nginx: true,
       },
       quality: {
         tests: true,
@@ -156,9 +162,7 @@ export const PRESETS: ArchitecturePreset[] = [
       },
       documentation: {
         readme: true,
-        architectureDoc: true,
-        installDoc: true,
-        decisionsLog: true,
+        workStructure: true,
       },
     },
   },
@@ -170,6 +174,8 @@ export const PRESETS: ArchitecturePreset[] = [
     badge: 'Desktop',
     category: 'desktop',
     spec: {
+      profile: 'rust',
+      template: 'desktop',
       specVersion: '1.0.0',
       project: {
         name: 'OmniDesktop',
@@ -181,7 +187,7 @@ export const PRESETS: ArchitecturePreset[] = [
         license: 'MIT',
       },
       backend: {
-        enabled: true,
+        enabled: false,
         language: 'rust',
         framework: 'axum',
         port: 8080,
@@ -204,10 +210,9 @@ export const PRESETS: ArchitecturePreset[] = [
         pooling: false,
       },
       api: {
-        style: 'rest',
+        style: 'none',
         auth: false,
         openapi: false,
-        rateLimiting: false,
       },
       authentication: {
         enabled: false,
@@ -218,8 +223,6 @@ export const PRESETS: ArchitecturePreset[] = [
         docker: false,
         compose: false,
         systemd: false,
-        vpsScript: false,
-        nginx: false,
       },
       quality: {
         tests: true,
@@ -229,9 +232,7 @@ export const PRESETS: ArchitecturePreset[] = [
       },
       documentation: {
         readme: true,
-        architectureDoc: true,
-        installDoc: true,
-        decisionsLog: true,
+        workStructure: true,
       },
     },
   },
@@ -243,6 +244,8 @@ export const PRESETS: ArchitecturePreset[] = [
     badge: 'API / Microservice',
     category: 'backend',
     spec: {
+      profile: 'rust',
+      template: 'api-service',
       specVersion: '1.0.0',
       project: {
         name: 'FastMicro',
@@ -280,7 +283,6 @@ export const PRESETS: ArchitecturePreset[] = [
         style: 'rest',
         auth: true,
         openapi: true,
-        rateLimiting: true,
       },
       authentication: {
         enabled: true,
@@ -291,8 +293,6 @@ export const PRESETS: ArchitecturePreset[] = [
         docker: true,
         compose: false,
         systemd: true,
-        vpsScript: true,
-        nginx: false,
       },
       quality: {
         tests: true,
@@ -302,9 +302,7 @@ export const PRESETS: ArchitecturePreset[] = [
       },
       documentation: {
         readme: true,
-        architectureDoc: true,
-        installDoc: true,
-        decisionsLog: true,
+        workStructure: true,
       },
     },
   },
@@ -316,6 +314,8 @@ export const PRESETS: ArchitecturePreset[] = [
     badge: 'Client SPA',
     category: 'frontend',
     spec: {
+      profile: 'typescript',
+      template: 'web-frontend',
       specVersion: '1.0.0',
       project: {
         name: 'GlassApp',
@@ -353,7 +353,6 @@ export const PRESETS: ArchitecturePreset[] = [
         style: 'none',
         auth: false,
         openapi: false,
-        rateLimiting: false,
       },
       authentication: {
         enabled: false,
@@ -361,11 +360,9 @@ export const PRESETS: ArchitecturePreset[] = [
         sessionStore: false,
       },
       infrastructure: {
-        docker: true,
+        docker: false,
         compose: false,
         systemd: false,
-        vpsScript: false,
-        nginx: true,
       },
       quality: {
         tests: true,
@@ -375,9 +372,149 @@ export const PRESETS: ArchitecturePreset[] = [
       },
       documentation: {
         readme: true,
-        architectureDoc: true,
-        installDoc: true,
-        decisionsLog: false,
+        workStructure: true,
+      },
+    },
+  },
+
+  {
+    id: 'rust-web-frontend',
+    name: 'Rust Web Frontend',
+    tagline: 'Application Web Server-Rendered',
+    description: 'Application web server-rendered en Rust avec Axum, Askama, CSS et JavaScript vanilla.',
+    badge: 'Rust Web',
+    category: 'frontend',
+    spec: {
+      profile: 'rust',
+      template: 'web-frontend',
+      specVersion: '1.0.0',
+      project: {
+        name: 'RustWebApp',
+        slug: 'rust-web-app',
+        description: 'Application web server-rendered en Rust avec Askama.',
+        type: 'frontend-only',
+        version: '0.1.0',
+        author: 'SpecForge Builder',
+        license: 'MIT',
+      },
+      backend: {
+        enabled: false,
+        language: 'rust',
+        framework: 'axum',
+        port: 8080,
+        logging: true,
+        cors: false,
+      },
+      frontend: {
+        enabled: true,
+        framework: 'askama',
+        bundler: 'none',
+        language: 'rust',
+        styling: 'css',
+        tauri: false,
+      },
+      database: {
+        enabled: false,
+        type: 'none',
+        orm: 'sqlx',
+        migrations: false,
+        pooling: false,
+      },
+      api: {
+        style: 'none',
+        auth: false,
+        openapi: false,
+      },
+      authentication: {
+        enabled: false,
+        provider: 'none',
+        sessionStore: false,
+      },
+      infrastructure: {
+        docker: false,
+        compose: false,
+        systemd: false,
+      },
+      quality: {
+        tests: true,
+        lint: true,
+        ci: true,
+        gitHooks: true,
+      },
+      documentation: {
+        readme: true,
+        workStructure: true,
+      },
+    },
+  },
+  {
+    id: 'rust-dioxus-mobile',
+    name: 'Rust Dioxus Mobile',
+    tagline: 'Application Mobile Cross-Platform',
+    description: 'Application mobile cross-platform (Android & iOS) en Rust avec Dioxus.',
+    badge: 'Rust Mobile',
+    category: 'mobile',
+    spec: {
+      profile: 'rust',
+      template: 'mobile',
+      specVersion: '1.0.0',
+      project: {
+        name: 'RustMobileApp',
+        slug: 'rust-mobile-app',
+        description: 'Application mobile cross-platform en Rust avec Dioxus.',
+        type: 'mobile',
+        version: '0.1.0',
+        author: 'SpecForge Builder',
+        license: 'MIT',
+        identifier: 'com.acme.rustmobileapp',
+      },
+      backend: {
+        enabled: false,
+        language: 'rust',
+        framework: 'axum',
+        port: 8080,
+        logging: true,
+        cors: false,
+      },
+      frontend: {
+        enabled: true,
+        framework: 'dioxus',
+        bundler: 'none',
+        language: 'rust',
+        styling: 'css',
+        tauri: false,
+      },
+      database: {
+        enabled: false,
+        type: 'none',
+        orm: 'sqlx',
+        migrations: false,
+        pooling: false,
+      },
+      api: {
+        style: 'none',
+        auth: false,
+        openapi: false,
+      },
+      authentication: {
+        enabled: false,
+        provider: 'none',
+        sessionStore: false,
+      },
+      infrastructure: {
+        docker: false,
+        compose: false,
+        systemd: false,
+      },
+      quality: {
+        tests: true,
+        lint: true,
+        ci: true,
+        gitHooks: true,
+      },
+      documentation: {
+        readme: true,
+        workStructure: true,
       },
     },
   },

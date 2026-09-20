@@ -1,8 +1,25 @@
+# Dependencies
 node_modules/
-build/
+
+# Build / generated output
 dist/
+build/
 coverage/
-.DS_Store
-*.log
+
+# Environment / secrets
 .env*
 !.env.example
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / editors
+.vscode/
+.idea/
+
+# Local development
+*.local

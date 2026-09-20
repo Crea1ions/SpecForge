@@ -14,6 +14,7 @@ import {
   ArchitectureNode,
   ArchitectureEdge,
   ArchitecturalDecision,
+  GenerationContext,
 } from './types';
 import { BrickRegistry, defaultRegistry } from './registry';
 import { validateSpecification } from './validator';
@@ -24,44 +25,67 @@ export function resolveArchitecture(
 ): ResolvedArchitecture {
   const activeBrickIds: string[] = [];
 
-  // 1. Map specification flags to candidate brick IDs
-  if (spec.backend.enabled) {
-    if (spec.backend.language === 'rust') activeBrickIds.push('rust-backend');
-    if (spec.backend.language === 'python') activeBrickIds.push('python-backend');
-  }
+  // 1. Select the template-owned skeleton first.
+  // Templates such as web-app own their complete base architecture;
+  // generic bricks are only added when they represent optional capabilities.
+  if (spec.template === 'web-app') {
+      activeBrickIds.push('rust-web-app');
+    } else if (spec.template === 'web-frontend' && spec.frontend.framework === 'askama') {
+      activeBrickIds.push('rust-web-frontend');
+    } else if (spec.template === 'mobile') {
+      activeBrickIds.push('rust-dioxus-mobile');
+    } else {
+    if (spec.backend.enabled) {
+      if (spec.backend.language === 'rust') activeBrickIds.push('rust-backend');
+      if (spec.backend.language === 'python') activeBrickIds.push('python-backend');
+    }
 
-  if (spec.frontend.enabled) {
-    if (spec.frontend.framework === 'react') activeBrickIds.push('react-vite');
-  }
+    if (spec.frontend.enabled) {
+      if (spec.frontend.framework === 'react') {
+        activeBrickIds.push('react-vite');
+      }
+    }
 
-  if (spec.frontend.tauri && spec.project.type === 'desktop') {
-    activeBrickIds.push('tauri-desktop');
-  }
+    if (spec.frontend.tauri && spec.project.type === 'desktop') {
+      activeBrickIds.push('tauri-desktop');
+    }
 
-  if (spec.database.enabled) {
-    if (spec.database.type === 'sqlite') activeBrickIds.push('sqlite-storage');
-    if (spec.database.type === 'postgresql') activeBrickIds.push('postgres-storage');
+    if (spec.database.enabled) {
+      if (spec.database.type === 'sqlite') activeBrickIds.push('sqlite-storage');
+      if (spec.database.type === 'postgresql') activeBrickIds.push('postgres-storage');
+    }
   }
 
   if (spec.api.style === 'rest') {
     activeBrickIds.push('rest-api');
   }
 
+  if (spec.api.openapi) {
+    activeBrickIds.push('openapi');
+  }
+
+  if (spec.authentication.enabled) {
+    activeBrickIds.push('jwt-auth');
+  }
+
   if (spec.infrastructure.docker) {
     activeBrickIds.push('docker-infra');
+  }
+
+  if (spec.infrastructure.systemd) {
+    activeBrickIds.push('systemd-infra');
   }
 
   if (spec.quality.ci || spec.quality.tests || spec.quality.lint) {
     activeBrickIds.push('quality-suite');
   }
 
-  if (
-    spec.documentation.readme ||
-    spec.documentation.architectureDoc ||
-    spec.documentation.installDoc ||
-    spec.documentation.decisionsLog
-  ) {
+  if (spec.documentation.readme) {
     activeBrickIds.push('docs-pack');
+  }
+
+  if (spec.documentation.workStructure) {
+    activeBrickIds.push('work-structure');
   }
 
   // Deduplicate and lookup active bricks
@@ -73,179 +97,197 @@ export function resolveArchitecture(
   // 2. Validate Specification & Constraints
   const issues = validateSpecification(spec, activeBricks, registry);
 
-  // 3. Build Architectural Decisions Record (ADRs)
-  const decisions: ArchitecturalDecision[] = [];
-  let adrCounter = 1;
-  const pad = (n: number) => `ADR-${String(n).padStart(3, '0')}`;
+// 3. Build Architectural Decisions Record (ADRs)
+// Each active brick owns the architectural decisions it introduces.
+// The resolver only collects and normalizes their IDs.
+const decisions: ArchitecturalDecision[] = [];
+let adrCounter = 1;
+const pad = (n: number) => `ADR-${String(n).padStart(3, '0')}`;
 
-  if (spec.backend.enabled) {
-    decisions.push({
-      id: pad(adrCounter++),
-      title: `Sélection du runtime ${spec.backend.language.toUpperCase()} (${spec.backend.framework})`,
-      status: 'Accepted',
-      context: 'Nécessité d\'un service backend fiable pour traiter la logique métier et servir les APIs.',
-      decision: `Adoption de ${spec.backend.language} avec le framework ${spec.backend.framework} sur le port ${spec.backend.port}.`,
-      consequences: [
-        'Garantit une exécution déterministe avec typage statique strict.',
-        'Consommation mémoire prévisible et latence réseau minimale.',
-      ],
-      generatingBrick: spec.backend.language === 'rust' ? 'rust-backend' : 'python-backend',
-    });
-  }
+const decisionContext: GenerationContext = {
+  spec,
+  activeBricks,
+  decisions: [],
+};
 
-  if (spec.frontend.enabled) {
-    decisions.push({
-      id: pad(adrCounter++),
-      title: `Adoption du frontend ${spec.frontend.framework.toUpperCase()} avec Vite`,
-      status: 'Accepted',
-      context: 'Nécessité d\'une interface réactive, ergonomique et compilée rapidement.',
-      decision: 'Intégration de React 19 compilé par Vite avec Tailwind CSS pour un design system utilitaire.',
-      consequences: [
-        'Builds HMR ultra-rapides pour l\'expérience de développement.',
-        'Architecture en composants découplée du backend.',
-      ],
-      generatingBrick: 'react-vite',
-    });
-  }
+for (const brick of activeBricks) {
+  if (typeof brick.generateDecisions === 'function') {
+    const brickDecisions = brick.generateDecisions(decisionContext);
 
-  if (spec.database.enabled) {
-    decisions.push({
-      id: pad(adrCounter++),
-      title: `Persistance des données via ${spec.database.type.toUpperCase()}`,
-      status: 'Accepted',
-      context: 'Besoin de stocker durablement l\'état de l\'application.',
-      decision: `Utilisation de ${spec.database.type} avec ${spec.database.orm} pour la couche d'accès aux données.`,
-      consequences: [
-        spec.database.type === 'sqlite'
-          ? 'Zéro coût d\'infrastructure et persistance dans un fichier local unique.'
-          : 'Support complet de la scalabilité multi-noeuds et conformité ACID en production.',
-      ],
-      generatingBrick: spec.database.type === 'sqlite' ? 'sqlite-storage' : 'postgres-storage',
-    });
+    for (const decision of brickDecisions) {
+      decisions.push({
+        ...decision,
+        id: pad(adrCounter++),
+        generatingBrick: brick.id,
+      });
+    }
   }
-
-  if (spec.infrastructure.docker) {
-    decisions.push({
-      id: pad(adrCounter++),
-      title: 'Conteneurisation reproductible via Docker Multi-Stage',
-      status: 'Accepted',
-      context: 'Assurer la parité stricte entre environnement de dev et de production.',
-      decision: 'Création d\'un Dockerfile multi-étapes avec compilation optimisée et runtime allégé.',
-      consequences: [
-        'Images finales minimales sans dépendances de compilation encombrantes.',
-        'Déploiement en une commande via docker-compose up.',
-      ],
-      generatingBrick: 'docker-infra',
-    });
-  }
+}
 
   // 4. Construct Component Nodes & Graph Edges
+  // Architecture nodes are derived from the bricks actually resolved.
+  // The resolver only provides graph-specific layer/connectivity information.
   const nodes: ArchitectureNode[] = [];
   const edges: ArchitectureEdge[] = [];
 
-  if (spec.frontend.enabled) {
+const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
+  if (brick.id === 'rust-web-app') {
+    return 'app';
+  }
+
+  switch (brick.category) {
+    case 'frontend':
+      return 'client';
+    case 'api':
+      return 'gateway';
+    case 'backend':
+      return 'app';
+    case 'database':
+      return 'data';
+    case 'infrastructure':
+    case 'quality':
+    case 'documentation':
+      return 'ops';
+    default:
+      return 'app';
+  }
+};
+
+  for (const brick of activeBricks) {
     nodes.push({
-      id: 'node-ui',
-      name: spec.frontend.tauri ? 'Desktop UI (Tauri + React)' : 'Frontend Web (React 19)',
-      category: 'frontend',
-      layer: 'client',
-      brickId: 'react-vite',
-      description: 'Interface utilisateur Single-Page avec composants réactifs.',
-      technologies: ['React 19', 'TypeScript', 'Vite', 'Tailwind CSS'],
+      id: `node-${brick.id}`,
+      name: brick.name,
+      category: brick.category,
+      layer: getBrickLayer(brick),
+      brickId: brick.id,
+      description: brick.description,
+      technologies: brick.tags,
       status: 'active',
     });
   }
 
-  if (spec.api.style !== 'none') {
-    nodes.push({
-      id: 'node-api-gateway',
-      name: `${spec.api.style.toUpperCase()} Gateway`,
-      category: 'api',
-      layer: 'gateway',
-      brickId: spec.api.style === 'rest' ? 'rest-api' : 'websocket-api',
-      description: 'Gestion des routes, validation des payloads et sérialisation JSON.',
-      technologies: ['JSON Schema', spec.api.openapi ? 'OpenAPI 3.0' : 'REST Protocol'],
-      status: 'active',
-    });
+  const hasBrick = (brickId: string): boolean =>
+    activeBricks.some((brick) => brick.id === brickId);
 
-    if (spec.frontend.enabled) {
-      edges.push({
-        from: 'node-ui',
-        to: 'node-api-gateway',
-        label: spec.frontend.tauri ? 'IPC / HTTP' : 'Fetch API',
-        protocol: spec.api.style === 'websocket' ? 'WSS' : 'HTTP/JSON',
-      });
+  const addEdge = (
+    fromBrick: string,
+    toBrick: string,
+    label: string,
+    protocol?: string
+  ): void => {
+    if (!hasBrick(fromBrick) || !hasBrick(toBrick)) return;
+
+    edges.push({
+      from: `node-${fromBrick}`,
+      to: `node-${toBrick}`,
+      label,
+      ...(protocol ? { protocol } : {}),
+    });
+  };
+
+  // Core application flow
+  if (hasBrick('rust-web-app')) {
+    addEdge(
+      'rust-web-app',
+      'rest-api',
+      'HTTP API',
+      'HTTP/JSON'
+    );
+  }
+
+  // Generic backend/API relationship
+  if (hasBrick('rust-backend') || hasBrick('python-backend')) {
+    const backendBrick = hasBrick('rust-backend')
+      ? 'rust-backend'
+      : 'python-backend';
+
+    addEdge(
+      backendBrick,
+      'rest-api',
+      'API',
+      'HTTP/JSON'
+    );
+  }
+
+  // Frontend/API relationship for the legacy compositional architecture
+  if (hasBrick('react-vite')) {
+    addEdge(
+      'react-vite',
+      'rest-api',
+      'Fetch API',
+      'HTTP/JSON'
+    );
+  }
+
+  // Persistence relationships
+  if (hasBrick('rust-web-app')) {
+    // SQLite/SQLx persistence is part of the rust-web-app skeleton.
+    // No separate sqlite-storage brick is required.
+  } else {
+    const backendBrick = hasBrick('rust-backend')
+      ? 'rust-backend'
+      : hasBrick('python-backend')
+        ? 'python-backend'
+        : null;
+
+    if (backendBrick && hasBrick('sqlite-storage')) {
+      addEdge(
+        backendBrick,
+        'sqlite-storage',
+        'Connection Pool',
+        'Direct File I/O'
+      );
+    }
+
+    if (backendBrick && hasBrick('postgres-storage')) {
+      addEdge(
+        backendBrick,
+        'postgres-storage',
+        'Connection Pool',
+        'TCP / SQLx Protocol'
+      );
     }
   }
 
-  if (spec.backend.enabled) {
-    nodes.push({
-      id: 'node-backend',
-      name: `Core Backend (${spec.backend.language})`,
-      category: 'backend',
-      layer: 'app',
-      brickId: spec.backend.language === 'rust' ? 'rust-backend' : 'python-backend',
-      description: 'Service applicatif traitant la logique métier et les règles de validation.',
-      technologies: [spec.backend.language, spec.backend.framework, 'Tokio async'],
-      status: 'active',
-    });
+  // Optional infrastructure and quality capabilities
+  if (hasBrick('rust-web-app')) {
+    addEdge(
+      'rust-web-app',
+      'docker-infra',
+      'Container Runtime',
+      'Docker'
+    );
 
-    if (spec.api.style !== 'none') {
-      edges.push({
-        from: 'node-api-gateway',
-        to: 'node-backend',
-        label: 'Handler Dispatch',
-        protocol: 'In-process Routing',
-      });
+    addEdge(
+      'rust-web-app',
+      'quality-suite',
+      'Quality Pipeline',
+      'GitHub Actions'
+    );
+  } else {
+    const runtimeBrick = hasBrick('rust-backend')
+      ? 'rust-backend'
+      : hasBrick('python-backend')
+        ? 'python-backend'
+        : hasBrick('react-vite')
+          ? 'react-vite'
+          : null;
+
+    if (runtimeBrick) {
+      addEdge(
+        runtimeBrick,
+        'docker-infra',
+        'Container Runtime',
+        'Docker'
+      );
+
+      addEdge(
+        runtimeBrick,
+        'quality-suite',
+        'Quality Pipeline',
+        'GitHub Actions'
+      );
     }
-  }
-
-  if (spec.database.enabled) {
-    nodes.push({
-      id: 'node-db',
-      name: `${spec.database.type.toUpperCase()} Engine`,
-      category: 'database',
-      layer: 'data',
-      brickId: spec.database.type === 'sqlite' ? 'sqlite-storage' : 'postgres-storage',
-      description: 'Couche de stockage persistant et schémas relationnels avec migrations.',
-      technologies: [spec.database.type, spec.database.orm, 'ACID'],
-      status: 'active',
-    });
-
-    if (spec.backend.enabled) {
-      edges.push({
-        from: 'node-backend',
-        to: 'node-db',
-        label: 'Connection Pool',
-        protocol: spec.database.type === 'sqlite' ? 'Direct File I/O' : 'TCP / SQLx Protocol',
-      });
-    }
-  }
-
-  if (spec.infrastructure.docker) {
-    nodes.push({
-      id: 'node-infra',
-      name: 'Docker Runtime',
-      category: 'infrastructure',
-      layer: 'ops',
-      brickId: 'docker-infra',
-      description: 'Conteneurisation et isolation des environnements.',
-      technologies: ['Docker Multi-Stage', 'Compose v2'],
-      status: 'active',
-    });
-  }
-
-  if (spec.quality.ci) {
-    nodes.push({
-      id: 'node-quality',
-      name: 'GitHub Actions CI',
-      category: 'quality',
-      layer: 'ops',
-      brickId: 'quality-suite',
-      description: 'Pipelines d\'assurance qualité, linter et tests automatisés.',
-      technologies: ['GitHub Actions', 'Clippy/Linter', 'Unit Tests'],
-      status: 'active',
-    });
   }
 
   const hasErrors = issues.some((i) => i.severity === 'error');

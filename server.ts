@@ -76,22 +76,19 @@ Format attendu:
     "pooling": boolean
   },
   "api": {
-    "style": "rest" | "websocket" | "graphql" | "none",
+    "style": "rest" | "websocket" | "none",
     "auth": boolean,
-    "openapi": boolean,
-    "rateLimiting": boolean
+    "openapi": boolean
   },
   "authentication": {
     "enabled": boolean,
-    "provider": "jwt" | "oauth" | "telegram" | "none",
+    "provider": "jwt" | "none",
     "sessionStore": boolean
   },
   "infrastructure": {
     "docker": boolean,
     "compose": boolean,
-    "systemd": boolean,
-    "vpsScript": boolean,
-    "nginx": boolean
+    "systemd": boolean
   },
   "quality": {
     "tests": boolean,
@@ -178,7 +175,6 @@ Format attendu:
         style: "rest",
         auth: lower.includes("auth") || lower.includes("jwt"),
         openapi: true,
-        rateLimiting: false,
       },
       authentication: {
         enabled: lower.includes("auth") || lower.includes("jwt"),
@@ -186,11 +182,9 @@ Format attendu:
         sessionStore: false,
       },
       infrastructure: {
-        docker: !isDesktop || isPostgres,
-        compose: isPostgres,
-        systemd: false,
-        vpsScript: false,
-        nginx: false,
+       docker: !isDesktop || isPostgres,
+       compose: isPostgres,
+       systemd: false,
       },
       quality: {
         tests: true,
