@@ -360,7 +360,7 @@ export const PRESETS: ArchitecturePreset[] = [
         sessionStore: false,
       },
       infrastructure: {
-        docker: true,
+        docker: false,
         compose: false,
         systemd: false,
       },
