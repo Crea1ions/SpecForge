@@ -104,7 +104,7 @@
 ### À traiter
 - [ ] Support Docker d'un frontend statique (sans backend, `docker-infra` génère un Dockerfile placeholder)
 - [ ] `docker-infra` : `react-vite` est dans `compatibleWith` mais la brique exige `backend_runtime`
-- [ ] Supprimer les shims `src/engine/{bricks,generator,resolver}.ts` (aucun import détecté, seul `engine/presets.ts` est utilisé)
+- [x] Supprimer les ponts inutilisés `src/engine/{bricks,generator,resolver}.ts` (aucun import détecté ; `bricks.ts` exposait l'ancienne API `BRICK_LIBRARY` / `findBrickById`)
 - [ ] Double lockfile `bun.lock` / `package-lock.json` : n'en garder qu'un
 - [ ] `rust-web-app` est classée `frontend` dans le registre
 - [ ] `BrickRegistry.clone()` : commentaire « deep copy » mais copie superficielle
