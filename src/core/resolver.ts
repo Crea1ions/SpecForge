@@ -180,6 +180,10 @@ const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
   const hasBrick = (brickId: string): boolean =>
     activeBricks.some((brick) => brick.id === brickId);
 
+  // The single backend runtime brick (rust-backend, python-backend, ...), if any.
+  const backendBrick: string | null =
+    activeBricks.find((brick) => brick.category === 'backend')?.id ?? null;
+
   const addEdge = (
     fromBrick: string,
     toBrick: string,
@@ -207,11 +211,7 @@ const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
   }
 
   // Generic backend/API relationship
-  if (hasBrick('rust-backend') || hasBrick('python-backend')) {
-    const backendBrick = hasBrick('rust-backend')
-      ? 'rust-backend'
-      : 'python-backend';
-
+  if (backendBrick) {
     addEdge(
       backendBrick,
       'rest-api',
@@ -235,12 +235,6 @@ const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
     // SQLite/SQLx persistence is part of the rust-web-app skeleton.
     // No separate sqlite-storage brick is required.
   } else {
-    const backendBrick = hasBrick('rust-backend')
-      ? 'rust-backend'
-      : hasBrick('python-backend')
-        ? 'python-backend'
-        : null;
-
     if (backendBrick && hasBrick('sqlite-storage')) {
       addEdge(
         backendBrick,
@@ -276,13 +270,8 @@ const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
       'GitHub Actions'
     );
   } else {
-    const runtimeBrick = hasBrick('rust-backend')
-      ? 'rust-backend'
-      : hasBrick('python-backend')
-        ? 'python-backend'
-        : hasBrick('react-vite')
-          ? 'react-vite'
-          : null;
+    const runtimeBrick =
+      backendBrick ?? (hasBrick('react-vite') ? 'react-vite' : null);
 
     if (runtimeBrick) {
       addEdge(
