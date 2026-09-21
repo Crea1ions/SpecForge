@@ -1,0 +1,10 @@
+{
+  "_brick-order": "fb50ee66229fb83326edbaacbd4314a4e6ef0e0c4e1136501827bda2c3a09d08",
+  "rust-web-app": "44dd9279ac1f6f237c3b6132a1345926311f3b003e93dc8bc6b08d0270b31ba4",
+  "rust-react-postgres": "6b8ad6c87371dbffa03b86332bdc45fbf782f229f0d009119fada3ad13c6f3a4",
+  "rust-tauri-react": "05f3b7312a9b0222779baec07b7240153197c24ae644d4db44f3f9c03269f7e1",
+  "rust-backend-only": "a1ee1a1c57352177bff00005947c203643a3eab930e4da3f87c8db7776becd6a",
+  "react-frontend-only": "f519dd96c874ae95c04a05dc482f5d1e00e07b96d5732592d793c4dc76df83df",
+  "rust-web-frontend": "775d5762b7f608ebefc9b821499a874f94899f1c0ee0a771fa28d56a01ea9337",
+  "rust-dioxus-mobile": "752c50734a31852d0427d135574eb3594b623fda2141baf8e79227ed4c5be110"
+}
