@@ -19,6 +19,20 @@ import {
 import { BrickRegistry, defaultRegistry } from './registry';
 import { validateSpecification } from './validator';
 
+/**
+ * Template-owned skeleton brick, or undefined to use the generic path.
+ * Skeletons are profile-specific: only the Rust profile owns them today.
+ */
+function selectSkeleton(spec: ProjectSpecification): string | undefined {
+  if (spec.profile !== 'rust') return undefined;
+  if (spec.template === 'web-app') return 'rust-web-app';
+  if (spec.template === 'web-frontend' && spec.frontend.framework === 'askama') {
+    return 'rust-web-frontend';
+  }
+  if (spec.template === 'mobile') return 'rust-dioxus-mobile';
+  return undefined;
+}
+
 export function resolveArchitecture(
   spec: ProjectSpecification,
   registry: BrickRegistry = defaultRegistry
@@ -28,13 +42,10 @@ export function resolveArchitecture(
   // 1. Select the template-owned skeleton first.
   // Templates such as web-app own their complete base architecture;
   // generic bricks are only added when they represent optional capabilities.
-  if (spec.template === 'web-app') {
-      activeBrickIds.push('rust-web-app');
-    } else if (spec.template === 'web-frontend' && spec.frontend.framework === 'askama') {
-      activeBrickIds.push('rust-web-frontend');
-    } else if (spec.template === 'mobile') {
-      activeBrickIds.push('rust-dioxus-mobile');
-    } else {
+  const skeletonId = selectSkeleton(spec);
+  if (skeletonId) {
+    activeBrickIds.push(skeletonId);
+  } else {
     if (spec.backend.enabled) {
       if (spec.backend.language === 'rust') activeBrickIds.push('rust-backend');
       if (spec.backend.language === 'python') activeBrickIds.push('python-backend');
