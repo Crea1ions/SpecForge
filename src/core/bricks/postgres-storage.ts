@@ -12,6 +12,9 @@ export const postgresStorageBrick: BrickDefinition = {
   provides: ['sql_storage', 'distributed_persistence', 'acid_transactions'],
   requires: ['backend_runtime'],
   applies: [{ database: { enabled: true, type: 'postgresql' } }],
+  links: [
+    { from: [{ category: 'backend' }], label: 'Connection Pool', protocol: 'TCP / SQLx Protocol' },
+  ],
   compatibleWith: ['rust-backend', 'python-backend', 'docker-infra'],
   conflictsWith: ['sqlite-storage', 'tauri-desktop'],
   options: [],

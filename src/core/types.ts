@@ -128,6 +128,16 @@ export interface GenerationContext {
   decisions: ArchitecturalDecision[];
 }
 
+/** A brick id, or the first active brick of a category. */
+export type BrickLinkSource = string | { category: BrickCategory };
+
+export interface BrickLink {
+  /** Sources by priority: the edge starts from the first active brick that matches. */
+  from: BrickLinkSource[];
+  label: string;
+  protocol?: string;
+}
+
 export interface BrickDefinition {
   id: string;
   name: string;
@@ -148,6 +158,8 @@ export interface BrickDefinition {
   subsumes?: BrickCategory[];
   /** Graph layer override; defaults to a category-based mapping when absent. */
   layer?: 'client' | 'gateway' | 'app' | 'data' | 'ops';
+  /** Incoming graph edges, declared on the target: each link yields at most one edge, from the first active source. */
+  links?: BrickLink[];
   generateFiles?: (ctx: GenerationContext) => GeneratedFile[];
   generateDecisions?: (ctx: GenerationContext) => ArchitecturalDecision[];
 }

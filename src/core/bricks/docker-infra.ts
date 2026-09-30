@@ -12,6 +12,9 @@ export const dockerInfraBrick: BrickDefinition = {
   provides: ['container_image', 'compose_orchestration'],
   requires: ['backend_runtime'],
   applies: [{ infrastructure: { docker: true } }],
+  links: [
+    { from: ['rust-web-app', { category: 'backend' }, 'react-vite'], label: 'Container Runtime', protocol: 'Docker' },
+  ],
   compatibleWith: ['rust-backend', 'python-backend', 'react-vite', 'postgres-storage'],
   conflictsWith: ['tauri-desktop'],
   options: [],

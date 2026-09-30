@@ -12,6 +12,11 @@ export const restApiBrick: BrickDefinition = {
   provides: ['rest_server', 'json_serialization', 'health_probes'],
   requires: ['backend_runtime'],
   applies: [{ api: { style: 'rest' } }],
+  links: [
+    { from: ['rust-web-app'], label: 'HTTP API', protocol: 'HTTP/JSON' },
+    { from: [{ category: 'backend' }], label: 'API', protocol: 'HTTP/JSON' },
+    { from: ['react-vite'], label: 'Fetch API', protocol: 'HTTP/JSON' },
+  ],
   compatibleWith: ['rust-backend', 'python-backend', 'react-vite'],
   conflictsWith: [],
   options: [],

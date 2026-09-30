@@ -97,116 +97,25 @@ for (const brick of activeBricks) {
     });
   }
 
-  const hasBrick = (brickId: string): boolean =>
-    activeBricks.some((brick) => brick.id === brickId);
+  // Edges are declared on the target brick (`links`). Each link yields at most one
+  // edge, from the first active source: a brick id, or the first brick of a category.
+  for (const target of activeBricks) {
+    for (const link of target.links ?? []) {
+      let source: BrickDefinition | undefined;
+      for (const from of link.from) {
+        source = activeBricks.find((b) =>
+          typeof from === 'string' ? b.id === from : b.category === from.category
+        );
+        if (source) break;
+      }
+      if (!source) continue;
 
-  // The single backend runtime brick (rust-backend, python-backend, ...), if any.
-  const backendBrick: string | null =
-    activeBricks.find((brick) => brick.category === 'backend')?.id ?? null;
-
-  const addEdge = (
-    fromBrick: string,
-    toBrick: string,
-    label: string,
-    protocol?: string
-  ): void => {
-    if (!hasBrick(fromBrick) || !hasBrick(toBrick)) return;
-
-    edges.push({
-      from: `node-${fromBrick}`,
-      to: `node-${toBrick}`,
-      label,
-      ...(protocol ? { protocol } : {}),
-    });
-  };
-
-  // Core application flow
-  if (hasBrick('rust-web-app')) {
-    addEdge(
-      'rust-web-app',
-      'rest-api',
-      'HTTP API',
-      'HTTP/JSON'
-    );
-  }
-
-  // Generic backend/API relationship
-  if (backendBrick) {
-    addEdge(
-      backendBrick,
-      'rest-api',
-      'API',
-      'HTTP/JSON'
-    );
-  }
-
-  // Frontend/API relationship for the legacy compositional architecture
-  if (hasBrick('react-vite')) {
-    addEdge(
-      'react-vite',
-      'rest-api',
-      'Fetch API',
-      'HTTP/JSON'
-    );
-  }
-
-  // Persistence relationships
-  if (hasBrick('rust-web-app')) {
-    // SQLite/SQLx persistence is part of the rust-web-app skeleton.
-    // No separate sqlite-storage brick is required.
-  } else {
-    if (backendBrick && hasBrick('sqlite-storage')) {
-      addEdge(
-        backendBrick,
-        'sqlite-storage',
-        'Connection Pool',
-        'Direct File I/O'
-      );
-    }
-
-    if (backendBrick && hasBrick('postgres-storage')) {
-      addEdge(
-        backendBrick,
-        'postgres-storage',
-        'Connection Pool',
-        'TCP / SQLx Protocol'
-      );
-    }
-  }
-
-  // Optional infrastructure and quality capabilities
-  if (hasBrick('rust-web-app')) {
-    addEdge(
-      'rust-web-app',
-      'docker-infra',
-      'Container Runtime',
-      'Docker'
-    );
-
-    addEdge(
-      'rust-web-app',
-      'quality-suite',
-      'Quality Pipeline',
-      'GitHub Actions'
-    );
-  } else {
-    const runtimeBrick =
-      backendBrick ?? (hasBrick('react-vite') ? 'react-vite' : null);
-
-    if (runtimeBrick) {
-      addEdge(
-        runtimeBrick,
-        'docker-infra',
-        'Container Runtime',
-        'Docker'
-      );
-
-      addEdge(
-        runtimeBrick,
-        'quality-suite',
-        'Quality Pipeline',
-        'GitHub Actions'
-      );
+      edges.push({
+        from: `node-${source.id}`,
+        to: `node-${target.id}`,
+        label: link.label,
+        ...(link.protocol ? { protocol: link.protocol } : {}),
+      });
     }
   }
 

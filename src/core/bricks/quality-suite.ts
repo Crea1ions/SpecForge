@@ -12,6 +12,9 @@ export const qualitySuiteBrick: BrickDefinition = {
   provides: ['ci_pipeline', 'linter_config', 'unit_tests'],
   requires: [],
   applies: [{ quality: { ci: true } }, { quality: { tests: true } }, { quality: { lint: true } }],
+  links: [
+    { from: ['rust-web-app', { category: 'backend' }, 'react-vite'], label: 'Quality Pipeline', protocol: 'GitHub Actions' },
+  ],
   compatibleWith: ['rust-backend', 'python-backend', 'react-vite', 'tauri-desktop'],
   conflictsWith: [],
   options: [],
