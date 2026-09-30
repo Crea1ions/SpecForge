@@ -15,6 +15,15 @@ import {
 } from 'lucide-react';
 import { ApplicationTemplate, ProjectSpecification, ResolvedArchitecture } from '../types/spec';
 import { findPreset } from '../engine/presets';
+import {
+  mergeSection,
+  sanitizeSlug,
+  setBackendLanguage,
+  setDatabaseType,
+  setAuthEnabled,
+  setDockerEnabled,
+  applyTemplatePreset,
+} from '../core/spec-edit';
 
 interface ProjectWizardProps {
   spec: ProjectSpecification;
@@ -27,16 +36,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, ar
     key: K,
     val: Partial<ProjectSpecification[K]>
   ) => {
-    const currentValue = spec[key];
-    const updatedValue =
-      typeof currentValue === 'object' && currentValue !== null
-        ? { ...currentValue, ...val }
-        : val;
-
-    onChange({
-      ...spec,
-      [key]: updatedValue,
-    });
+    onChange(mergeSection(spec, key, val));
   };
 
 const handleTemplateChange = (template: ApplicationTemplate) => {
@@ -46,23 +46,7 @@ const handleTemplateChange = (template: ApplicationTemplate) => {
       return;
     }
 
-    const newSlug = preset.spec.project.slug;
-    const defaultIdentifier =
-      spec.project.identifier && !spec.project.identifier.startsWith('com.example.')
-        ? spec.project.identifier
-        : `com.acme.${newSlug.replace(/[^a-z0-9]/g, '')}`;
-
-    onChange({
-      ...preset.spec,
-      project: {
-        ...spec.project,
-        name: preset.spec.project.name,
-        slug: newSlug,
-        identifier: template === 'mobile' ? defaultIdentifier : spec.project.identifier,
-        description: preset.spec.project.description,
-        type: preset.spec.project.type,
-      },
-    });
+    onChange(applyTemplatePreset(spec, template, preset));
   };
 
   const errors = architecture.issues.filter((i) => i.severity === 'error');
@@ -167,9 +151,7 @@ const handleTemplateChange = (template: ApplicationTemplate) => {
               type="text"
               value={spec.project.slug}
               onChange={(e) =>
-                updateSpec('project', {
-                  slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-                })
+                updateSpec('project', { slug: sanitizeSlug(e.target.value) })
               }
               className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-indigo-500"
               placeholder="ex: lexi-core"
@@ -289,10 +271,7 @@ const handleTemplateChange = (template: ApplicationTemplate) => {
                 <select
                   value={spec.backend.language}
                   onChange={(e) =>
-                    updateSpec('backend', {
-                      language: e.target.value as any,
-                      framework: e.target.value === 'rust' ? 'axum' : 'fastapi',
-                    })
+                    onChange(setBackendLanguage(spec, e.target.value as any))
                   }
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
                 >
@@ -438,10 +417,7 @@ const handleTemplateChange = (template: ApplicationTemplate) => {
                 <select
                   value={spec.database.type}
                   onChange={(e) =>
-                    updateSpec('database', {
-                      type: e.target.value as any,
-                      orm: 'sqlx',
-                    })
+                    onChange(setDatabaseType(spec, e.target.value as any))
                   }
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
                 >
@@ -503,10 +479,7 @@ const handleTemplateChange = (template: ApplicationTemplate) => {
                   type="checkbox"
                   checked={spec.authentication.enabled}
                   onChange={(e) =>
-                    updateSpec('authentication', {
-                      enabled: e.target.checked,
-                      provider: e.target.checked ? 'jwt' : 'none',
-                    })
+                    onChange(setAuthEnabled(spec, e.target.checked))
                   }
                   className="rounded bg-neutral-900 border-neutral-700 text-purple-600 focus:ring-0"
                 />
@@ -540,10 +513,7 @@ const handleTemplateChange = (template: ApplicationTemplate) => {
                 type="checkbox"
                 checked={spec.infrastructure.docker}
                 onChange={(e) =>
-                  updateSpec('infrastructure', {
-                    docker: e.target.checked,
-                    compose: e.target.checked ? spec.infrastructure.compose : false,
-                  })
+                  onChange(setDockerEnabled(spec, e.target.checked))
                 }
                 className="rounded bg-neutral-900 border-neutral-700 text-blue-600 focus:ring-0"
               />
