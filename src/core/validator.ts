@@ -146,14 +146,21 @@ export function validateSpecification(
     });
   }
 
-  if (spec.backend.enabled && spec.backend.language === 'rust' && spec.backend.framework !== 'axum') {
+  // Framework support is declared by the registry brick owning this backend language,
+  // not by the active bricks: a subsuming brick (rust-web-app) must not hide the error.
+  const stackBrick = spec.backend.enabled
+    ? registry.getAll().find((b) => b.backendStack?.language === spec.backend.language)
+    : undefined;
+  const stack = stackBrick?.backendStack;
+  if (stackBrick && stack && !stack.frameworks.includes(spec.backend.framework)) {
+    const lang = stack.language.charAt(0).toUpperCase() + stack.language.slice(1);
     issues.push({
-      id: `unsupported-framework-rust-${spec.backend.framework}`,
+      id: `unsupported-framework-${stack.language}-${spec.backend.framework}`,
       severity: 'error',
-      title: `Framework Rust non supporté (${spec.backend.framework})`,
-      message: `Le framework '${spec.backend.framework}' n'est pas supporté pour le backend Rust. Seul 'axum' est supporté actuellement par la brique rust-backend.`,
+      title: `Framework ${lang} non supporté (${spec.backend.framework})`,
+      message: `Le framework '${spec.backend.framework}' n'est pas supporté pour le backend ${lang}. Seul '${stack.frameworks[0]}' est supporté actuellement par la brique ${stackBrick.id}.`,
       source: 'configuration',
-      fixSuggestion: "Définissez 'backend.framework: axum' dans la spécification.",
+      fixSuggestion: `Définissez 'backend.framework: ${stack.frameworks[0]}' dans la spécification.`,
     });
   }
 

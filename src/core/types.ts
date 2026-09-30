@@ -160,6 +160,8 @@ export interface BrickDefinition {
   layer?: 'client' | 'gateway' | 'app' | 'data' | 'ops';
   /** Incoming graph edges, declared on the target: each link yields at most one edge, from the first active source. */
   links?: BrickLink[];
+  /** Web frameworks this brick supports for one backend language (drives the validator). */
+  backendStack?: { language: BackendConfig['language']; frameworks: string[] };
   generateFiles?: (ctx: GenerationContext) => GeneratedFile[];
   generateDecisions?: (ctx: GenerationContext) => ArchitecturalDecision[];
 }

@@ -12,6 +12,7 @@ export const rustBackendBrick: BrickDefinition = {
   provides: ['backend_runtime', 'async_runtime', 'memory_safe_core'],
   requires: [],
   applies: [{ backend: { enabled: true, language: 'rust' } }],
+  backendStack: { language: 'rust', frameworks: ['axum'] },
   compatibleWith: ['react-vite', 'tauri-desktop', 'sqlite-storage', 'postgres-storage', 'rest-api', 'docker-infra'],
   conflictsWith: ['python-backend'],
   options: [
