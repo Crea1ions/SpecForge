@@ -18,92 +18,14 @@ import {
 } from './types';
 import { BrickRegistry, defaultRegistry } from './registry';
 import { validateSpecification } from './validator';
-
-/**
- * Template-owned skeleton brick, or undefined to use the generic path.
- * Skeletons are profile-specific: only the Rust profile owns them today.
- */
-function selectSkeleton(spec: ProjectSpecification): string | undefined {
-  if (spec.profile !== 'rust') return undefined;
-  if (spec.template === 'web-app') return 'rust-web-app';
-  if (spec.template === 'web-frontend' && spec.frontend.framework === 'askama') {
-    return 'rust-web-frontend';
-  }
-  if (spec.template === 'mobile') return 'rust-dioxus-mobile';
-  return undefined;
-}
+import { selectByData } from './select';
 
 export function resolveArchitecture(
   spec: ProjectSpecification,
   registry: BrickRegistry = defaultRegistry
 ): ResolvedArchitecture {
-  const activeBrickIds: string[] = [];
-
-  // 1. Select the template-owned skeleton first.
-  // Templates such as web-app own their complete base architecture;
-  // generic bricks are only added when they represent optional capabilities.
-  const skeletonId = selectSkeleton(spec);
-  if (skeletonId) {
-    activeBrickIds.push(skeletonId);
-  } else {
-    if (spec.backend.enabled) {
-      if (spec.backend.language === 'rust') activeBrickIds.push('rust-backend');
-      if (spec.backend.language === 'python') activeBrickIds.push('python-backend');
-    }
-
-    if (spec.frontend.enabled) {
-      if (spec.frontend.framework === 'react') {
-        activeBrickIds.push('react-vite');
-      }
-    }
-
-    if (spec.frontend.tauri && spec.project.type === 'desktop') {
-      activeBrickIds.push('tauri-desktop');
-    }
-
-    if (spec.database.enabled) {
-      if (spec.database.type === 'sqlite') activeBrickIds.push('sqlite-storage');
-      if (spec.database.type === 'postgresql') activeBrickIds.push('postgres-storage');
-    }
-  }
-
-  if (spec.api.style === 'rest') {
-    activeBrickIds.push('rest-api');
-  }
-
-  if (spec.api.openapi) {
-    activeBrickIds.push('openapi');
-  }
-
-  if (spec.authentication.enabled) {
-    activeBrickIds.push('jwt-auth');
-  }
-
-  if (spec.infrastructure.docker) {
-    activeBrickIds.push('docker-infra');
-  }
-
-  if (spec.infrastructure.systemd) {
-    activeBrickIds.push('systemd-infra');
-  }
-
-  if (spec.quality.ci || spec.quality.tests || spec.quality.lint) {
-    activeBrickIds.push('quality-suite');
-  }
-
-  if (spec.documentation.readme) {
-    activeBrickIds.push('docs-pack');
-  }
-
-  if (spec.documentation.workStructure) {
-    activeBrickIds.push('work-structure');
-  }
-
-  // Deduplicate and lookup active bricks
-  const uniqueBrickIds = Array.from(new Set(activeBrickIds));
-  const activeBricks: BrickDefinition[] = uniqueBrickIds
-    .map((id) => registry.get(id))
-    .filter((b): b is BrickDefinition => Boolean(b));
+  // 1. Select active bricks from their declarative `applies` / `subsumes` data.
+  const activeBricks: BrickDefinition[] = selectByData(spec, registry);
 
   // 2. Validate Specification & Constraints
   const issues = validateSpecification(spec, activeBricks, registry);
@@ -141,28 +63,26 @@ for (const brick of activeBricks) {
   const nodes: ArchitectureNode[] = [];
   const edges: ArchitectureEdge[] = [];
 
-const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
-  if (brick.id === 'rust-web-app') {
-    return 'app';
-  }
+  const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
+    if (brick.layer) return brick.layer;
 
-  switch (brick.category) {
-    case 'frontend':
-      return 'client';
-    case 'api':
-      return 'gateway';
-    case 'backend':
-      return 'app';
-    case 'database':
-      return 'data';
-    case 'infrastructure':
-    case 'quality':
-    case 'documentation':
-      return 'ops';
-    default:
-      return 'app';
-  }
-};
+    switch (brick.category) {
+      case 'frontend':
+        return 'client';
+      case 'api':
+        return 'gateway';
+      case 'backend':
+        return 'app';
+      case 'database':
+        return 'data';
+      case 'infrastructure':
+      case 'quality':
+      case 'documentation':
+        return 'ops';
+      default:
+        return 'app';
+    }
+  };
 
   for (const brick of activeBricks) {
     nodes.push({
