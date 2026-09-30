@@ -21,7 +21,6 @@ export const rustWebFrontendBrick: BrickDefinition = {
   requires: [],
   applies: [{ profile: 'rust', template: 'web-frontend', frontend: { framework: 'askama' } }],
   subsumes: ['backend', 'frontend', 'database'],
-  compatibleWith: [],
   conflictsWith: ['react-vite', 'tauri-desktop'],
   options: [],
   templateFiles: [

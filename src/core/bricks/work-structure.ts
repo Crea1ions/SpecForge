@@ -12,7 +12,6 @@ export const workStructureBrick: BrickDefinition = {
   provides: ['project_work_structure'],
   requires: [],
   applies: [{ documentation: { workStructure: true } }],
-  compatibleWith: [],
   conflictsWith: [],
   options: [],
   templateFiles: [

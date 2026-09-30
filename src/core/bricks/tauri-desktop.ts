@@ -13,7 +13,6 @@ export const tauriDesktopBrick: BrickDefinition = {
   provides: ['desktop_runtime', 'backend_runtime', 'native_fs_access', 'system_tray'],
   requires: ['react-vite'],
   applies: [{ frontend: { tauri: true }, project: { type: 'desktop' } }],
-  compatibleWith: ['rust-backend', 'react-vite', 'sqlite-storage'],
   conflictsWith: ['python-backend', 'docker-infra'],
   options: [
     {

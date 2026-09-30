@@ -3,7 +3,6 @@
  * Each brick is an autonomous software component that declares:
  * - provides: what capabilities it brings
  * - requires: what capabilities it strictly depends on
- * - compatibleWith: compatible peers
  * - conflictsWith: conflicting peers
  * - generateFiles: its own code & template generation logic
  * - generateDecisions: its contextual architectural decisions (ADRs)

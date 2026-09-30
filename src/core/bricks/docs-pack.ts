@@ -12,7 +12,6 @@ export const docsPackBrick: BrickDefinition = {
   provides: ['dev_documentation'],
   requires: [],
   applies: [{ documentation: { readme: true } }],
-  compatibleWith: [],
   conflictsWith: [],
   options: [],
   templateFiles: ['README.md'],

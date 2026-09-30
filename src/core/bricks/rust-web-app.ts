@@ -26,13 +26,6 @@ export const rustWebAppBrick: BrickDefinition = {
   applies: [{ profile: 'rust', template: 'web-app' }],
   subsumes: ['backend', 'frontend', 'database'],
   layer: 'app',
-  compatibleWith: [
-    'rest-api',
-    'docker-infra',
-    'quality-suite',
-    'docs-pack',
-    'work-structure',
-  ],
   conflictsWith: [
     'react-vite',
     'tauri-desktop',

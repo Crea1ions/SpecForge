@@ -12,7 +12,6 @@ export const jwtAuthBrick: BrickDefinition = {
   provides: ['jwt_authentication', 'token_authentication'],
   requires: ['backend_runtime'],
   applies: [{ authentication: { enabled: true } }],
-  compatibleWith: ['rust-backend', 'python-backend', 'rest-api', 'react-vite'],
   conflictsWith: [],
   options: [],
   templateFiles: ['src/auth.rs'],

@@ -15,7 +15,6 @@ export const sqliteStorageBrick: BrickDefinition = {
   links: [
     { from: [{ category: 'backend' }], label: 'Connection Pool', protocol: 'Direct File I/O' },
   ],
-  compatibleWith: ['rust-backend', 'python-backend', 'tauri-desktop'],
   conflictsWith: ['postgres-storage'],
   options: [],
   templateFiles: ['src/db.rs', 'migrations/0001_initial.sql'],

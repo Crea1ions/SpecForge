@@ -17,7 +17,6 @@ export const restApiBrick: BrickDefinition = {
     { from: [{ category: 'backend' }], label: 'API', protocol: 'HTTP/JSON' },
     { from: ['react-vite'], label: 'Fetch API', protocol: 'HTTP/JSON' },
   ],
-  compatibleWith: ['rust-backend', 'python-backend', 'react-vite'],
   conflictsWith: [],
   options: [],
   templateFiles: ['src/api.rs'],

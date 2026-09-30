@@ -147,7 +147,6 @@ export interface BrickDefinition {
   iconName: string;
   provides: string[];
   requires: string[];
-  compatibleWith: string[];
   conflictsWith: string[];
   options: BrickOption[];
   templateFiles: string[];

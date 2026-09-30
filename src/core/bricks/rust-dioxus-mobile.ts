@@ -37,7 +37,6 @@ export const rustDioxusMobileBrick: BrickDefinition = {
   requires: [],
   applies: [{ profile: 'rust', template: 'mobile' }],
   subsumes: ['backend', 'frontend', 'database'],
-  compatibleWith: [],
   conflictsWith: ['react-vite', 'tauri-desktop'],
   options: [],
   templateFiles: [

@@ -15,7 +15,6 @@ export const postgresStorageBrick: BrickDefinition = {
   links: [
     { from: [{ category: 'backend' }], label: 'Connection Pool', protocol: 'TCP / SQLx Protocol' },
   ],
-  compatibleWith: ['rust-backend', 'python-backend', 'docker-infra'],
   conflictsWith: ['sqlite-storage', 'tauri-desktop'],
   options: [],
   templateFiles: ['src/db.rs', 'migrations/0001_initial.sql'],

@@ -13,7 +13,6 @@ export const pythonBackendBrick: BrickDefinition = {
   requires: [],
   applies: [{ backend: { enabled: true, language: 'python' } }],
   backendStack: { language: 'python', frameworks: ['fastapi'] },
-  compatibleWith: ['react-vite', 'sqlite-storage', 'postgres-storage', 'rest-api', 'docker-infra'],
   conflictsWith: ['rust-backend'],
   options: [
     {
