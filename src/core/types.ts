@@ -227,3 +227,15 @@ export interface ResolvedArchitecture {
     estimatedSetupTimeMin: number;
   };
 }
+
+/**
+ * Declarative pattern over a ProjectSpecification.
+ * - scalar: must equal the spec value
+ * - array: list of accepted values (OR)
+ * - object: matched key by key (AND); absent or undefined keys are unconstrained
+ */
+export type SpecPattern<T = ProjectSpecification> = {
+  [K in keyof T]?: [T[K]] extends [object]
+    ? SpecPattern<T[K]>
+    : T[K] | readonly T[K][];
+};
