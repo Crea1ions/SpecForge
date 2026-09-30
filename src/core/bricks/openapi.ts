@@ -11,6 +11,7 @@ export const openapiBrick: BrickDefinition = {
   iconName: 'FileJson',
   provides: ['openapi_contract', 'api_documentation'],
   requires: ['rest_server'],
+  applies: [{ api: { openapi: true } }],
   compatibleWith: ['rust-backend', 'python-backend', 'rest-api', 'react-vite'],
   conflictsWith: [],
   options: [],

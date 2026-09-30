@@ -142,6 +142,12 @@ export interface BrickDefinition {
   options: BrickOption[];
   templateFiles: string[];
   tags: string[];
+  /** OR of SpecPattern: the brick is a candidate when the spec matches any one of them. Absent = never auto-selected by pattern (e.g. legacy/manual bricks). */
+  applies?: SpecPattern[];
+  /** Categories this brick fully owns when active: sibling candidates in those categories are dropped. */
+  subsumes?: BrickCategory[];
+  /** Graph layer override; defaults to a category-based mapping when absent. */
+  layer?: 'client' | 'gateway' | 'app' | 'data' | 'ops';
   generateFiles?: (ctx: GenerationContext) => GeneratedFile[];
   generateDecisions?: (ctx: GenerationContext) => ArchitecturalDecision[];
 }

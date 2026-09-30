@@ -11,6 +11,7 @@ export const dockerInfraBrick: BrickDefinition = {
   iconName: 'Box',
   provides: ['container_image', 'compose_orchestration'],
   requires: ['backend_runtime'],
+  applies: [{ infrastructure: { docker: true } }],
   compatibleWith: ['rust-backend', 'python-backend', 'react-vite', 'postgres-storage'],
   conflictsWith: ['tauri-desktop'],
   options: [],

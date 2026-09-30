@@ -11,6 +11,7 @@ export const pythonBackendBrick: BrickDefinition = {
   iconName: 'FileCode2',
   provides: ['backend_runtime', 'ai_ready_core'],
   requires: [],
+  applies: [{ backend: { enabled: true, language: 'python' } }],
   compatibleWith: ['react-vite', 'sqlite-storage', 'postgres-storage', 'rest-api', 'docker-infra'],
   conflictsWith: ['rust-backend'],
   options: [

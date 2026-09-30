@@ -11,6 +11,7 @@ export const rustBackendBrick: BrickDefinition = {
   iconName: 'Cpu',
   provides: ['backend_runtime', 'async_runtime', 'memory_safe_core'],
   requires: [],
+  applies: [{ backend: { enabled: true, language: 'rust' } }],
   compatibleWith: ['react-vite', 'tauri-desktop', 'sqlite-storage', 'postgres-storage', 'rest-api', 'docker-infra'],
   conflictsWith: ['python-backend'],
   options: [

@@ -11,6 +11,7 @@ export const qualitySuiteBrick: BrickDefinition = {
   iconName: 'CheckCircle2',
   provides: ['ci_pipeline', 'linter_config', 'unit_tests'],
   requires: [],
+  applies: [{ quality: { ci: true } }, { quality: { tests: true } }, { quality: { lint: true } }],
   compatibleWith: ['rust-backend', 'python-backend', 'react-vite', 'tauri-desktop'],
   conflictsWith: [],
   options: [],

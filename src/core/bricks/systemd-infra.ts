@@ -11,6 +11,7 @@ export const systemdInfraBrick: BrickDefinition = {
   iconName: 'ServerCog',
   provides: ['systemd_service', 'linux_service'],
   requires: ['backend_runtime'],
+  applies: [{ infrastructure: { systemd: true } }],
   compatibleWith: ['rust-backend', 'python-backend'],
   conflictsWith: [],
   options: [],

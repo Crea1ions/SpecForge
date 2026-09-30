@@ -11,6 +11,7 @@ export const restApiBrick: BrickDefinition = {
   iconName: 'Network',
   provides: ['rest_server', 'json_serialization', 'health_probes'],
   requires: ['backend_runtime'],
+  applies: [{ api: { style: 'rest' } }],
   compatibleWith: ['rust-backend', 'python-backend', 'react-vite'],
   conflictsWith: [],
   options: [],

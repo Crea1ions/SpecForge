@@ -11,6 +11,7 @@ export const workStructureBrick: BrickDefinition = {
   iconName: 'FolderTree',
   provides: ['project_work_structure'],
   requires: [],
+  applies: [{ documentation: { workStructure: true } }],
   compatibleWith: [],
   conflictsWith: [],
   options: [],

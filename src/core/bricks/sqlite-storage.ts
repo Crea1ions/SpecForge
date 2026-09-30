@@ -11,6 +11,7 @@ export const sqliteStorageBrick: BrickDefinition = {
   iconName: 'Database',
   provides: ['sql_storage', 'embedded_persistence'],
   requires: ['backend_runtime'],
+  applies: [{ database: { enabled: true, type: 'sqlite' } }],
   compatibleWith: ['rust-backend', 'python-backend', 'tauri-desktop'],
   conflictsWith: ['postgres-storage'],
   options: [],

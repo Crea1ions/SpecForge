@@ -12,6 +12,7 @@ export const reactViteBrick: BrickDefinition = {
   iconName: 'Layout',
   provides: ['ui_client', 'spa_bundle'],
   requires: [],
+  applies: [{ frontend: { enabled: true, framework: 'react' } }],
   compatibleWith: ['rust-backend', 'python-backend', 'tauri-desktop', 'rest-api'],
   conflictsWith: [],
   options: [

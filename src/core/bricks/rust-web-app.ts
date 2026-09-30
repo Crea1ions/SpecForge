@@ -23,6 +23,9 @@ export const rustWebAppBrick: BrickDefinition = {
     'design_system',
   ],
   requires: [],
+  applies: [{ profile: 'rust', template: 'web-app' }],
+  subsumes: ['backend', 'frontend', 'database'],
+  layer: 'app',
   compatibleWith: [
     'rest-api',
     'docker-infra',

@@ -11,6 +11,7 @@ export const docsPackBrick: BrickDefinition = {
   iconName: 'BookOpen',
   provides: ['dev_documentation'],
   requires: [],
+  applies: [{ documentation: { readme: true } }],
   compatibleWith: [],
   conflictsWith: [],
   options: [],
