@@ -19,11 +19,22 @@ import {
   mergeSection,
   sanitizeSlug,
   setBackendLanguage,
+  backendStacks,
   setDatabaseType,
   setAuthEnabled,
   setDockerEnabled,
   applyTemplatePreset,
 } from '../core/spec-edit';
+import { defaultRegistry } from '../core/registry';
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  rust: 'Rust (Tokio, mémoire garantie, binaire ultra-rapide)',
+  python: 'Python (FastAPI, Asyncio, écosystème IA/Data)',
+};
+const FRAMEWORK_LABELS: Record<string, string> = {
+  axum: 'Axum (Recommandé par la communauté Tokio)',
+  fastapi: 'FastAPI (Typage strict Pydantic + OpenAPI)',
+};
 
 interface ProjectWizardProps {
   spec: ProjectSpecification;
@@ -48,6 +59,10 @@ const handleTemplateChange = (template: ApplicationTemplate) => {
 
     onChange(applyTemplatePreset(spec, template, preset));
   };
+
+  const backendStackList = backendStacks(defaultRegistry);
+  const frameworkChoices =
+    backendStackList.find((o) => o.language === spec.backend.language)?.frameworks ?? [spec.backend.framework];
 
   const errors = architecture.issues.filter((i) => i.severity === 'error');
   const warnings = architecture.issues.filter((i) => i.severity === 'warning');
@@ -275,8 +290,11 @@ const handleTemplateChange = (template: ApplicationTemplate) => {
                   }
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
                 >
-                  <option value="rust">Rust (Tokio, mémoire garantie, binaire ultra-rapide)</option>
-                  <option value="python">Python (FastAPI, Asyncio, écosystème IA/Data)</option>
+                  {backendStackList.map((o) => (
+                    <option key={o.language} value={o.language}>
+                      {LANGUAGE_LABELS[o.language] ?? o.language}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -287,11 +305,11 @@ const handleTemplateChange = (template: ApplicationTemplate) => {
                   onChange={(e) => updateSpec('backend', { framework: e.target.value as any })}
                   className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
                 >
-                  {spec.backend.language === 'rust' ? (
-                    <option value="axum">Axum (Recommandé par la communauté Tokio)</option>
-                  ) : (
-                    <option value="fastapi">FastAPI (Typage strict Pydantic + OpenAPI)</option>
-                  )}
+                  {frameworkChoices.map((f) => (
+                    <option key={f} value={f}>
+                      {FRAMEWORK_LABELS[f] ?? f}
+                    </option>
+                  ))}
                 </select>
               </div>
 

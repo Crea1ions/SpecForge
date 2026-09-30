@@ -1,6 +1,7 @@
 import { deepStrictEqual } from 'assert';
 import { PRESETS, findPreset } from '../src/engine/presets';
 import * as E from '../src/core/spec-edit';
+import { BrickRegistry, defaultRegistry } from '../src/core/registry';
 
 // Verbatim copies of the legacy ProjectWizard logic (returns what was passed to onChange).
 const legacyUpdate = (spec: any, key: string, val: any) => {
@@ -73,4 +74,25 @@ for (const ident of ['', 'com.example.foo', 'org.real.app'])
     eq(E.applyTemplatePreset(s0, t as any, synth), legacy, `synth ${t}|${ident}`);
   }
 for (const s of ['a-b', 'a b', 'A_B', 'a--b']) eq(E.sanitizeSlug(s), legacySlug(s), `slug2 ${s}`);
+// C6b: derivation from the registry (a fake registry declares languages the legacy code never knew).
+const fake = new BrickRegistry([
+  { id: 'go-backend', backendStack: { language: 'go', frameworks: ['gin', 'echo'] } } as any,
+  { id: 'go-backend-2', backendStack: { language: 'go', frameworks: ['fiber'] } } as any,
+  { id: 'empty-backend', backendStack: { language: 'typescript', frameworks: [] } } as any,
+  { id: 'no-stack' } as any,
+]);
+const b0: any = (PRESETS as any[])[0].spec;
+eq(E.backendStacks(fake), [{ language: 'go', frameworks: ['gin', 'echo'] }, { language: 'typescript', frameworks: [] }], 'stacks fake (first wins, no-stack skipped)');
+eq(E.setBackendLanguage(b0, 'go' as any, fake).backend.framework, 'gin', 'fake go default');
+eq(E.setBackendLanguage(b0, 'go' as any, fake).backend.language, 'go', 'fake go language');
+eq(E.setBackendLanguage(b0, 'typescript' as any, fake).backend.framework, b0.backend.framework, 'empty frameworks keeps current');
+eq(E.setBackendLanguage(b0, 'rust' as any, fake).backend.framework, b0.backend.framework, 'undeclared language keeps current');
+eq(
+  E.backendStacks(defaultRegistry).map((o) => `${o.language}:${o.frameworks.join(',')}`).sort(),
+  ['python:fastapi', 'rust:axum'],
+  'stacks default registry'
+);
+const bFw: any = { ...b0, backend: { ...b0.backend, framework: 'fastapi' } };
+eq(E.setBackendLanguage(bFw, 'rust' as any, fake).backend.framework, 'fastapi', 'undeclared keeps current (non-axum)');
+eq(E.setBackendLanguage(bFw, 'typescript' as any, fake).backend.framework, 'fastapi', 'empty frameworks keeps current (non-axum)');
 console.log(process.exitCode ? 'ECHEC' : `OK ${n} comparaisons`);

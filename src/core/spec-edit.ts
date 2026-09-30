@@ -4,6 +4,7 @@
  */
 
 import { ApplicationTemplate, BackendConfig, ProjectSpecification } from './types';
+import { BrickRegistry, defaultRegistry } from './registry';
 
 /** Shallow-merge a patch into one spec section (a non-object section is replaced). */
 export function mergeSection<K extends keyof ProjectSpecification>(
@@ -20,8 +21,32 @@ export function sanitizeSlug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 }
 
-export function setBackendLanguage(spec: ProjectSpecification, language: BackendConfig['language']): ProjectSpecification {
-  return mergeSection(spec, 'backend', { language, framework: language === 'rust' ? 'axum' : 'fastapi' });
+export interface BackendStackOption {
+  language: BackendConfig['language'];
+  frameworks: string[];
+}
+
+/** Backend languages and frameworks declared by registry bricks (first declaration of a language wins, as in the validator). */
+export function backendStacks(registry: BrickRegistry = defaultRegistry): BackendStackOption[] {
+  const out: BackendStackOption[] = [];
+  for (const b of registry.getAll()) {
+    const st = b.backendStack;
+    if (st && !out.some((o) => o.language === st.language)) {
+      out.push({ language: st.language, frameworks: st.frameworks });
+    }
+  }
+  return out;
+}
+
+/** Switch backend language; the framework defaults to the first one the registry declares (current one if none). */
+export function setBackendLanguage(
+  spec: ProjectSpecification,
+  language: BackendConfig['language'],
+  registry: BrickRegistry = defaultRegistry
+): ProjectSpecification {
+  const stack = backendStacks(registry).find((o) => o.language === language);
+  const framework = (stack?.frameworks[0] ?? spec.backend.framework) as BackendConfig['framework'];
+  return mergeSection(spec, 'backend', { language, framework });
 }
 
 export function setDatabaseType(spec: ProjectSpecification, type: ProjectSpecification['database']['type']): ProjectSpecification {
