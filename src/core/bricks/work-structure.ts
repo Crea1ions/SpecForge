@@ -13,7 +13,6 @@ export const workStructureBrick: BrickDefinition = {
   requires: [],
   applies: [{ documentation: { workStructure: true } }],
   conflictsWith: [],
-  options: [],
   templateFiles: [
     'work/00-README.md',
     'work/01-VISION/Fiche-Produit.md',

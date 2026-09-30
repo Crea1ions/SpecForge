@@ -13,7 +13,6 @@ export const openapiBrick: BrickDefinition = {
   requires: ['rest_server'],
   applies: [{ api: { openapi: true } }],
   conflictsWith: [],
-  options: [],
   templateFiles: ['openapi.yaml'],
   tags: ['openapi', 'api', 'documentation', 'swagger'],
 

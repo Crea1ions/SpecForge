@@ -14,26 +14,6 @@ export const rustBackendBrick: BrickDefinition = {
   applies: [{ backend: { enabled: true, language: 'rust' } }],
   backendStack: { language: 'rust', frameworks: ['axum'] },
   conflictsWith: ['python-backend'],
-  options: [
-    {
-      key: 'framework',
-      label: 'Framework Web',
-      type: 'select',
-      default: 'axum',
-      options: [
-        { value: 'axum', label: 'Axum (Tokio officiel, routing moderne)' },
-        { value: 'actix-web', label: 'Actix-web (Ultra rapide, mature)' },
-      ],
-      description: 'Moteur de routage HTTP.',
-    },
-    {
-      key: 'port',
-      label: 'Port TCP',
-      type: 'number',
-      default: 8080,
-      description: 'Port d\'écoute du serveur.',
-    },
-  ],
   templateFiles: ['Cargo.toml', 'src/main.rs', 'src/config.rs'],
   tags: ['rust', 'tokio', 'axum', 'performance', 'safe'],
 

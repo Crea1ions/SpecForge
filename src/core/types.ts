@@ -113,15 +113,6 @@ export type BrickCategory =
   | 'quality'
   | 'documentation';
 
-export interface BrickOption {
-  key: string;
-  label: string;
-  type: 'string' | 'number' | 'boolean' | 'select';
-  default: unknown;
-  options?: { value: string; label: string }[];
-  description: string;
-}
-
 export interface GenerationContext {
   spec: ProjectSpecification;
   activeBricks: BrickDefinition[];
@@ -148,7 +139,6 @@ export interface BrickDefinition {
   provides: string[];
   requires: string[];
   conflictsWith: string[];
-  options: BrickOption[];
   templateFiles: string[];
   tags: string[];
   /** OR of SpecPattern: the brick is a candidate when the spec matches any one of them. Absent = never auto-selected by pattern (e.g. legacy/manual bricks). */

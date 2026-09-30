@@ -32,7 +32,6 @@ export const rustWebAppBrick: BrickDefinition = {
     'rust-web-frontend',
     'postgres-storage',
   ],
-  options: [],
   templateFiles: [
     'Cargo.toml',
     'src/main.rs',

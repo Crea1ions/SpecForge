@@ -16,7 +16,6 @@ export const dockerInfraBrick: BrickDefinition = {
     { from: ['rust-web-app', { category: 'backend' }, 'react-vite'], label: 'Container Runtime', protocol: 'Docker' },
   ],
   conflictsWith: ['tauri-desktop'],
-  options: [],
   templateFiles: ['Dockerfile', 'docker-compose.yml'],
   tags: ['docker', 'compose', 'containers'],
 

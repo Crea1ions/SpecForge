@@ -14,15 +14,6 @@ export const tauriDesktopBrick: BrickDefinition = {
   requires: ['react-vite'],
   applies: [{ frontend: { tauri: true }, project: { type: 'desktop' } }],
   conflictsWith: ['python-backend', 'docker-infra'],
-  options: [
-    {
-      key: 'identifier',
-      label: 'App Bundle Identifier',
-      type: 'string',
-      default: 'com.specforge.app',
-      description: 'Identifiant unique de paquet pour l\'OS.',
-    },
-  ],
 templateFiles: [
   'src-tauri/Cargo.toml',
   'src-tauri/build.rs',

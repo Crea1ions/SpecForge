@@ -14,15 +14,6 @@ export const pythonBackendBrick: BrickDefinition = {
   applies: [{ backend: { enabled: true, language: 'python' } }],
   backendStack: { language: 'python', frameworks: ['fastapi'] },
   conflictsWith: ['rust-backend'],
-  options: [
-    {
-      key: 'port',
-      label: 'Port HTTP',
-      type: 'number',
-      default: 8000,
-      description: 'Port d\'écoute Uvicorn.',
-    },
-  ],
   templateFiles: ['pyproject.toml', 'main.py', 'requirements.txt'],
   tags: ['python', 'fastapi', 'pydantic', 'asyncio'],
 

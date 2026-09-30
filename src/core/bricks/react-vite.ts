@@ -14,19 +14,6 @@ export const reactViteBrick: BrickDefinition = {
   requires: [],
   applies: [{ frontend: { enabled: true, framework: 'react' } }],
   conflictsWith: [],
-  options: [
-    {
-      key: 'styling',
-      label: 'Moteur CSS',
-      type: 'select',
-      default: 'tailwind',
-      options: [
-        { value: 'tailwind', label: 'Tailwind CSS (Classes utilitaires modernes)' },
-        { value: 'css', label: 'CSS Modules classiques' },
-      ],
-      description: 'Système de style.',
-    },
-  ],
   templateFiles: [
     'frontend/package.json',
     'frontend/index.html',

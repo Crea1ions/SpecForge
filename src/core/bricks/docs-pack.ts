@@ -13,7 +13,6 @@ export const docsPackBrick: BrickDefinition = {
   requires: [],
   applies: [{ documentation: { readme: true } }],
   conflictsWith: [],
-  options: [],
   templateFiles: ['README.md'],
   tags: ['docs', 'readme'],
 

@@ -13,7 +13,6 @@ export const systemdInfraBrick: BrickDefinition = {
   requires: ['backend_runtime'],
   applies: [{ infrastructure: { systemd: true } }],
   conflictsWith: [],
-  options: [],
   templateFiles: ['deploy/systemd/app.service'],
   tags: ['systemd', 'linux', 'service', 'deployment'],
 

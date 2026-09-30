@@ -18,7 +18,6 @@ export const restApiBrick: BrickDefinition = {
     { from: ['react-vite'], label: 'Fetch API', protocol: 'HTTP/JSON' },
   ],
   conflictsWith: [],
-  options: [],
   templateFiles: ['src/api.rs'],
   tags: ['rest', 'json', 'crud'],
 

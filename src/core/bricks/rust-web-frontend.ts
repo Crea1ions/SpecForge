@@ -22,7 +22,6 @@ export const rustWebFrontendBrick: BrickDefinition = {
   applies: [{ profile: 'rust', template: 'web-frontend', frontend: { framework: 'askama' } }],
   subsumes: ['backend', 'frontend', 'database'],
   conflictsWith: ['react-vite', 'tauri-desktop'],
-  options: [],
   templateFiles: [
     'Cargo.toml',
     'src/main.rs',

@@ -13,7 +13,6 @@ export const jwtAuthBrick: BrickDefinition = {
   requires: ['backend_runtime'],
   applies: [{ authentication: { enabled: true } }],
   conflictsWith: [],
-  options: [],
   templateFiles: ['src/auth.rs'],
   tags: ['auth', 'jwt', 'security', 'token'],
 

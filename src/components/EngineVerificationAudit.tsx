@@ -438,7 +438,6 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
         provides: ['probe_capability'],
         requires: [],
         conflictsWith: [],
-        options: [],
         templateFiles: [],
         tags: ['probe'],
       });
@@ -476,7 +475,6 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
         provides: ['cache_layer', 'in_memory_kv'],
         requires: ['backend_runtime'],
         conflictsWith: [],
-        options: [],
         templateFiles: ['src/cache.rs'],
         tags: ['redis', 'cache', 'custom'],
         generateFiles: (ctx) => [

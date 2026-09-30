@@ -16,7 +16,6 @@ export const sqliteStorageBrick: BrickDefinition = {
     { from: [{ category: 'backend' }], label: 'Connection Pool', protocol: 'Direct File I/O' },
   ],
   conflictsWith: ['postgres-storage'],
-  options: [],
   templateFiles: ['src/db.rs', 'migrations/0001_initial.sql'],
   tags: ['sqlite', 'sqlx', 'embedded', 'zero-config'],
 

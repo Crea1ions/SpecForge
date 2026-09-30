@@ -16,7 +16,6 @@ export const qualitySuiteBrick: BrickDefinition = {
     { from: ['rust-web-app', { category: 'backend' }, 'react-vite'], label: 'Quality Pipeline', protocol: 'GitHub Actions' },
   ],
   conflictsWith: [],
-  options: [],
   templateFiles: [
     '.github/workflows/ci.yml',
     '.gitignore',
