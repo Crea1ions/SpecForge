@@ -15,10 +15,14 @@ const snap = (spec: any): any => {
     const r: any = resolveArchitecture(spec);
     return {
       bricks: r.activeBricks.map((b: any) => b.id),
-      nodes: r.nodes.map((n: any) => `${n.id}@${n.layer}`),
-      edges: r.edges.map((e: any) => `${e.from}>${e.to}|${e.label}|${e.protocol ?? ''}`),
-      issues: r.issues.map((i: any) => `${i.severity}:${i.id}`),
-      adrs: r.decisions.map((d: any) => `${d.id}:${d.generatingBrick}`),
+      nodes: r.nodes.map((n: any) => `${n.id}@${n.layer}`).sort(),
+      edges: r.edges.map((e: any) => `${e.from}>${e.to}|${e.label}|${e.protocol ?? ''}`).sort(),
+      issues: r.issues.map((i: any) => `${i.severity}:${i.id}`).sort(),
+      // Compared by content, not by the resolver's positional counter (see resolveArchitecture):
+      // the numeric id is a display artifact, not a stable identifier.
+      adrs: r.decisions
+        .map((d: any) => `${d.generatingBrick}|${d.title}|${d.decision}`)
+        .sort(),
     };
   } catch (e: any) {
     return { throws: String(e?.message ?? e) };
