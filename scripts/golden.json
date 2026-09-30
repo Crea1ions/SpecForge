@@ -1,5 +1,5 @@
 {
-  "_brick-order": "fb50ee66229fb83326edbaacbd4314a4e6ef0e0c4e1136501827bda2c3a09d08",
+  "_brick-order": "6ef0dd42e84019eff62ec9acbd254a417b1408ddbcada469a512f893650f2158",
   "rust-web-app": "44dd9279ac1f6f237c3b6132a1345926311f3b003e93dc8bc6b08d0270b31ba4",
   "rust-react-postgres": "6b8ad6c87371dbffa03b86332bdc45fbf782f229f0d009119fada3ad13c6f3a4",
   "rust-tauri-react": "05f3b7312a9b0222779baec07b7240153197c24ae644d4db44f3f9c03269f7e1",
