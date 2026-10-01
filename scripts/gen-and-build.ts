@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, existsSync, mkdtempSync } from 'fs';
+import { mkdirSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { spawnSync } from 'child_process';
@@ -14,19 +14,22 @@ if (!preset) {
 }
 
 const dir = mkdtempSync(join(tmpdir(), `specforge-${id}-`));
+const finish = (code: number, message: string): never => {
+  console.log(message);
+  if (code === 0 && !keep) rmSync(dir, { recursive: true, force: true });
+  else console.log('Dossier conservé :', dir);
+  process.exit(code);
+};
+
 for (const f of generateProjectFiles(preset.spec) as any[]) {
   const dest = join(dir, f.path);
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, f.content);
 }
-console.log('Généré dans', dir);
 
-if (!existsSync(join(dir, 'package.json'))) {
-  console.log('SKIP : pas de package.json (profil non npm)');
-  process.exit(0);
-}
+if (!existsSync(join(dir, 'package.json'))) finish(0, 'SKIP : pas de package.json (profil non npm)');
 
 const run = (cmd: string, args: string[]) => spawnSync(cmd, args, { cwd: dir, stdio: 'inherit' }).status;
-if (run('npm', ['install', '--no-audit', '--no-fund']) !== 0) { console.log('FAIL : npm install'); process.exit(1); }
-if (run('npx', ['tsc', '--noEmit']) !== 0) { console.log('FAIL : tsc --noEmit'); process.exit(1); }
-console.log('OK : npm install + tsc --noEmit, preset', id);
+if (run('npm', ['install', '--no-audit', '--no-fund']) !== 0) finish(1, 'FAIL : npm install');
+if (run('npx', ['tsc', '--noEmit']) !== 0) finish(1, 'FAIL : tsc --noEmit');
+finish(0, `OK : npm install + tsc --noEmit, preset ${id}`);
