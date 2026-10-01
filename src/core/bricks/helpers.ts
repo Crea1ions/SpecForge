@@ -2,7 +2,7 @@
  * Helpers partagés par les briques : construction des GeneratedFile.
  */
 
-import { GeneratedFile } from '../types';
+import { BackendConfig, GeneratedFile, GenerationContext } from '../types';
 import { getContentByteLength } from '../utils';
 
 export function makeFile(
@@ -50,5 +50,24 @@ export function makeBinaryFile(
     brickVersion,
     reason,
     decisionRef,
+  };
+}
+
+/**
+ * Génération par langage de backend. La table est exhaustive : ajouter un langage
+ * à BackendConfig['language'] fait échouer tsc dans chaque brique qui l'utilise.
+ * 'none' = rien à générer (voulu). 'unimplemented' = pas encore écrit (renvoie []).
+ */
+export type LanguageGenerator =
+  | ((ctx: GenerationContext) => GeneratedFile[])
+  | 'none'
+  | 'unimplemented';
+
+export function byLanguage(
+  table: Record<BackendConfig['language'], LanguageGenerator>
+): (ctx: GenerationContext) => GeneratedFile[] {
+  return (ctx) => {
+    const impl = table[ctx.spec.backend.language];
+    return typeof impl === 'function' ? impl(ctx) : [];
   };
 }

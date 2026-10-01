@@ -1,5 +1,5 @@
 import { BrickDefinition, GeneratedFile } from '../types';
-import { makeFile } from './helpers';
+import { byLanguage, makeFile } from './helpers';
 
 // 7. JWT Authentication Brick
 export const jwtAuthBrick: BrickDefinition = {
@@ -35,10 +35,10 @@ export const jwtAuthBrick: BrickDefinition = {
     },
   ],
 
-  generateFiles: (ctx) => {
-    const files: GeneratedFile[] = [];
+  generateFiles: byLanguage({
+    rust: () => {
+      const files: GeneratedFile[] = [];
 
-    if (ctx.spec.backend.language === 'rust') {
       const authRs = `//! Authentification JWT
 //!
 //! Point d'intégration de l'authentification par JSON Web Token.
@@ -65,8 +65,10 @@ pub struct Claims {
           'Modèle de claims et point d’intégration de l’authentification JWT.'
         )
       );
-    }
-
-    return files;
-  },
+      return files;
+    },
+    typescript: 'unimplemented',
+    python: 'unimplemented',
+    go: 'unimplemented',
+  }),
 };
