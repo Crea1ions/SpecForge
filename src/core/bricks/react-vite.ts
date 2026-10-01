@@ -51,7 +51,7 @@ export const reactViteBrick: BrickDefinition = {
     // Proxy /api utile seulement si un serveur HTTP est réellement généré.
     const hasHttpBackend =
       spec.backend.enabled &&
-      ctx.activeBricks.some((b) => b.id === 'rest-api' || b.id === 'python-backend');
+      ctx.activeBricks.some((b) => b.id === 'rest-api' || b.id === 'python-backend' || b.id === 'typescript-backend');
 
     const pkg = `{
   "name": "${spec.project.slug}-frontend",
