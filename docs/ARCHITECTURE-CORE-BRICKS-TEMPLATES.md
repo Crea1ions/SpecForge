@@ -216,25 +216,29 @@ Son contrat actuel contient notamment :
 interface BrickDefinition {
   id: string;
   name: string;
-  category: string;
+  category: BrickCategory;
   version: string;
   description: string;
   iconName: string;
 
   provides: string[];
   requires: string[];
-  compatibleWith: string[];
   conflictsWith: string[];
 
-  options: BrickOption[];
   templateFiles: string[];
   tags: string[];
+
+  applies?: SpecPattern[];
+  subsumes?: BrickCategory[];
+  layer: 'client' | 'gateway' | 'app' | 'data' | 'ops';
+  links?: BrickLink[];
+  backendStack?: { language: string; frameworks: string[] };
 
   generateDecisions?: (
     ctx: GenerationContext
   ) => ArchitecturalDecision[];
 
-  generateFiles: (
+  generateFiles?: (
     ctx: GenerationContext
   ) => GeneratedFile[];
 }
@@ -276,11 +280,16 @@ rest_server
 La dépendance exprime une nécessité architecturale, pas simplement un
 fichier à copier.
 
-### 4.4 `compatibleWith`
+### 4.4 `applies` / `subsumes`
 
-Décrit les éléments avec lesquels la brique est prévue pour fonctionner.
+`applies` est une liste de motifs (`SpecPattern`) en OU : la brique est
+candidate lorsque la spécification correspond à l'un d'eux. Les clés
+d'un même motif sont en ET. Sans `applies`, la brique n'est jamais
+sélectionnée automatiquement.
 
-Cette propriété participe au modèle de compatibilité du Core.
+`subsumes` liste les catégories que la brique prend entièrement en
+charge lorsqu'elle est active : les autres candidates de ces catégories
+sont écartées.
 
 ### 4.5 `conflictsWith`
 
@@ -293,11 +302,18 @@ Décrit les fichiers associés à la brique.
 La liste constitue une information déclarative sur son périmètre de
 génération.
 
-### 4.7 `options`
+### 4.7 `layer` / `links` / `backendStack`
 
-Expose les options configurables propres à la brique.
+`layer` donne la couche du nœud de la brique dans le graphe
+(`client`, `gateway`, `app`, `data`, `ops`). Elle est obligatoire.
 
-Le modèle actuel permet notamment des options de type `select`.
+`links` déclare les arêtes entrantes, sur la brique cible. Chaque entrée
+produit au plus une arête, depuis la première source active de sa liste
+`from` (un id de brique, ou la première brique d'une catégorie).
+
+`backendStack` déclare, pour un langage de backend, les frameworks pris
+en charge. Le validateur s'en sert pour signaler un framework non
+supporté, y compris lorsque la brique est absorbée par une autre.
 
 ### 4.8 `generateFiles`
 
