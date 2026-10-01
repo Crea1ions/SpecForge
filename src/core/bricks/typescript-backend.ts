@@ -48,9 +48,13 @@ export const typescriptBackendBrick: BrickDefinition = {
         start: 'node dist/index.js',
         lint: 'tsc --noEmit',
       },
-      dependencies: { express: '^4.21.2' },
+      dependencies: {
+        express: '^4.21.2',
+        ...(spec.authentication.enabled ? { jsonwebtoken: '^9.0.3' } : {}),
+      },
       devDependencies: {
         '@types/express': '^4.17.21',
+        ...(spec.authentication.enabled ? { '@types/jsonwebtoken': '^9.0.10' } : {}),
         '@types/node': '^22.14.0',
         tsx: '^4.19.0',
         typescript: '^5.6.0',

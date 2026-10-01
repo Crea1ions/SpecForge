@@ -67,7 +67,47 @@ pub struct Claims {
       );
       return files;
     },
-    typescript: 'unimplemented',
+    typescript: () => {
+      const authTs = `// Authentification JWT
+// Point d'intégration de l'authentification par JSON Web Token.
+// La clé de signature est lue dans la variable d'environnement JWT_SECRET.
+
+import jwt from 'jsonwebtoken';
+
+export interface Claims {
+  sub: string;
+  exp: number;
+}
+
+function secret(): string {
+  const value = process.env.JWT_SECRET;
+  if (!value) {
+    throw new Error('JWT_SECRET is not set');
+  }
+  return value;
+}
+
+export function signToken(sub: string, ttlSeconds = 3600): string {
+  const claims: Claims = { sub, exp: Math.floor(Date.now() / 1000) + ttlSeconds };
+  return jwt.sign(claims, secret());
+}
+
+export function verifyToken(token: string): Claims {
+  return jwt.verify(token, secret()) as Claims;
+}
+`;
+      return [
+        makeFile(
+          'src/auth.ts',
+          authTs,
+          'typescript',
+          'jwt-auth',
+          'JWT Authentication',
+          '1.0.0',
+          'Modèle de claims, signature et vérification des tokens JWT.'
+        ),
+      ];
+    },
     python: 'unimplemented',
     go: 'unimplemented',
   }),
