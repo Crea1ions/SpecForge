@@ -125,7 +125,7 @@ Recette suivie pour le profil `typescript` (commits `cf00ab6` et `c7319f6`). Cha
 5. **L'enregistrer** dans `default-bricks.ts`, à une position justifiée (juste après `python-backend`).
 6. **Juger les écarts par oracle de contenu.** Régénérer le dump, puis comparer avant/après : aucune clé modifiée hors du nouveau langage, aucun preset modifié, chaque ajout et chaque retrait expliqué.
 7. **Ajouter le preset** (`src/engine/presets/`) et l'enregistrer dans `index.ts`. Le template devient cliquable dans le wizard sans toucher au wizard : `findPreset(profil, template)` suffit.
-8. **Générer puis compiler** le projet depuis le preset (`generateProjectFiles`), puis `npm install`, `tsc --noEmit` et un appel HTTP réel.
+8. **Générer puis compiler** le projet depuis le preset (`generateProjectFiles`), puis `npm install`, `tsc --noEmit` et un appel HTTP réel. Ou via le script : npx tsx scripts/gen-and-build.ts <id-du-preset> (verdict SKIP pour un profil non npm), puis un appel HTTP réel.
 9. **Écrire les références** (`check-golden --write`, `check-graph --write`) une seule fois, après jugement des écarts.
 10. **Vérifier le périmètre** : `git diff --stat -- src/core` ne doit montrer que `bricks/*` et `default-bricks.ts`.
 
