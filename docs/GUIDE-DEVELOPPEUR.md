@@ -2,8 +2,6 @@
 
 Ce guide explique comment SpecForge transforme une spécification en projet généré, et où intervenir pour ajouter un profil. Pour le détail du contrat d'une brique, voir `ARCHITECTURE-CORE-BRICKS-TEMPLATES.md`.
 
-> Sections 5 à 7 (recette « ajouter un profil », preuves, pièges connus) : à écrire après le premier profil réel, pour qu'elles décrivent ce qui a été fait et non ce qui est supposé.
-
 ## 1. Vue d'ensemble
 
 Tout part d'une **spécification** (`ProjectSpecification`) : un objet JSON décrivant le projet (profil, template, backend, frontend, base de données, infrastructure…). Le moteur en tire un projet généré en quatre temps.
@@ -115,3 +113,46 @@ Ces fonctions reçoivent le contexte de génération (dont la spécification) et
 ### Ordre du registre
 
 L'ordre des briques dans `default-bricks.ts` n'est pas neutre : il détermine l'ordre des briques actives, donc celui des nœuds, des ADR et des fichiers générés. Une nouvelle brique s'y insère à une position à justifier, et le test `_brick-order` de `check-golden` le surveille.
+
+## 5. Recette : ajouter un profil
+
+Recette suivie pour le profil `typescript` (commits `cf00ab6` et `c7319f6`). Chaque étape a une preuve.
+
+1. **Lire le gabarit.** Relire en entier une brique de backend existante (`python-backend.ts`), puis `default-bricks.ts` et un preset de référence.
+2. **Inventorier les briques transverses.** `grep -n "language" src/core/bricks/*.ts`. Une brique qui teste le langage sans `else` ne produit rien pour un nouveau profil : elle doit rester désactivée dans le preset.
+3. **Figer l'état avant.** `check-golden`, `check-graph` et `tsc` verts sur HEAD, puis un dump de contenu : `npx tsx scripts/tmp-graph-full.ts > /tmp/graph-before.json`.
+4. **Écrire la brique** (`applies`, `backendStack`, `layer`, `provides: ['backend_runtime']`, générateurs). Vérifier avec `tsc` avant de l'enregistrer.
+5. **L'enregistrer** dans `default-bricks.ts`, à une position justifiée (juste après `python-backend`).
+6. **Juger les écarts par oracle de contenu.** Régénérer le dump, puis comparer avant/après : aucune clé modifiée hors du nouveau langage, aucun preset modifié, chaque ajout et chaque retrait expliqué.
+7. **Ajouter le preset** (`src/engine/presets/`) et l'enregistrer dans `index.ts`. Le template devient cliquable dans le wizard sans toucher au wizard : `findPreset(profil, template)` suffit.
+8. **Générer puis compiler** le projet depuis le preset (`generateProjectFiles`), puis `npm install`, `tsc --noEmit` et un appel HTTP réel.
+9. **Écrire les références** (`check-golden --write`, `check-graph --write`) une seule fois, après jugement des écarts.
+10. **Vérifier le périmètre** : `git diff --stat -- src/core` ne doit montrer que `bricks/*` et `default-bricks.ts`.
+
+## 6. Preuves du premier profil
+
+| Contrôle | Résultat |
+|---|---|
+| Écarts de graphe sur le langage `typescript` | 216, tous classés |
+| Clés modifiées hors `typescript`, presets modifiés | aucune |
+| Nouvelles clés du preset | 289 (1 preset + 288 variantes) |
+| Preset `typescript-backend-only` | briques `typescript-backend` + `docs-pack`, aucune issue, aucune arête |
+| Projet généré | `npm install` puis `tsc --noEmit` : code 0 |
+| Exécution | `/api/health` répond `healthy`, preflight `OPTIONS` en 204 |
+| Fichiers de `src/core` modifiés | `default-bricks.ts` (+2) et `typescript-backend.ts` (nouveau) |
+
+Lecture des écarts :
+
+- **Ajouts** : la brique, son nœud, son ADR, les arêtes issues de ses `links`, et l'issue `unsupported-framework-typescript-axum` quand le preset porte encore `axum`.
+- **Retraits** : les erreurs `missing-dep-*-backend_runtime` (la brique fournit enfin la capacité) et des arêtes `react-vite>…` reprises par la priorité du backend dans `links`.
+- **Issue sans brique** : dans 21 clés, la brique est absorbée par `rust-web-app`, `rust-web-frontend` ou `rust-dioxus-mobile`. L'issue reste visible, car le validateur cherche dans le registre.
+
+## 7. Pièges connus
+
+- **Les presets ne sont pas dans `core`** : ils vivent dans `src/engine/presets/`. Un nouveau preset ne compte donc pas dans le critère « seul `bricks/*` change dans `core` ».
+- **`GeneratedFile['language']` ne contient pas `python`** : `python-backend` étiquette `main.py` en `typescript` faute de mieux. Ce n'est pas un bug.
+- **Briques transverses muettes** : `rest-api`, `jwt-auth`, `sqlite-storage`, `postgres-storage` et `quality-suite` ne génèrent rien hors Rust. `docker-infra` produit un Dockerfile à compléter. Le preset doit les désactiver (`api.style: 'none'`, base, auth, docker, qualité à `false`) tant qu'elles ne sont pas rendues multi-langage.
+- **Le framework du preset doit être déclaré** dans `backendStack`, sinon le preset porte lui-même une issue `error`.
+- **Un seul `--write`**, après l'oracle de contenu, pour ne pas figer d'états intermédiaires.
+- **Un template n'est cliquable que si un preset existe** pour le couple (profil, template). Un template grisé n'est pas un bug.
+- **Dette** : `check-golden` et `check-graph` ne sont pas dans `package.json` (lancement par `npx tsx scripts/<nom>.ts`) ; `tmp-gen.ts` mérite de devenir un script réutilisable « générer puis compiler ».
