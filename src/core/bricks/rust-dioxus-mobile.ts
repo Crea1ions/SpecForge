@@ -29,6 +29,7 @@ export const rustDioxusMobileBrick: BrickDefinition = {
   id: 'rust-dioxus-mobile',
   name: 'Rust Dioxus Mobile',
   category: 'frontend',
+  layer: 'client',
   version: '1.0.0',
   description:
     'Application mobile Rust avec Dioxus : interface HTML/CSS écrite en Rust, affichée dans la WebView Android et iOS.',

@@ -6,6 +6,7 @@ export const systemdInfraBrick: BrickDefinition = {
   id: 'systemd-infra',
   name: 'Systemd Service',
   category: 'infrastructure',
+  layer: 'ops',
   version: '1.0.0',
   description: 'Configuration d’un service Linux systemd pour exécuter le backend.',
   iconName: 'ServerCog',

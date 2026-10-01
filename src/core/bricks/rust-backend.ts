@@ -6,6 +6,7 @@ export const rustBackendBrick: BrickDefinition = {
   id: 'rust-backend',
   name: 'Rust Backend Service',
   category: 'backend',
+  layer: 'app',
   version: '1.2.0',
   description: 'Service backend haute performance en Rust utilisant Tokio et Axum/Actix-web.',
   iconName: 'Cpu',

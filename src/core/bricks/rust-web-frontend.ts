@@ -7,6 +7,7 @@ export const rustWebFrontendBrick: BrickDefinition = {
   id: 'rust-web-frontend',
   name: 'Rust Web Frontend',
   category: 'frontend',
+  layer: 'client',
   version: '1.1.0',
   description:
     'Frontend web server-rendered en Rust avec Axum, Askama, JavaScript vanilla et CSS.',

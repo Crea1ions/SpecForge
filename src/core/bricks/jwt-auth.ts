@@ -6,6 +6,7 @@ export const jwtAuthBrick: BrickDefinition = {
   id: 'jwt-auth',
   name: 'JWT Authentication',
   category: 'authentication',
+  layer: 'app',
   version: '1.0.0',
   description: 'Authentification stateless basée sur des JSON Web Tokens (JWT).',
   iconName: 'ShieldCheck',

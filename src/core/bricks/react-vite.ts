@@ -7,6 +7,7 @@ export const reactViteBrick: BrickDefinition = {
   id: 'react-vite',
   name: 'React 19 + Vite Frontend',
   category: 'frontend',
+  layer: 'client',
   version: '2.1.0',
   description: 'Application Single-Page moderne avec React 19, Vite, TypeScript et Tailwind CSS.',
   iconName: 'Layout',

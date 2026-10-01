@@ -6,6 +6,7 @@ export const postgresStorageBrick: BrickDefinition = {
   id: 'postgres-storage',
   name: 'PostgreSQL Enterprise Storage',
   category: 'database',
+  layer: 'data',
   version: '1.2.1',
   description: 'Moteur de base relationnelle puissant pour charges intensives et architectures distribuées.',
   iconName: 'Layers',

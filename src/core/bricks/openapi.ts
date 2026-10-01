@@ -6,6 +6,7 @@ export const openapiBrick: BrickDefinition = {
   id: 'openapi',
   name: 'OpenAPI Contract',
   category: 'api',
+  layer: 'gateway',
   version: '1.0.0',
   description: 'Contrat et documentation d’API au format OpenAPI.',
   iconName: 'FileJson',

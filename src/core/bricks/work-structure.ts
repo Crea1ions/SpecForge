@@ -6,6 +6,7 @@ export const workStructureBrick: BrickDefinition = {
   id: 'work-structure',
   name: 'Project Work Structure',
   category: 'documentation',
+  layer: 'ops',
   version: '1.0.0',
   description: 'Squelette documentaire de suivi de projet, avec des fichiers guides prêts à être complétés par le développeur.',
   iconName: 'FolderTree',

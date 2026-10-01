@@ -6,6 +6,7 @@ export const dockerInfraBrick: BrickDefinition = {
   id: 'docker-infra',
   name: 'Docker & Multi-Stage Compose',
   category: 'infrastructure',
+  layer: 'ops',
   version: '1.5.0',
   description: 'Conteneurisation reproductible avec builds multi-étapes légers (Alpine Linux).',
   iconName: 'Box',

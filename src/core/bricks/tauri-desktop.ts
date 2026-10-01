@@ -7,6 +7,7 @@ export const tauriDesktopBrick: BrickDefinition = {
   id: 'tauri-desktop',
   name: 'Tauri Desktop Wrapper',
   category: 'frontend',
+  layer: 'client',
   version: '1.4.2',
   description: 'Pont d\'application de bureau ultra-léger reliant l\'interface web au binaire Rust.',
   iconName: 'Monitor',

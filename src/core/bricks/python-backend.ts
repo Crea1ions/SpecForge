@@ -6,6 +6,7 @@ export const pythonBackendBrick: BrickDefinition = {
   id: 'python-backend',
   name: 'Python FastAPI Backend',
   category: 'backend',
+  layer: 'app',
   version: '1.1.0',
   description: 'Backend moderne et rapide en Python avec typage Pydantic et documentation OpenAPI automatique.',
   iconName: 'FileCode2',

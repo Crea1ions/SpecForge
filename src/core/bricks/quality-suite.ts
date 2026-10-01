@@ -6,6 +6,7 @@ export const qualitySuiteBrick: BrickDefinition = {
   id: 'quality-suite',
   name: 'Quality, Tests & GitHub Actions CI',
   category: 'quality',
+  layer: 'ops',
   version: '1.3.0',
   description: 'Suite automatisée de tests, formateur et pipeline GitHub Actions CI.',
   iconName: 'CheckCircle2',

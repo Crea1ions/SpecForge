@@ -6,6 +6,7 @@ export const sqliteStorageBrick: BrickDefinition = {
   id: 'sqlite-storage',
   name: 'SQLite Local Database',
   category: 'database',
+  layer: 'data',
   version: '1.0.0',
   description: 'Base relationnelle embarquée sans serveur, idéale pour desktop et microservices autonomes.',
   iconName: 'Database',

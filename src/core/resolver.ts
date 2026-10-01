@@ -63,33 +63,12 @@ for (const brick of activeBricks) {
   const nodes: ArchitectureNode[] = [];
   const edges: ArchitectureEdge[] = [];
 
-  const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
-    if (brick.layer) return brick.layer;
-
-    switch (brick.category) {
-      case 'frontend':
-        return 'client';
-      case 'api':
-        return 'gateway';
-      case 'backend':
-        return 'app';
-      case 'database':
-        return 'data';
-      case 'infrastructure':
-      case 'quality':
-      case 'documentation':
-        return 'ops';
-      default:
-        return 'app';
-    }
-  };
-
   for (const brick of activeBricks) {
     nodes.push({
       id: `node-${brick.id}`,
       name: brick.name,
       category: brick.category,
-      layer: getBrickLayer(brick),
+      layer: brick.layer,
       brickId: brick.id,
       description: brick.description,
       technologies: brick.tags,

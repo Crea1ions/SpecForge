@@ -6,6 +6,7 @@ export const restApiBrick: BrickDefinition = {
   id: 'rest-api',
   name: 'RESTful API Engine',
   category: 'api',
+  layer: 'gateway',
   version: '1.3.0',
   description: 'Contrats d\'API REST avec sérialisation JSON, endpoints CRUD et tests de vivacité.',
   iconName: 'Network',

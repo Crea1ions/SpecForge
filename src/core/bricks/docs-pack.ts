@@ -6,6 +6,7 @@ export const docsPackBrick: BrickDefinition = {
   id: 'docs-pack',
   name: 'Project README',
   category: 'documentation',
+  layer: 'ops',
   version: '1.3.0',
   description: 'README minimal contenant les informations directement disponibles sur le projet.',
   iconName: 'BookOpen',

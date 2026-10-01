@@ -145,8 +145,8 @@ export interface BrickDefinition {
   applies?: SpecPattern[];
   /** Categories this brick fully owns when active: sibling candidates in those categories are dropped. */
   subsumes?: BrickCategory[];
-  /** Graph layer override; defaults to a category-based mapping when absent. */
-  layer?: 'client' | 'gateway' | 'app' | 'data' | 'ops';
+  /** Graph layer of the brick's node. */
+  layer: 'client' | 'gateway' | 'app' | 'data' | 'ops';
   /** Incoming graph edges, declared on the target: each link yields at most one edge, from the first active source. */
   links?: BrickLink[];
   /** Web frameworks this brick supports for one backend language (drives the validator). */
