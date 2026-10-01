@@ -12,6 +12,7 @@ import { rustBackendOnlyPreset } from './rust-backend-only';
 import { reactFrontendOnlyPreset } from './react-frontend-only';
 import { rustWebFrontendPreset } from './rust-web-frontend';
 import { rustDioxusMobilePreset } from './rust-dioxus-mobile';
+import { typescriptBackendOnlyPreset } from './typescript-backend-only';
 
 export type { ArchitecturePreset } from './types';
 
@@ -23,6 +24,7 @@ export const PRESETS: ArchitecturePreset[] = [
   reactFrontendOnlyPreset,
   rustWebFrontendPreset,
   rustDioxusMobilePreset,
+  typescriptBackendOnlyPreset,
 ];
 
 export const findPreset = (
