@@ -13,6 +13,7 @@
 import { BrickDefinition } from '../types';
 import { rustBackendBrick } from './rust-backend';
 import { pythonBackendBrick } from './python-backend';
+import { typescriptBackendBrick } from './typescript-backend';
 import { reactViteBrick } from './react-vite';
 import { tauriDesktopBrick } from './tauri-desktop';
 import { sqliteStorageBrick } from './sqlite-storage';
@@ -35,6 +36,7 @@ export const DEFAULT_BRICKS: BrickDefinition[] = [
   rustDioxusMobileBrick,
   rustWebAppBrick,
   pythonBackendBrick,
+  typescriptBackendBrick,
   reactViteBrick,
   tauriDesktopBrick,
   sqliteStorageBrick,
