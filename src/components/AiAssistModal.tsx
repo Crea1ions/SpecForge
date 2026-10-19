@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Sparkles, X, ArrowRight, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { ProjectSpecification, ResolvedArchitecture } from '../types/spec';
+import { AI_ENABLED, REPO_URL } from '../config';
 
 interface AiAssistModalProps {
   isOpen: boolean;
@@ -26,6 +27,36 @@ export const AiAssistModal: React.FC<AiAssistModalProps> = ({
   const [mode, setMode] = useState<'intent' | 'audit'>('intent');
 
   if (!isOpen) return null;
+
+  if (!AI_ENABLED) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="w-full max-w-md bg-neutral-950 border border-neutral-800 rounded-2xl p-6 text-xs text-neutral-300 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-white font-semibold text-sm">
+              <Sparkles className="w-4 h-4 text-indigo-400" />
+              Assistant IA indisponible
+            </div>
+            <button onClick={onClose} className="text-neutral-400 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <p>
+            L'assistant IA n'est pas disponible sur cette version hébergée. Il fonctionne uniquement
+            en local, avec votre propre clé Gemini.
+          </p>
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium"
+          >
+            Voir le dépôt GitHub <ArrowRight className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   const handleGenerateFromIntent = async (customPrompt?: string) => {
     const textToSend = customPrompt || prompt;
