@@ -1,6 +1,6 @@
 # ECOM-02 — Catégories, navigation et recherche
 
-**Version :** 0.1 (brouillon)
+**Version :** 0.2 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3)
 **Statut :** décisions validées pour D2, défauts pour les autres, à confirmer à la validation du référentiel (L6)
 
@@ -12,6 +12,7 @@
 | D2 | Un produit peut appartenir à plusieurs catégories, dont une principale désignée (fil d'Ariane, URL canonique) | Oui : pas de catégorie principale dans les champs lus |
 | D3 | Une catégorie est affichée si elle ou un de ses descendants contient un produit visible | Non : fidèle à `has_published_products` |
 | D4 | Pas de limite de profondeur ; aucun cycle autorisé | Non |
+| D5 | Suppression d'une catégorie refusée tant qu'elle contient des sous-catégories ou des produits | Oui : `parent_id` est en `ondelete='cascade'` (les sous-catégories sont supprimées avec leur parent) |
 
 ## 1. Objectif et périmètre
 
@@ -47,7 +48,7 @@ Le prix affiché et les promotions relèvent d'ECOM-03 et ECOM-04 ; la mise en p
 
 Pas de cycle de vie propre. Statut dérivé :
 - **Catégorie visible** = elle ou un descendant contient au moins un produit visible (actif, vendable, publié ; voir ECOM-01).
-- Une catégorie vide reste modifiable en administration, mais invisible du public.
+- Une catégorie sans produit visible reste modifiable en administration, mais invisible du public : Odoo filtre les sous-catégories (`children.filtered('has_published_products')`) et le méga-menu pour les non-internes ; les utilisateurs internes voient tout (prévisualisation, → ECOM-16).
 
 ## 5. Invariants et règles de validation
 
@@ -58,20 +59,21 @@ Pas de cycle de vie propre. Statut dérivé :
 5. Naviguer vers une catégorie affiche les produits de sa sous-arborescence (Odoo : `child_of`).
 6. La recherche et la navigation ne portent que sur les produits visibles (même règle que ECOM-01).
 7. La visibilité d'une catégorie parente suit celle de ses enfants (D3).
+8. Une catégorie qui contient des sous-catégories ou des produits ne peut pas être supprimée (D5).
 
 ## 6. Erreurs et cas particuliers
 
 - Cycle dans l'arbre : refus.
 - Catégorie ou produit supprimé/inaccessible dans une URL : redirection vers la catégorie ou la boutique (Odoo : `handle_product_params_error`).
-- Suppression d'une catégorie contenant des produits ou des sous-catégories : comportement Odoo non vérifié, à définir.
+- Suppression d'une catégorie non vide : refus (D5). Odoo supprime en cascade les sous-catégories (`ondelete='cascade'` sur `parent_id`) et n'a aucune garde métier dans `product_public_category.py` (pas de `unlink`). Côté produits, la suppression du simple lien est le comportement ORM standard, non vérifié ici.
 - Recherche sans résultat : affichage d'un message, sans erreur.
 
 ## 7. Recherche, tri et pagination
 
-- **Champs cherchés (Odoo) :** nom, référence du produit et des variantes, description courte (option).
-- **Socle :** recherche texte sur nom et SKU ; tri par ordre d'affichage par défaut (Odoo : `website_sequence asc`), tri modifiable par paramètre ; pagination (Odoo : 20 produits par page, 4 par ligne).
-- **Standard complémentaire :** filtre prix min/max, filtres par attribut, tags, autocomplétion (Odoo : module séparé `website_sale_autocomplete`).
-- **Point d'attention :** le filtre de prix d'Odoo porte sur `list_price`, pas sur le prix après liste de prix. À traiter en ECOM-03 pour éviter un filtre incohérent avec le prix affiché.
+- **Champs cherchés (Odoo) :** nom et références des variantes (`variants_default_code`) ; avec l'option description (`search_in_description`, vrai par défaut dans `_get_shop_domain`) : description courte (`description_sale`) et description boutique (`description_ecommerce`).
+- **Socle :** recherche texte sur nom et SKU ; tri par défaut = ordre d'affichage (Odoo : `shop_default_sort`, `website_sequence asc`) ; pagination (Odoo : 20 produits par page, 4 par ligne).
+- **Standard complémentaire :** recherche dans les descriptions ; tri au choix du visiteur parmi les 5 tris d'Odoo (ordre d'affichage, nouveautés sur `publish_date`, nom A-Z, prix croissant, prix décroissant) ; filtre prix min/max ; filtres par attribut (OU au sein d'un attribut, ET entre attributs, à confirmer) ; tags ; autocomplétion (Odoo : module séparé `website_sale_autocomplete`, LGPL-3). Les filtres d'attributs d'Odoo portent sur les lignes d'attribut du template, pas sur les variantes réellement disponibles.
+- **Point d'attention :** le filtre de prix **et** les tris par prix d'Odoo portent sur `list_price`, pas sur le prix après liste de prix. À traiter en ECOM-03 pour éviter un filtre ou un tri incohérent avec le prix affiché.
 - **Recherche de catégories :** sur le nom, et la description en option.
 
 ## 8. Frontières
@@ -96,20 +98,21 @@ Pas de cycle de vie propre. Statut dérivé :
 | Domaine boutique | `website_sale` | `sale_product_domain`, `_get_shop_domain` |
 | Tri, pagination | `website_sale` | `shop_default_sort`, `ppg`, `ppr` |
 | Tags | `product` | `product.tag` |
-| Autocomplétion | `website_sale_autocomplete` | licence non vérifiée |
+| Autocomplétion | `website_sale_autocomplete` | LGPL-3 (vérifié) |
 
-Licences : `website_sale` est en LGPL-3 (vérifié). `website_sale_autocomplete` et `product.tag` n'ont pas été vérifiés individuellement.
+Licences : `website_sale` et `website_sale_autocomplete` sont en LGPL-3 (vérifié). `product.tag` est référencé par le module `product` (LGPL-3) ; le modèle lui-même n'a pas été lu.
 
 ## 11. Classement (T6)
 
-- **Socle :** arbre de catégories, rattachement multiple avec catégorie principale, navigation par catégorie (sous-arbre inclus), recherche texte nom + SKU, tri, pagination, masquage des catégories sans produit visible.
-- **Standard complémentaire :** filtres prix et attributs, tags, image de couverture, autocomplétion, tri choisi par le visiteur.
+- **Socle :** arbre de catégories, rattachement multiple avec catégorie principale, navigation par catégorie (sous-arbre inclus), recherche texte nom + SKU, tri par défaut (ordre d'affichage), pagination, masquage des catégories sans produit visible, suppression refusée si la catégorie n'est pas vide.
+- **Standard complémentaire :** recherche dans les descriptions, tri choisi par le visiteur (5 tris), filtres prix et attributs, tags, image de couverture, autocomplétion.
 - **Option avancée :** grille à tailles variables (`website_size_x/y`), options d'affichage de catégorie, recherche dans les descriptions de catégories, domaine par site (multi-site).
 
 ## 12. Points non vérifiés
 
-- `_get_website_sale_search_fields` (liste exacte des champs cherchés) et `_get_product_sort_mapping` (tris disponibles).
-- Sémantique des filtres d'attributs (combinaison ET/OU).
-- Usage de `has_published_products` pour masquer les catégories vides dans l'interface.
-- Comportement d'Odoo à la suppression d'une catégorie non vide.
-- Modèle `product.tag` et licence de `website_sale_autocomplete`.
+- `publish_date` : sert au tri « nouveautés » ; son mode d'alimentation (automatique à la publication, saisie, planifiée) n'est pas lu. Impact sur ECOM-01 (classée option avancée) à trancher.
+- Combinaison ET/OU des domaines de filtre d'attributs, et clé du dictionnaire (supposée : un attribut par entrée).
+- Accès direct par URL à une catégorie sans produit visible.
+- Mécanisme `data-publish` (marquage front des entrées de navigation) non lu.
+- Effet de la suppression d'une catégorie sur les produits rattachés (comportement ORM standard supposé).
+- Modèle `product.tag`.
