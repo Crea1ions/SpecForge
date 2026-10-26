@@ -1,6 +1,6 @@
 # ECOM-02 — Catégories, navigation et recherche
 
-**Version :** 0.3 (brouillon)
+**Version :** 0.4 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3)
 **Statut :** décisions validées pour D2, défauts pour les autres, à confirmer à la validation du référentiel (L6)
 
@@ -8,7 +8,7 @@
 
 | # | Décision | Écart avec Odoo |
 |---|---|---|
-| D1 | Une seule taxonomie dans le socle : la catégorie boutique | Oui : Odoo a aussi `product.category` (catégorie interne, `categ_id`), dont le rôle comptable/stock n'a pas été étudié ici |
+| D1 | Une seule taxonomie dans le socle : la catégorie boutique | Oui : Odoo a aussi `product.category` (catégorie interne, `categ_id`), dont le rôle comptable/stock n'a pas été étudié ici ; les règles de prix par catégorie l'utilisent aussi (voir ECOM-03 D6) |
 | D2 | Un produit peut appartenir à plusieurs catégories, dont une principale désignée (fil d'Ariane, URL canonique) | Oui : pas de catégorie principale dans les champs lus |
 | D3 | Une catégorie est affichée si elle ou un de ses descendants contient un produit visible | Non : fidèle à `has_published_products` |
 | D4 | Pas de limite de profondeur ; aucun cycle autorisé | Non |

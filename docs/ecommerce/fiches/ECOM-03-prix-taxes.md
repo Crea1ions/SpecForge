@@ -1,6 +1,6 @@
 # ECOM-03 — Prix et taxes
 
-**Version :** 0.1 (brouillon)
+**Version :** 0.2 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3 : `product`, `website_sale`, `account`)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
@@ -14,6 +14,7 @@
 | D4 | Le prix affiché est la source unique : filtre prix et tri par prix portent sur lui | Oui : Odoo filtre et trie sur `list_price` (corrige le point d'attention d'ECOM-02) |
 | D5 | Le prix appliqué à une commande est figé à sa création | À vérifier en ECOM-06 |
 | D6 | Les règles de prix par catégorie portent sur la catégorie boutique | Oui : Odoo utilise `product.category` (interne), écartée par ECOM-02 D1 |
+| D7 | Affichage TTC par défaut pour une boutique B2C (réglage modifiable) | Oui : Odoo calcule toujours `tax_excluded` par défaut (`_compute_show_line_subtotals_tax_selection`). Obligation légale d'affichage TTC en B2C à confirmer |
 
 ## 1. Objectif et périmètre
 
@@ -46,7 +47,7 @@ Les remises par coupon ou règle de panier relèvent d'ECOM-04. Le total du pani
 | Calcul de taxe | `amount_type` (défaut `percent`) | Fixe : pourcentage | Autres types : option avancée |
 | Prix TTC / HT | `price_include` (calculé : `price_include_override` ou réglage société) | Réglage boutique | D3 |
 | Taxes en cascade | `include_base_amount` | Option avancée | |
-| Affichage HT/TTC | `website.show_line_subtotals_tax_selection` | Réglage boutique | Seule la branche `tax_excluded` a été lue |
+| Affichage HT/TTC | `website.show_line_subtotals_tax_selection` | Réglage boutique | Odoo : valeur par défaut calculée, toujours `tax_excluded` (HT) ; D7 |
 | Devise | `currency_id` (liste de prix, site) | Une seule en socle | |
 | Liste de prix | `product.pricelist` : `name`, `active`, `sequence`, `currency_id`, `country_group_ids`, `item_ids` | Standard complémentaire | |
 | Règle de prix | `product.pricelist.item` : `date_start`/`date_end`, `min_quantity`, `applied_on`, `compute_price`, `fixed_price`, `percent_price`, `price_discount`, `price_surcharge`, `price_markup`, `price_round`, marges min/max, `base_pricelist_id` | Standard / avancé | Cibles : produit, template ou catégorie (D6) |
@@ -55,9 +56,9 @@ Les remises par coupon ou règle de panier relèvent d'ECOM-04. Le total du pani
 
 1. Prix de base = prix catalogue.
 2. Socle : aucune règle, prix de base.
-3. Standard complémentaire : on applique la **première règle** de la liste de prix applicable (période, quantité, cible), qui renvoie un prix et la règle retenue (Odoo : `_compute_price_rule`).
+3. Standard complémentaire : on applique la règle de la liste de prix applicable (période, quantité, cible) qui renvoie un prix et la règle retenue (Odoo : `_compute_price_rule`). Ordre de sélection (Odoo `_order`) : niveau le plus spécifique d'abord (variante, produit, catégorie, global), puis seuil de quantité le plus élevé, puis règle la plus récente. Base de calcul d'Odoo : prix de vente, autre liste, ou coût (`standard_price`) ; la base « coût » expose une donnée interne et reste hors socle (option avancée).
 4. Les taxes sont appliquées au prix obtenu, après remplacement éventuel par la position fiscale (`map_tax`) ; le prix affiché est HT ou TTC selon le réglage boutique.
-5. **Prix barré :** si la règle retenue affiche sa remise et que le prix avant remise dépasse le prix remisé, c'est ce prix qui est barré ; sinon, `compare_list_price` si l'option est active (Odoo : `_show_discount_on_shop`).
+5. **Prix barré :** si la règle retenue affiche sa remise et que le prix avant remise dépasse le prix remisé, c'est ce prix qui est barré ; sinon, `compare_list_price` si l'option est active. Une règle « affiche sa remise » si elle est en pourcentage, ou en formule avec remise basée sur le prix de vente ou une autre liste (Odoo : `_show_discount_on_shop`). Cet affichage vaut pour la liste, la fiche produit et les configurateurs, pas pour le panier ni le paiement.
 
 **Point d'attention :** en liste de produits, Odoo calcule le prix avec une quantité de 1. Les paliers de quantité n'y apparaissent pas.
 
@@ -66,10 +67,10 @@ Les remises par coupon ou règle de panier relèvent d'ECOM-04. Le total du pani
 1. Prix catalogue ≥ 0 (ECOM-01 D4).
 2. Un produit publiable a un prix et une taxe de vente définis.
 3. Un prix barré n'a de sens que s'il est supérieur au prix affiché.
-4. Une règle de prix a une période cohérente (Odoo : contrainte sur `date_start`/`date_end`, contenu non lu).
+4. Une règle de prix a une période cohérente : début strictement avant fin (Odoo : `_check_date_range`, refuse début ≥ fin).
 5. Une liste de prix ne peut pas dépendre d'elle-même, directement ou indirectement (Odoo : contraintes sur `base_pricelist_id`, contenu non lu, supposé anti-boucle).
-6. Marges min/max cohérentes (Odoo : contrainte `price_min_margin`/`price_max_margin`, contenu non lu).
-7. Une règle vise un seul niveau : produit, template ou catégorie (Odoo : contrainte sur `product_id`, `product_tmpl_id`, `categ_id`, contenu non lu).
+6. Marge min ≤ marge max (Odoo : `_check_margin` refuse min > max ; l'égalité est acceptée).
+7. Une règle vise un niveau (global, catégorie, produit, variante) et sa cible doit être renseignée (Odoo : `applied_on`, `_check_product_consistency`). Odoo ne vérifie pas qu'une seule cible est renseignée.
 8. Une taxe est unique par société, nom, usage, portée et pays (Odoo : `account_tax.py:231`).
 9. Les montants sont arrondis selon la devise.
 10. Le prix d'une ligne de commande ne change pas après création (D5, à vérifier).
@@ -77,10 +78,11 @@ Les remises par coupon ou règle de panier relèvent d'ECOM-04. Le total du pani
 ## 6. Erreurs et cas particuliers
 
 - Produit sans taxe : refus de publication (règle 2). Comportement Odoo non vérifié.
-- Plusieurs règles applicables : la première retenue l'emporte. L'ordre de tri des règles n'a pas été lu.
+- Plusieurs règles applicables : la plus spécifique l'emporte (voir §4, ordre de sélection).
 - Changement de devise ou de liste en cours de panier : à traiter en ECOM-05.
 - Taxes différentes selon le pays du client : position fiscale (standard complémentaire).
-- Prix barré converti de devise sans taxes (Odoo, `_get_sales_prices` lignes 433-440) : possible incohérence d'affichage TTC/HT, à confirmer. Ne pas reprendre sans vérification.
+- Asymétrie constatée dans Odoo : le prix barré issu d'une règle passe par `_apply_taxes_to_price`, celui issu de `compare_list_price` est seulement converti de devise (`_get_sales_prices`, lignes 433-440). Intention non vérifiée. SpecForge applique la même base HT/TTC aux deux prix.
+- La remise affichée en liste disparaît dans le panier et au paiement (Odoo) : à traiter en ECOM-05 pour éviter un écart de prix perçu.
 
 ## 7. Frontières
 
@@ -115,9 +117,9 @@ Licences : `product`, `website_sale` et `account` sont en LGPL-3 (vérifié). `a
 
 ## 11. Points non vérifiés
 
-- Valeurs des listes `applied_on`, `base` et `compute_price`, contenu des contraintes 316, 321, 354, 366 et 371, ordre de tri des règles (`_order`).
-- Sélection de la liste de prix applicable à un visiteur (`get_pricelist_available`) et rôle de `country_group_ids`.
-- `_show_discount_on_shop`, `_apply_taxes_to_price` et la condition de `show_line_subtotals_tax_selection`.
+- Contraintes 316 et 321 (`base_pricelist_id`, supposées anti-boucle).
+- Sélection de la liste de prix (`get_pricelist_available`) lue partiellement (lignes 585-601) : listes compatibles avec le site et le pays, liste du client connecté ajoutée si compatible, résultat trié. Début de la fonction et rôle exact de `country_group_ids` non lus.
+- Fin de `_apply_taxes_to_price` (lue jusqu'à `compute_all`, ligne 710) ; surcharge éventuelle de `show_line_subtotals_tax_selection` par un réglage ou une localisation.
 - Lien produit / taxe par défaut (`account/models/product.py:155`, `taxes_id = False`) et champ calculé de la ligne 107.
 - Données fiscales françaises (`l10n_fr`), non lues.
 - Gel du prix à la commande (D5) : voir ECOM-06.
