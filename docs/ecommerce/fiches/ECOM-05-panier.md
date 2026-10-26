@@ -1,6 +1,6 @@
 # ECOM-05 — Panier
 
-**Version :** 0.1 (brouillon)
+**Version :** 0.2 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3 : `website_sale`, `sale`)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
@@ -10,8 +10,8 @@
 |---|---|---|
 | D1 | Panier et commande sont deux objets distincts ; la commande est créée à la validation du panier (ECOM-06) | Oui : Odoo utilise un seul `sale.order` (brouillon = panier, puis `action_confirm`) |
 | D2 | Prix et taxes du panier sont recalculés à chaque modification, et figés à la création de la commande | Partiel : Odoo recalcule (`_recompute_cart`) ; le gel est à vérifier (ECOM-06, ECOM-03 D5) |
-| D3 | Une ligne par produit : ajouter un produit déjà présent cumule la quantité | Non : `_cart_add` met à jour la ligne existante |
-| D4 | À la connexion, le panier anonyme est rattaché au compte (pas de fusion ligne à ligne) ; sans panier en session, le panier ouvert précédent du client est retrouvé | Non : déduit de `_get_and_cache_current_cart` (filtre de la recherche non lu) |
+| D3 | Une ligne par produit : ajouter un produit déjà présent cumule la quantité | Partiel : `_cart_add` met à jour la ligne existante si produit, unité, ligne parente et absence d'attribut personnalisé ou de combo correspondent (`_cart_find_product_line`) ; les produits à attributs personnalisés ne sont pas cumulés (option avancée) |
+| D4 | À la connexion, le panier anonyme est rattaché au compte (pas de fusion ligne à ligne) ; sans panier en session, le panier ouvert précédent du client sur cette boutique est retrouvé, puis ses prix et son adresse sont recalculés | Non : `_get_and_cache_current_cart` (recherche : client, boutique, brouillon, `limit=1` sans tri explicite) |
 | D5 | Un panier dont le paiement est engagé (transaction en attente, autorisée ou réussie) n'est plus le panier courant | Non : conditions de `_get_and_cache_current_cart` |
 | D6 | Les frais de livraison sont recalculés à chaque modification du panier ; leur représentation (ligne ou champ) est décidée en ECOM-08 | Odoo : ligne de commande `is_delivery` |
 
@@ -62,9 +62,9 @@ Les prix et taxes viennent d'ECOM-03, le stock d'ECOM-09, la livraison d'ECOM-08
 1. Un panier appartient à une boutique et à un client (compte, ou visiteur anonyme identifié par sa session).
 2. Une session n'a qu'un seul panier courant.
 3. Un panier est courant s'il est ouvert, de la bonne boutique et sans paiement engagé (D5) ; sinon un nouveau panier est créé.
-4. Une ligne par produit ; ajouter cumule la quantité (D3).
+4. Une ligne par produit simple ; ajouter cumule la quantité (D3).
 5. Une quantité ≤ 0 supprime la ligne (Odoo : `_cart_update_order_line`).
-6. Toute quantité ajoutée passe par un point de contrôle qui peut l'ajuster et renvoyer un avertissement (Odoo : `_verify_updated_quantity`, sans limite par défaut ; le stock s'y branche, voir ECOM-09).
+6. Toute quantité ajoutée passe par un point de contrôle qui peut l'ajuster et renvoyer un avertissement (Odoo : `_verify_updated_quantity`, sans limite par défaut). `website_sale_stock` le surcharge : pour un produit suivi en stock dont la vente hors stock est interdite, la quantité totale au panier est plafonnée au stock libre arrondi à l'entier inférieur, avec avertissement (voir ECOM-09).
 7. Seul un produit achetable est ajoutable (ECOM-01 §4). Un produit devenu inactif est retiré du panier à la vérification (Odoo : `_verify_cart` ; le cas non vendable ou non publié n'a pas été lu).
 8. Prix et taxes sont recalculés à chaque modification (D2).
 9. Après chaque modification, la livraison est recalculée si un mode est choisi ; elle est retirée si le tarif échoue ou si le panier ne contient que des services (Odoo : `_verify_cart_after_update`).
@@ -74,7 +74,7 @@ Les prix et taxes viennent d'ECOM-03, le stock d'ECOM-09, la livraison d'ECOM-08
 
 ## 6. Erreurs et cas particuliers
 
-- Panier introuvable (supprimé) : réinitialisation silencieuse (Odoo : `MissingError`, `sale_reset`).
+- Panier introuvable (supprimé) : réinitialisation silencieuse (Odoo : `MissingError`, `sale_reset`). `sale_reset` ne supprime aucune commande : il efface les clés de session (panier, quantité, liste de prix, position fiscale).
 - Quantité réduite par le point de contrôle : un avertissement est affiché une fois, puis effacé.
 - Ligne à prix nul quand c'est interdit : refus du paiement.
 - Mode de livraison absent ou incompatible avec l'adresse : refus avec message.
@@ -88,7 +88,7 @@ Les prix et taxes viennent d'ECOM-03, le stock d'ECOM-09, la livraison d'ECOM-08
 - **Panier ≠ commande :** le panier est modifiable et sans engagement ; la commande est un engagement (D1, ECOM-06).
 - **Panier ≠ paiement :** le paiement engagé fige le panier (D5) ; la transaction relève d'ECOM-07.
 - **Panier ≠ livraison :** le tarif est calculé par le transporteur (Odoo : `carrier_id.rate_shipment`), voir ECOM-08.
-- **Panier ≠ stock :** Odoo limite la quantité à `free_qty` moins la quantité déjà au panier (ECOM-01) ; la réservation de stock n'a pas été lue, voir ECOM-09.
+- **Panier ≠ stock :** Odoo contrôle la quantité à l'ajout et à la modification (`website_sale_stock`), sans réservation visible dans ce code. Un stock qui baisse après l'ajout n'est pas détecté par ce contrôle ; une vérification ultérieure (paiement, confirmation) reste à chercher en ECOM-06 et ECOM-09.
 - **Externalisable :** relance des paniers abandonnés (ECOM-14, ECOM-18) ; suivi analytique (`_get_tracking_information`, ECOM-15).
 - **Permissions :** Odoo crée le panier avec les droits superutilisateur et la route `/shop/cart` accepte un `access_token` (usage non lu). Le visiteur ne doit accéder qu'à son propre panier (ECOM-16).
 
@@ -120,10 +120,9 @@ Licences : `website_sale` et `sale` sont en LGPL-3 (vérifié).
 
 ## 11. Points non vérifiés
 
-- Recherche du panier précédent du client (`website.py`, lignes 832 et suivantes).
-- `_cart_find_product_line` (critères de correspondance d'une ligne), `_cart_update_line_quantity`, suite de `_verify_cart` après la ligne 698.
-- Surcharge de `_verify_updated_quantity` par `website_sale_stock`.
-- `_show_in_cart`, `sale_reset`, `clear_cart`, usage de `access_token` et de `revive_method`.
+- Tri par défaut de `sale.order` (quel brouillon est repris quand il y en a plusieurs).
+- `_cart_update_line_quantity`, suite de `_verify_cart` après la ligne 698, fin de `_verify_updated_quantity` (lignes 44-68), `_get_cart_qty`, `_get_free_qty`.
+- `_show_in_cart`, `clear_cart`, usage de `access_token` et de `revive_method`.
 - Mise à jour de `date_order` à chaque modification (notion de dernière activité).
 - Valeur par défaut de `prevent_zero_price_sale`.
 - Gel du prix à la confirmation (ECOM-06).
