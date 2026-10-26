@@ -1,6 +1,6 @@
 # ECOM-03 — Prix et taxes
 
-**Version :** 0.2 (brouillon)
+**Version :** 0.3 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3 : `product`, `website_sale`, `account`)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
@@ -8,7 +8,7 @@
 
 | # | Décision | Écart avec Odoo |
 |---|---|---|
-| D1 | Socle : un prix unique par produit, une seule devise, sans liste de prix | Oui : Odoo calcule toujours via une liste de prix |
+| D1 | Socle : un prix unique par produit, une seule devise, sans liste de prix | Partiel : Odoo permet de désactiver les listes de prix (`_get_and_cache_current_pricelist` renvoie une liste vide si `product.group_product_pricelist` est inactif) ; comportement de `_get_sales_prices` avec liste vide non vérifié |
 | D2 | Montants en décimal exact ou en unités mineures (centimes), jamais en flottant | Oui : `list_price` est un `Float` dans Odoo |
 | D3 | Socle : une taxe par produit (taux), mode HT ou TTC réglé au niveau boutique | Partiel : Odoo permet plusieurs taxes par produit et un mode par taxe (`price_include_override`) |
 | D4 | Le prix affiché est la source unique : filtre prix et tri par prix portent sur lui | Oui : Odoo filtre et trie sur `list_price` (corrige le point d'attention d'ECOM-02) |
