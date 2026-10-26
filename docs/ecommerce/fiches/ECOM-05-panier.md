@@ -1,6 +1,6 @@
 # ECOM-05 — Panier
 
-**Version :** 0.2 (brouillon)
+**Version :** 0.3 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3 : `website_sale`, `sale`)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
@@ -86,7 +86,7 @@ Les prix et taxes viennent d'ECOM-03, le stock d'ECOM-09, la livraison d'ECOM-08
 ## 7. Frontières
 
 - **Panier ≠ commande :** le panier est modifiable et sans engagement ; la commande est un engagement (D1, ECOM-06).
-- **Panier ≠ paiement :** le paiement engagé fige le panier (D5) ; la transaction relève d'ECOM-07.
+- **Panier ≠ paiement :** le paiement engagé fige le panier (D5) ; la transaction relève d'ECOM-07. Odoo exige un jeton d'accès pour payer un panier (ECOM-16), refuse une commande annulée, et verrouille la commande pendant la création de la transaction : un second paiement simultané est refusé (`FOR NO KEY UPDATE NOWAIT`). Le contrôle « prêt à payer » n'inclut pas de contrôle de stock dans le code lu.
 - **Panier ≠ livraison :** le tarif est calculé par le transporteur (Odoo : `carrier_id.rate_shipment`), voir ECOM-08.
 - **Panier ≠ stock :** Odoo contrôle la quantité à l'ajout et à la modification (`website_sale_stock`), sans réservation visible dans ce code. Un stock qui baisse après l'ajout n'est pas détecté par ce contrôle ; une vérification ultérieure (paiement, confirmation) reste à chercher en ECOM-06 et ECOM-09.
 - **Externalisable :** relance des paniers abandonnés (ECOM-14, ECOM-18) ; suivi analytique (`_get_tracking_information`, ECOM-15).
@@ -123,6 +123,6 @@ Licences : `website_sale` et `sale` sont en LGPL-3 (vérifié).
 - Tri par défaut de `sale.order` (quel brouillon est repris quand il y en a plusieurs).
 - `_cart_update_line_quantity`, suite de `_verify_cart` après la ligne 698, fin de `_verify_updated_quantity` (lignes 44-68), `_get_cart_qty`, `_get_free_qty`.
 - `_show_in_cart`, `clear_cart`, usage de `access_token` et de `revive_method`.
-- Mise à jour de `date_order` à chaque modification (notion de dernière activité).
+- Mise à jour de `date_order` à chaque modification du panier (notion de dernière activité). Établi : `action_confirm` réécrit `date_order` à la confirmation ; son comportement avant confirmation n'est pas lu.
 - Valeur par défaut de `prevent_zero_price_sale`.
 - Gel du prix à la confirmation (ECOM-06).
