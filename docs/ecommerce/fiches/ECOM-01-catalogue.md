@@ -1,6 +1,6 @@
 # ECOM-01 — Catalogue et gestion des produits
 
-**Version :** 0.2 (brouillon)
+**Version :** 0.3 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3)
 **Statut :** décisions par défaut retenues, à confirmer à la validation du référentiel (L6)
 
@@ -49,7 +49,7 @@ Prix (ECOM-03), catégories (ECOM-02) et stock (ECOM-09) sont détaillés dans l
 | Actif | `active` | Oui | Archivage |
 | Vendable | `sale_ok` (défaut True) | Oui | |
 | Publié | `is_published` (défaut False, `copy=False`) | Oui | D5 |
-| Date de publication | `publish_date` | Option avancée | |
+| Date de publication | `publish_date` | Standard complémentaire | Dérivée : posée automatiquement à chaque (re)publication (Odoo : `_compute_publish_date`) ; dépublier puis republier la remet à zéro. Sert au tri « nouveautés » (ECOM-02) et au ruban « nouveau » (ECOM-13) |
 | Ordre d'affichage | `website_sequence` | Socle | Tri par défaut de la boutique (ECOM-02). Odoo : un nouveau produit est placé en dernier |
 
 ## 4. Statuts
@@ -117,8 +117,8 @@ Licences : `product`, `sale`, `stock`, `payment`, `delivery`, `website_payment`,
 ## 10. Classement (T6)
 
 - **Socle :** fiche, SKU, prix, images, statuts actif/vendable/publié, archivage, ordre d'affichage.
-- **Standard complémentaire :** variantes, produits alternatifs/accessoires, prix barré.
-- **Option avancée :** combos, prix à l'unité, publication planifiée, publication multi-site, flux comparateurs.
+- **Standard complémentaire :** variantes, produits alternatifs/accessoires, prix barré, date de publication (tri nouveautés).
+- **Option avancée :** combos, prix à l'unité, publication multi-site, flux comparateurs. Une publication planifiée n'existe pas dans les champs lus d'Odoo (la date est posée à la publication, pas programmée) : extension à documenter hors référence Odoo.
 
 ## 11. Points non vérifiés
 

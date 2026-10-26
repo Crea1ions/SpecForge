@@ -1,6 +1,6 @@
 # ECOM-02 — Catégories, navigation et recherche
 
-**Version :** 0.2 (brouillon)
+**Version :** 0.3 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3)
 **Statut :** décisions validées pour D2, défauts pour les autres, à confirmer à la validation du référentiel (L6)
 
@@ -72,7 +72,7 @@ Pas de cycle de vie propre. Statut dérivé :
 
 - **Champs cherchés (Odoo) :** nom et références des variantes (`variants_default_code`) ; avec l'option description (`search_in_description`, vrai par défaut dans `_get_shop_domain`) : description courte (`description_sale`) et description boutique (`description_ecommerce`).
 - **Socle :** recherche texte sur nom et SKU ; tri par défaut = ordre d'affichage (Odoo : `shop_default_sort`, `website_sequence asc`) ; pagination (Odoo : 20 produits par page, 4 par ligne).
-- **Standard complémentaire :** recherche dans les descriptions ; tri au choix du visiteur parmi les 5 tris d'Odoo (ordre d'affichage, nouveautés sur `publish_date`, nom A-Z, prix croissant, prix décroissant) ; filtre prix min/max ; filtres par attribut (OU au sein d'un attribut, ET entre attributs, à confirmer) ; tags ; autocomplétion (Odoo : module séparé `website_sale_autocomplete`, LGPL-3). Les filtres d'attributs d'Odoo portent sur les lignes d'attribut du template, pas sur les variantes réellement disponibles.
+- **Standard complémentaire :** recherche dans les descriptions ; tri au choix du visiteur parmi les 5 tris d'Odoo (ordre d'affichage, nouveautés sur `publish_date` (posée automatiquement à chaque (re)publication, voir ECOM-01), nom A-Z, prix croissant, prix décroissant) ; filtre prix min/max ; filtres par attribut (OU au sein d'un attribut, ET entre attributs, à confirmer) ; tags ; autocomplétion (Odoo : module séparé `website_sale_autocomplete`, LGPL-3). Les filtres d'attributs d'Odoo portent sur les lignes d'attribut du template, pas sur les variantes réellement disponibles.
 - **Point d'attention :** le filtre de prix **et** les tris par prix d'Odoo portent sur `list_price`, pas sur le prix après liste de prix. À traiter en ECOM-03 pour éviter un filtre ou un tri incohérent avec le prix affiché.
 - **Recherche de catégories :** sur le nom, et la description en option.
 
@@ -110,7 +110,6 @@ Licences : `website_sale` et `website_sale_autocomplete` sont en LGPL-3 (vérifi
 
 ## 12. Points non vérifiés
 
-- `publish_date` : sert au tri « nouveautés » ; son mode d'alimentation (automatique à la publication, saisie, planifiée) n'est pas lu. Impact sur ECOM-01 (classée option avancée) à trancher.
 - Combinaison ET/OU des domaines de filtre d'attributs, et clé du dictionnaire (supposée : un attribut par entrée).
 - Accès direct par URL à une catégorie sans produit visible.
 - Mécanisme `data-publish` (marquage front des entrées de navigation) non lu.
