@@ -45,7 +45,7 @@ Hors périmètre : statistiques (ECOM-15), envoi de courriels (ECOM-14), paramè
 | Suivi | priorité numérique du suivi (1 à 5) | Lu ; sens non lu |
 | Fil | message avec auteur technique `partner_root` | Lu (ECOM-18) |
 | Demande de suppression | utilisateur, état `todo`, `done`, `fail`, demandeur (`create_uid`) | Lu : `res_users_deletion.py:20-27, 63` |
-| Journal technique | table `ir.logging`, alimentée par SQL hors ORM | Lu : `ir_logging.py:6, 13-17` ; champs non lus |
+| Journal technique | table `ir.logging`, alimentée par SQL hors ORM | Lu : `ir_logging.py:6, 13-34` ; champs : nom, type client ou serveur, niveau, message, chemin, fonction, ligne |
 | Journal technique | fichiers de logs serveur | Lu par leurs appels dans le code ; destination non lue |
 | Retour, remboursement | décision et auteur | Non lu : aucun modèle trouvé |
 
@@ -72,7 +72,7 @@ Demande de suppression de compte :
 6. Chaque demande est verrouillée avant traitement et ignorée si son état a changé (l. 57-59).
 7. La suppression du contact est tentée après celle de l'utilisateur et peut échouer sans changer l'état (l. 85-100).
 8. Les échecs de suppression sont journalisés avec l'identifiant, le nom et le demandeur (l. 75-77, 96-98).
-9. Le journal technique en base contourne l'ORM : droits et suivi ne s'y appliquent pas (`ir_logging.py:13-17`).
+9. Le journal technique en base contourne l'ORM : suivi non applicable ; droits limités à un groupe, qui peut aussi supprimer (`ir_logging.py:13-17` ; `ir.model.access.csv:120`).
 10. Les événements métier passent par le fil, les événements techniques par les logs *(proposition, D2)*.
 11. Aucun nom, adresse ni courriel n'est écrit dans un journal technique *(proposition ; Odoo : écrits, voir §6)*.
 12. Un appel d'intégration est tracé sans sa charge utile *(proposition, D7)*.
@@ -93,7 +93,9 @@ Demande de suppression de compte :
 | Adresse IP lors du captcha | Écrite dans les logs | Lu (ECOM-18, `ir_http.py:94-108`) |
 | Modification des taxes d'une commande | Non tracée | Lu (l. 234) |
 | Suppression d'un utilisateur auteur de messages | Sort des messages et des valeurs de suivi | Non lu |
-| Lecture et purge du journal technique | Droits et durée | Non lu |
+| Suppression d'entrées du journal technique | Autorisée au groupe `group_erp_manager` (lecture, écriture, création, suppression) | Lu (`ir.model.access.csv:120`) |
+| Utilisateur supprimé, entrées du journal technique | Entrées conservées : `create_uid` est un entier sans clé étrangère *(déduit)* | Lu (`ir_logging.py:22-25, 45`) |
+| Purge automatique du journal technique ou des messages | Aucune lue dans `mail_message.py` ni `mail_thread.py` | Non lu ailleurs |
 
 ## 7. Parcours
 
