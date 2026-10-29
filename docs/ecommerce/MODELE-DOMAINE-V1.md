@@ -1,7 +1,7 @@
 # Modèle de domaine v1 — Template e-commerce (Rust)
 
 **Version :** 1.0
-**Statut :** modèle accepté et généré par le preset ; l’application réelle des migrations sur PostgreSQL reste une validation d’exploitation distincte
+**Statut :** modèle accepté et généré par le preset ; migrations appliquées sur une base PostgreSQL de test vierge et parcours métier v1 validé. Le déploiement sur un environnement cible reste à valider séparément.
 **Références :** fiches ECOM-01..20 (fiches/), ADR-TEMPLATE-ECOMMERCE.md (ADR-01..06), SCHEMA-DONNEES.md (référence conceptuelle uniquement), CARTOGRAPHIE.md
 
 ## 1. Conventions appliquées (rappel ADR-04, non négociables)

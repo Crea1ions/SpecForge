@@ -70,7 +70,9 @@
 - [x] `cargo test` / `cargo build` et build frontend du projet généré
 - [x] Golden ajouté ; sorties de tous les presets existants inchangées
 - [x] Deux générations identiques et sans chemins dupliqués
-- [ ] Application des migrations sur PostgreSQL vierge et parcours métier avec PostgreSQL : non exécutés ici ; nécessitent un service explicitement démarré par l’opérateur du projet généré
+- [x] Migrations appliquées sur une base PostgreSQL de test vierge
+- [x] Parcours catalogue → panier → commande → paiement mock → stock → retour/remboursement
+- [x] Vérification runtime Compose : santé API, catalogue seedé et storefront servi
 
 ## Stabilisation Templates
 - [x] Cohérence des presets

@@ -62,7 +62,7 @@ La priorité est de conserver un Core fiable avant d'ajouter de nouvelles capaci
 * [x] Séparation Profil technique / Type d'application
 * [x] Recherche de template par `profile + template`
 * [x] Sélecteur de profil dans le Header
-* [x] Sélecteur des six types d'application
+* [x] Sélecteur des sept types d'application
 * [x] Gestion des templates indisponibles
 * [x] Conservation de Rust comme seul profil réellement implémenté
 
@@ -72,6 +72,7 @@ Types actuellement prévus :
 Web Frontend
 Web App
 Web Platform
+E-commerce
 API Service
 Desktop
 Mobile
@@ -87,7 +88,7 @@ Templates actuellement disponibles :
 
 * [x] Rust + React + SQLite — Web App
 * [x] Rust + React + PostgreSQL — Web Platform
-* [x] Rust + React + PostgreSQL — E-commerce v1 (preset générable et compilé ; validation PostgreSQL à effectuer par l’opérateur)
+* [x] Rust + React + PostgreSQL — E-commerce v1 (preset générable, compilé et validé sur PostgreSQL de test)
 * [x] Rust + Tauri + React — Desktop
 * [x] Rust Backend Only — API Service
 * [ ] Rust Web Frontend
