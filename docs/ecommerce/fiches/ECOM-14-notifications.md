@@ -66,7 +66,7 @@ Hors périmètre : contenu des pages (ECOM-13), règles de relance (ECOM-12), do
 
 | Réglage | Règle |
 |---|---|
-| Envoi différé | Paramètre système `sale.async_emails` ; valeur par défaut non lue |
+| Envoi différé | Paramètre système `sale.async_emails` ; inactif par défaut (`False`, lu) |
 | Relance automatique | Par site, avec date d'activation |
 | Modèle de confirmation, modèle de relance | Par site |
 
@@ -155,7 +155,6 @@ Licences : `sale`, `website_sale`, `auth_signup` en LGPL-3 (vérifié). `mail` e
 ## 12. Points non vérifiés
 
 - Fin de `_filter_can_send_abandoned_cart_mail` (règle du panier le plus récent par client).
-- Valeur par défaut de `sale.async_emails` (définie dans `sale/data/ir_config_parameter.xml:14`).
 - Modèle de `stock` : contenu et déclencheur.
 - Modèle de remboursement ou de retour : aucun trouvé.
 - Échec d'envoi : traitement et reprise.
