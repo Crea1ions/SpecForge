@@ -13,7 +13,7 @@
 | D3 | Commandes impayées et paniers abandonnés sont des vues de suivi, pas des états | Non : filtres d'action (`state = 'sent'`, `is_abandoned_cart`) |
 | D4 | Un panier est abandonné s'il est identifié, non vide et plus ancien que le délai du site ; délai en heures par site, défaut 10 | Non : `_compute_abandoned_cart`, `cart_abandoned_delay` (défaut 10.0 ; repli 1.0 si nul) ; l'état requis est `draft` |
 | D5 | Un panier d'invité jamais identifié n'est pas relançable | Non (déduit de la condition `partner_id != public`) |
-| D6 | Relance d'un panier abandonné par courriel, modèle configurable ; manuelle au socle, automatique en option avancée | Non : `action_recovery_email_send`, `send_abandoned_cart_email` ; un indicateur évite la double relance (`cart_recovery_email_sent`) ; la relance manuelle ouvre l'assistant de courriel (`mail.compose.message`), modèle du site sinon modèle par défaut ; déclencheur de l'envoi automatique non trouvé |
+| D6 | Relance d'un panier abandonné par courriel, modèle configurable ; manuelle au socle, automatique en option avancée | Non : `action_recovery_email_send`, `send_abandoned_cart_email` ; un indicateur évite la double relance (`cart_recovery_email_sent`) ; la relance manuelle ouvre l'assistant de courriel (`mail.compose.message`), modèle du site sinon modèle par défaut ; envoi automatique par tâche horaire (`_send_abandoned_cart_email`, corps non lu) |
 | D7 | Les clients se gèrent depuis la même console, sans suppression de ceux qui ont des commandes | Partiel : écran client lu, droits non lus |
 | D8 | Les valeurs personnalisées saisies par un client ne sont lisibles que par lui et par l'administration | Non : règle `create_uid = user.id` |
 | D9 | Actions de masse (publication, archivage, export) : option avancée *(proposition)* | Non lu |
@@ -143,7 +143,7 @@ Licences : `website_sale` et `sale` en LGPL-3 (vérifié pour `website_sale`) ; 
 
 ## 12. Points non vérifiés
 
-- Déclencheur de l'envoi automatique des relances (cron non cherché) ; effet de `website_sale_send_recovery_email` sur `cart_recovery_email_sent`.
+- Corps de `_send_abandoned_cart_email` (cron horaire lu) ; effet de `website_sale_send_recovery_email` sur `cart_recovery_email_sent`.
 - Retour de la relance à « non envoyée ».
 - Comportement d'une relance sans modèle valide.
 - Droits sur les clients et sur `product_feed` (tronqués).
