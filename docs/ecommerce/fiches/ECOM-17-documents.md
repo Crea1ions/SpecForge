@@ -8,7 +8,7 @@
 
 | # | Décision | Écart avec Odoo |
 |---|---|---|
-| D1 | Documents du socle : confirmation de commande, facture, bon de livraison, chacun en PDF | Partiel : devis, proforma et facture lus ; bon de livraison non lu |
+| D1 | Documents du socle : confirmation de commande, facture, bon de livraison, chacun en PDF | Partiel : devis, proforma et facture lus ; bon de livraison : rapport lu, contenu non lu |
 | D2 | Une facture émise est figée (numéro, montants, adresses) ; correction par avoir | Partiel : `inalterable_hash` posé seulement si le journal l'exige |
 | D3 | Le hash d'inaltérabilité est obligatoire au socle *(proposition)* | Oui : réglage par journal (`restrict_mode_hash_table`) |
 | D4 | Numérotation continue, sans trou, par séquence *(proposition)* | Non lu |
