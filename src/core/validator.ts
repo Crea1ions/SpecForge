@@ -19,8 +19,82 @@ export function validateSpecification(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
+  if (spec.template === 'ecommerce') {
+    const requiredConfiguration =
+      spec.profile === 'rust' &&
+      spec.backend.enabled &&
+      spec.backend.language === 'rust' &&
+      spec.backend.framework === 'axum' &&
+      spec.frontend.enabled &&
+      spec.frontend.framework === 'react' &&
+      spec.frontend.bundler === 'vite' &&
+      spec.database.enabled &&
+      spec.database.type === 'postgresql' &&
+      spec.database.orm === 'sqlx' &&
+      spec.database.migrations &&
+      spec.api.style === 'rest' &&
+      spec.api.auth &&
+      spec.api.openapi &&
+      spec.authentication.enabled &&
+      spec.authentication.provider === 'jwt' &&
+      spec.infrastructure.docker &&
+      spec.infrastructure.compose &&
+      spec.quality.tests &&
+      spec.documentation.readme;
+
+    if (!requiredConfiguration) {
+      issues.push({
+        id: 'ecommerce-stack-incomplete',
+        severity: 'error',
+        title: 'Socle e-commerce incomplet',
+        message:
+          "Le template e-commerce nécessite Rust/Axum, React/Vite, PostgreSQL/SQLx avec migrations, REST/OpenAPI/JWT, Docker Compose, tests et README.",
+        source: 'configuration',
+        fixSuggestion: 'Restaurez les capacités requises du preset Rust E-commerce.',
+      });
+    }
+  }
+
   const uniqueBrickIds = activeBricks.map((b) => b.id);
   const providedCapabilities = new Set<string>();
+
+  if (spec.template === 'ecommerce') {
+    const requiredBricks = [
+      'rust-backend',
+      'react-vite',
+      'postgres-storage',
+      'rest-api',
+      'openapi',
+      'jwt-auth',
+      'docker-infra',
+      'quality-suite',
+      'docs-pack',
+      'work-structure',
+      'ecom-catalog',
+      'ecom-pricing',
+      'ecom-cart-orders',
+      'ecom-accounts',
+      'ecom-payment-mock',
+      'ecom-inventory-fulfillment',
+      'ecom-notifications',
+      'ecom-audit-ops',
+      'ecom-admin',
+    ];
+
+    for (const brickId of requiredBricks) {
+      if (!uniqueBrickIds.includes(brickId)) {
+        issues.push({
+          id: `ecommerce-brick-missing-${brickId}`,
+          severity: 'error',
+          title: 'Brique e-commerce indisponible',
+          message: `La génération e-commerce requiert la brique '${brickId}', absente du registre actif.`,
+          source: 'dependency',
+          fixSuggestion: 'Enregistrez toutes les briques e-commerce avant de proposer le preset.',
+          affectedBricks: [brickId],
+        });
+      }
+    }
+  }
 
   activeBricks.forEach((b) => {
     b.provides.forEach((p) => providedCapabilities.add(p));

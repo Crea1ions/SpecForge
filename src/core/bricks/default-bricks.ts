@@ -15,6 +15,8 @@ import { BrickDefinition, GenerationContext, GeneratedFile, ArchitecturalDecisio
 import { getContentByteLength } from '../utils';
 import { TAURI_ICON_BASE64 } from '../assets/tauri-icon';
 import { FAVICON_BASE64 } from '../assets/favicon';
+import { generateEcommerceSchemaFiles } from './ecommerce-schema';
+import { ECOMMERCE_BRICKS } from './ecommerce-bricks';
 
 function makeFile(
   path: string,
@@ -141,7 +143,16 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ${spec.database.enabled && spec.database.type === 'sqlite' && spec.database.orm === 'sqlx' ? `sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "macros", "chrono"${spec.database.migrations ? ', "migrate"' : ''}] }` : ''}
 ${spec.database.enabled && spec.database.type === 'postgresql' && spec.database.orm === 'sqlx' ? `sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "chrono"${spec.database.migrations ? ', "migrate"' : ''}] }` : ''}
 chrono = { version = "0.4", features = ["serde"] }
-dotenvy = "0.15"
+dotenvy = "0.15"${spec.template === 'ecommerce' ? `
+argon2 = "0.5"
+jsonwebtoken = "9"
+rand_core = { version = "0.6", features = ["getrandom"] }
+` : ''}
+${spec.template === 'ecommerce' ? `
+[dev-dependencies]
+tower = { version = "0.4.13", features = ["util"] }
+http-body-util = "0.1"
+` : ''}
 
 [profile.release]
 opt-level = 3
@@ -171,7 +182,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod config;
 mod api;
-${spec.database.enabled ? 'mod db;' : ''}
+${spec.template === 'ecommerce' ? 'mod ecommerce;\n' : ''}${spec.database.enabled ? 'mod db;' : ''}
 
 use config::AppConfig;
 
@@ -189,11 +200,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ${
       spec.database.enabled
         ? `let db_pool = db::init_database(&config.database_url).await?;
-    tracing::info!("📦 Couche de persistance ${spec.database.type.toUpperCase()} connectée avec succès.");`
+${spec.template === 'ecommerce' ? '    ecommerce::admin::bootstrap_admin(&db_pool).await?;\n' : ''}    tracing::info!("📦 Couche de persistance ${spec.database.type.toUpperCase()} connectée avec succès.");`
         : '// Aucune base de données requise.'
     }
 
-    let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
+    ${spec.template === 'ecommerce' ? 'let _cart_recovery_worker = tokio::spawn(ecommerce::audit_ops::run_cart_recovery_worker(db_pool.clone()));\n\n    ' : ''}let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
 
     ${
       hasFrontend
@@ -256,9 +267,15 @@ impl AppConfig {
         dotenvy::dotenv().ok();
         Self {
             port: env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(${spec.backend.port}),
-            database_url: env::var("DATABASE_URL").unwrap_or_else(|_| "${
-              spec.database.type === 'sqlite' ? 'sqlite://data.db' : 'postgres://postgres:postgres@localhost:5432/app'
-            }".to_string()),
+            database_url: ${
+              spec.template === 'ecommerce'
+                ? 'env::var("DATABASE_URL").expect("DATABASE_URL must be set")'
+                : `env::var("DATABASE_URL").unwrap_or_else(|_| "${
+                    spec.database.type === 'sqlite'
+                      ? 'sqlite://data.db'
+                      : 'postgres://postgres:postgres@localhost:5432/app'
+                  }".to_string())`
+            },
         }
     }
 }
@@ -282,11 +299,13 @@ impl AppConfig {
         `# Configuration locale — copier en .env et adapter
 PORT=${spec.backend.port}
 DATABASE_URL=${
-          spec.database.type === 'sqlite'
+          spec.template === 'ecommerce'
+            ? 'postgres://app:replace-with-a-local-password@localhost:5432/app\nPOSTGRES_USER=app\n# Use URL-safe characters for this password (for example, 64 hex characters).\nPOSTGRES_PASSWORD=replace-with-a-local-url-safe-password\nPOSTGRES_DB=app\nPOSTGRES_PORT=5432'
+            : spec.database.type === 'sqlite'
             ? 'sqlite://data.db'
             : 'postgres://postgres:postgres@localhost:5432/app'
         }
-RUST_LOG=info
+${spec.template === 'ecommerce' ? 'JWT_SECRET=replace-with-a-random-secret-of-at-least-32-bytes\n# Optional first-admin bootstrap: configure both ECOM_ADMIN_EMAIL and ECOM_ADMIN_PASSWORD.\n# ECOM_ADMIN_EMAIL=manager@example.test\n# ECOM_ADMIN_PASSWORD=replace-with-a-12-character-password\n# Acceptance tests require a disposable database ending in _test.\nECOMMERCE_ACCEPTANCE_TESTS=0\nECOMMERCE_TEST_DATABASE_URL=postgres://app:replace-with-a-test-password@localhost:5432/ecommerce_test\n' : ''}RUST_LOG=info
 `,
         'bash',
         'rust-backend',
@@ -465,6 +484,10 @@ const reactViteBrick: BrickDefinition = {
   generateFiles: (ctx) => {
     const { spec } = ctx;
     const files: GeneratedFile[] = [];
+
+    if (spec.template === 'ecommerce') {
+      return files;
+    }
 
     // Proxy /api utile seulement si un serveur HTTP est réellement généré.
     const hasHttpBackend =
@@ -1538,7 +1561,7 @@ pub async fn init_database(
         )
       );
 
-      if (ctx.spec.database.migrations) {
+      if (ctx.spec.database.migrations && ctx.spec.template !== 'ecommerce') {
         const migrationSql = `-- Migration initiale PostgreSQL générée par SpecForge pour SQLx
 CREATE TABLE IF NOT EXISTS items (
     id BIGSERIAL PRIMARY KEY,
@@ -1559,6 +1582,9 @@ CREATE TABLE IF NOT EXISTS items (
             'ADR-003'
           )
         );
+      }
+      if (ctx.spec.template === 'ecommerce') {
+        files.push(...generateEcommerceSchemaFiles(ctx));
       }
     }
     return files;
@@ -1601,6 +1627,10 @@ const jwtAuthBrick: BrickDefinition = {
 
   generateFiles: (ctx) => {
     const files: GeneratedFile[] = [];
+
+    if (ctx.spec.template === 'ecommerce') {
+      return files;
+    }
 
     if (ctx.spec.backend.language === 'rust') {
       const authRs = `//! Authentification JWT
@@ -1653,6 +1683,10 @@ const restApiBrick: BrickDefinition = {
 
   generateFiles: (ctx) => {
     const files: GeneratedFile[] = [];
+    if (ctx.spec.template === 'ecommerce') {
+      return files;
+    }
+
     if (ctx.spec.backend.language === 'rust') {
       const isSqlite =
   ctx.spec.database.enabled &&
@@ -1949,6 +1983,290 @@ const openapiBrick: BrickDefinition = {
     const files: GeneratedFile[] = [];
 
     if (ctx.activeBricks.some((brick) => brick.id === 'rest-api')) {
+      if (ctx.spec.template === 'ecommerce') {
+        const openapiYaml = `openapi: 3.0.3
+info:
+  title: ${JSON.stringify(ctx.spec.project.name)}
+  version: ${JSON.stringify(ctx.spec.project.version)}
+  description: ${JSON.stringify(ctx.spec.project.description)}
+servers:
+  - url: http://localhost:${ctx.spec.backend.port}
+paths:
+  /api/health:
+    get:
+      summary: État du service
+      responses:
+        '200':
+          description: Service disponible
+  /api/products:
+    get:
+      summary: Parcourir le catalogue
+      responses:
+        '200':
+          description: Produits publiés et vendables
+  /api/products/{product_id}:
+    get:
+      summary: Consulter un produit
+      parameters:
+        - $ref: '#/components/parameters/productId'
+      responses:
+        '200':
+          description: Produit
+        '404':
+          description: Produit introuvable
+  /api/categories:
+    get:
+      summary: Parcourir les catégories
+      responses:
+        '200':
+          description: Catégories du catalogue
+  /api/shipping-methods:
+    get:
+      summary: Lister les modes de livraison disponibles
+      responses:
+        '200':
+          description: Modes de livraison publiés
+  /api/auth/register:
+    post:
+      summary: Créer un compte client
+      responses:
+        '201':
+          description: Compte créé et connecté
+  /api/auth/login:
+    post:
+      summary: Connecter un client
+      responses:
+        '200':
+          description: Jeton client
+  /api/admin/login:
+    post:
+      summary: Connecter un administrateur
+      responses:
+        '200':
+          description: Jeton administrateur
+  /api/customer/addresses:
+    get:
+      summary: Lister les adresses du client connecté
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Carnet d’adresses du client
+    post:
+      summary: Ajouter une adresse au carnet du client
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Adresse créée
+  /api/customer/addresses/{address_id}:
+    parameters:
+      - $ref: '#/components/parameters/addressId'
+    put:
+      summary: Remplacer une adresse du client connecté
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Adresse mise à jour
+        '404':
+          description: Adresse introuvable
+    delete:
+      summary: Supprimer une adresse du client connecté
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Adresse supprimée
+        '404':
+          description: Adresse introuvable
+  /api/cart:
+    get:
+      summary: Consulter le panier courant
+      parameters:
+        - $ref: '#/components/parameters/cartSession'
+      responses:
+        '200':
+          description: Panier courant
+    post:
+      summary: Créer ou récupérer le panier courant
+      parameters:
+        - $ref: '#/components/parameters/cartSession'
+      responses:
+        '200':
+          description: Panier courant
+  /api/cart/items:
+    get:
+      summary: Lister les lignes du panier
+      parameters:
+        - $ref: '#/components/parameters/cartSession'
+      responses:
+        '200':
+          description: Lignes du panier
+    post:
+      summary: Ajouter un produit au panier
+      parameters:
+        - $ref: '#/components/parameters/cartSession'
+      responses:
+        '200':
+          description: Panier mis à jour
+  /api/cart/items/{product_id}:
+    parameters:
+      - $ref: '#/components/parameters/productId'
+      - $ref: '#/components/parameters/cartSession'
+    patch:
+      summary: Modifier la quantité d’un produit du panier
+      responses:
+        '200':
+          description: Panier mis à jour
+    delete:
+      summary: Retirer un produit du panier
+      responses:
+        '204':
+          description: Produit retiré
+  /api/orders/checkout:
+    post:
+      summary: Valider le panier, appliquer la promotion et payer avec le mock
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Commande confirmée et paiement mock réussi
+  /api/customer/orders:
+    get:
+      summary: Lister les commandes du client connecté
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Commandes du client
+  /api/customer/orders/{reference}/returns:
+    parameters:
+      - $ref: '#/components/parameters/orderReference'
+    post:
+      summary: Demander le retour d’une commande livrée
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Demande de retour créée
+  /api/admin/products:
+    get:
+      summary: Lister les produits en administration
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Produits administrables
+  /api/admin/products/{product_id}:
+    parameters:
+      - $ref: '#/components/parameters/productId'
+    patch:
+      summary: Mettre à jour prix, publication, vendabilité et stock
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Produit mis à jour
+  /api/admin/orders:
+    get:
+      summary: Lister les commandes en administration
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Commandes administrables
+  /api/admin/orders/{order_number}/shipment:
+    parameters:
+      - $ref: '#/components/parameters/orderNumber'
+    post:
+      summary: Faire évoluer l’expédition et le stock
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Expédition mise à jour
+  /api/admin/returns:
+    get:
+      summary: Lister les demandes de retour
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Demandes de retour
+  /api/admin/returns/{return_id}/process:
+    parameters:
+      - $ref: '#/components/parameters/returnId'
+    post:
+      summary: Approuver, refuser ou recevoir un retour avec remboursement mock
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Retour traité
+components:
+  parameters:
+    productId:
+      name: product_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    orderReference:
+      name: reference
+      in: path
+      required: true
+      schema:
+        type: string
+    orderNumber:
+      name: order_number
+      in: path
+      required: true
+      schema:
+        type: string
+    returnId:
+      name: return_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    addressId:
+      name: address_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    cartSession:
+      name: x-cart-session
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 128
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+`;
+        files.push(
+          makeFile(
+            'openapi.yaml',
+            openapiYaml,
+            'yaml',
+            'openapi',
+            'OpenAPI Contract',
+            '1.0.0',
+            'Contrat OpenAPI décrivant les routes du preset e-commerce.'
+          )
+        );
+        return files;
+      }
+
       const openapiYaml = `openapi: 3.0.3
 info:
   title: ${ctx.spec.project.name}
@@ -2142,15 +2460,25 @@ generateFiles: (ctx) => {
     const needsStatic = hasRustWebApp;
 
     const copyTemplatesLine = needsTemplates ? 'COPY templates ./templates\n' : '';
+    const rustBuildContext = spec.template === 'ecommerce'
+      ? 'COPY . ./'
+      : `COPY Cargo.toml Cargo.lock ./\nCOPY src ./src\n${copyTemplatesLine}COPY migrations ./migrations`;
+    const cargoBuildCommand =
+      spec.template === 'ecommerce'
+        ? 'RUN if [ -f Cargo.lock ]; then cargo build --release --locked; else cargo build --release; fi'
+        : 'RUN cargo build --release --locked';
 
     // Étape frontend (react-vite) : build Vite puis copie du dist dans /app/static
     const frontendBuilderStage = hasReactVite
       ? `# --- Étape 1 : build du frontend React/Vite ---
 FROM node:22-alpine AS frontend-builder
 WORKDIR /frontend
-COPY frontend/package.json frontend/package-lock.json* ./
+${spec.template === 'ecommerce'
+  ? `COPY frontend/ ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi`
+  : `COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci || npm install
-COPY frontend/ ./
+COPY frontend/ ./`}
 RUN npm run build
 
 `
@@ -2165,10 +2493,8 @@ RUN npm run build
 FROM rust:1.94-alpine AS builder
 RUN apk add --no-cache musl-dev
 WORKDIR /app
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-${copyTemplatesLine}COPY migrations ./migrations
-RUN cargo build --release --locked
+${rustBuildContext}
+${cargoBuildCommand}
 
 # --- Étape finale ---
 FROM alpine:3.20
@@ -2230,6 +2556,8 @@ docs/
       const compose = `services:
   app:
     build: .
+    env_file:
+      - .env
     ports:
       - "${spec.backend.port}:${spec.backend.port}"
     environment:
@@ -2262,10 +2590,45 @@ volumes:
     : ''
 }
 `;
+      const composeContent = spec.template === 'ecommerce'
+        ? `services:
+  app:
+    build: .
+    ports:
+      - "${spec.backend.port}:${spec.backend.port}"
+    environment:
+      PORT: "${spec.backend.port}"
+      JWT_SECRET: "\${JWT_SECRET:?Set JWT_SECRET in .env}"
+      DATABASE_URL: "postgres://\${POSTGRES_USER:-app}:\${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/\${POSTGRES_DB:-app}"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: "\${POSTGRES_USER:-app}"
+      POSTGRES_PASSWORD: "\${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      POSTGRES_DB: "\${POSTGRES_DB:-app}"
+    ports:
+      - "127.0.0.1:\${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER:-app} -d \${POSTGRES_DB:-app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+`
+        : compose;
       files.push(
         makeFile(
           'docker-compose.yml',
-          compose,
+          composeContent,
           'yaml',
           'docker-infra',
           'Docker & Multi-Stage Compose',
@@ -5564,4 +5927,5 @@ export const DEFAULT_BRICKS: BrickDefinition[] = [
   qualitySuiteBrick,
   docsPackBrick,
   workStructureBrick,
+  ...ECOMMERCE_BRICKS,
 ];

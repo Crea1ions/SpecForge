@@ -3,6 +3,7 @@
 **Version :** 0.1 (brouillon)
 **Référence :** 20 fiches de `fiches/` (ECOM-01 à ECOM-20), Odoo 19.0 Community
 **Statut :** document de renvoi, aucun fait nouveau ; à régénérer quand une fiche change
+**Décisions :** voir [ADR-TEMPLATE-ECOMMERCE.md](ADR-TEMPLATE-ECOMMERCE.md) (cadrage et ADR du template e-commerce)
 
 ## Rôle
 

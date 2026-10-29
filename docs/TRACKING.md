@@ -62,6 +62,16 @@
 - [x] Corrections ciblées
 - [x] Validation finale
 
+## Rust E-commerce
+- [x] Cadrage v1, ADR et modèle de domaine
+- [x] Migrations PostgreSQL versionnées générées par SpecForge
+- [x] Preset, resolver, sélecteur et contrôle de complétude
+- [x] Backend Axum/SQLx et frontend React/Vite générés
+- [x] `cargo test` / `cargo build` et build frontend du projet généré
+- [x] Golden ajouté ; sorties de tous les presets existants inchangées
+- [x] Deux générations identiques et sans chemins dupliqués
+- [ ] Application des migrations sur PostgreSQL vierge et parcours métier avec PostgreSQL : non exécutés ici ; nécessitent un service explicitement démarré par l’opérateur du projet généré
+
 ## Stabilisation Templates
 - [x] Cohérence des presets
 - [x] Chaque preset correspond à un template réel

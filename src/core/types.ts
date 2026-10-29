@@ -17,6 +17,7 @@ export type ApplicationTemplate =
   | 'web-frontend'
   | 'web-app'
   | 'web-platform'
+  | 'ecommerce'
   | 'api-service'
   | 'desktop'
   | 'mobile';

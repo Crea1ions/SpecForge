@@ -30,6 +30,21 @@ export function resolveArchitecture(
   // generic bricks are only added when they represent optional capabilities.
   if (spec.template === 'web-app') {
       activeBrickIds.push('rust-web-app');
+    } else if (spec.template === 'ecommerce') {
+      activeBrickIds.push(
+        'rust-backend',
+        'react-vite',
+        'postgres-storage',
+        'ecom-catalog',
+        'ecom-pricing',
+        'ecom-cart-orders',
+        'ecom-accounts',
+        'ecom-payment-mock',
+        'ecom-inventory-fulfillment',
+        'ecom-notifications',
+        'ecom-audit-ops',
+        'ecom-admin',
+      );
     } else if (spec.template === 'web-frontend' && spec.frontend.framework === 'askama') {
       activeBrickIds.push('rust-web-frontend');
     } else if (spec.template === 'mobile') {

@@ -87,6 +87,7 @@ Templates actuellement disponibles :
 
 * [x] Rust + React + SQLite — Web App
 * [x] Rust + React + PostgreSQL — Web Platform
+* [x] Rust + React + PostgreSQL — E-commerce v1 (preset générable et compilé ; validation PostgreSQL à effectuer par l’opérateur)
 * [x] Rust + Tauri + React — Desktop
 * [x] Rust Backend Only — API Service
 * [ ] Rust Web Frontend

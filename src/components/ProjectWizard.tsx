@@ -223,11 +223,12 @@ const handleTemplateChange = (template: ApplicationTemplate) => {
           <label className="block text-xs font-medium text-neutral-300 mb-2">
             Type d'application
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             {[
               { id: 'web-frontend', label: 'Web Frontend', desc: 'Client web seul' },
               { id: 'web-app', label: 'Web App', desc: 'Backend + UI Web' },
               { id: 'web-platform', label: 'Web Platform', desc: 'Frontend + Backend séparés' },
+              { id: 'ecommerce', label: 'E-commerce', desc: 'Boutique complète Rust + PostgreSQL' },
               { id: 'api-service', label: 'API Service', desc: 'Service backend pur' },
               { id: 'desktop', label: 'Desktop', desc: 'Tauri + Rust + UI' },
               { id: 'mobile', label: 'Mobile', desc: 'Application mobile' },
