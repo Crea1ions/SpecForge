@@ -1,6 +1,6 @@
 # ECOM-05 — Panier
 
-**Version :** 0.4 (brouillon)
+**Version :** 0.5 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3 : `website_sale`, `sale`)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
@@ -13,7 +13,7 @@
 | D3 | Une ligne par produit : ajouter un produit déjà présent cumule la quantité | Partiel : `_cart_add` met à jour la ligne existante si produit, unité, ligne parente et absence d'attribut personnalisé ou de combo correspondent (`_cart_find_product_line`) ; les produits à attributs personnalisés ne sont pas cumulés (option avancée) |
 | D4 | À la connexion, le panier anonyme est rattaché au compte (pas de fusion ligne à ligne) ; sans panier en session, le panier ouvert précédent du client sur cette boutique est retrouvé, puis ses prix et son adresse sont recalculés | Non : `_get_and_cache_current_cart` (recherche : client, boutique, brouillon, `limit=1`, tri par défaut de `sale.order` : `date_order desc, id desc`, donc le brouillon le plus récent) |
 | D5 | Un panier dont le paiement est engagé (transaction en attente, autorisée ou réussie) n'est plus le panier courant | Non : conditions de `_get_and_cache_current_cart` ; un paiement en attente fait aussi passer la commande de `draft` à `sent` (`sale/payment_transaction._post_process`) |
-| D6 | Les frais de livraison sont recalculés à chaque modification du panier ; leur représentation (ligne ou champ) est décidée en ECOM-08 | Odoo : ligne de commande `is_delivery` |
+| D6 | Les frais de livraison sont recalculés à chaque modification du panier ; ils sont représentés par une ligne de commande distincte (ECOM-08 D3) | Odoo : ligne de commande `is_delivery` |
 
 ## 1. Objectif et périmètre
 
