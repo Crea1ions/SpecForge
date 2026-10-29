@@ -1,6 +1,6 @@
 # ECOM-06 — Commandes et validation
 
-**Version :** 0.1 (brouillon)
+**Version :** 0.2 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3 : `sale`, `website_sale`)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
@@ -8,13 +8,14 @@
 
 | # | Décision | Écart avec Odoo |
 |---|---|---|
-| D1 | La commande naît quand un paiement est engagé (en attente, autorisé ou réussi) ; avant, c'est un panier modifiable (ECOM-05) | Partiel : Odoo n'a qu'un objet `sale.order` ; le lancement du paiement crée une transaction en brouillon sans changer l'état. Le comportement du panier pendant la redirection vers le prestataire n'est pas lu |
+| D1 | La commande naît quand un paiement est engagé (en attente, autorisé ou réussi) ; avant, c'est un panier modifiable (ECOM-05) | Partiel : Odoo n'a qu'un objet `sale.order` ; le lancement du paiement crée une transaction en brouillon sans changer l'état. Au retour du prestataire, la route de statut vide la session (`sale_reset`) ; le comportement pendant la redirection n'est pas lu |
 | D2 | Échec ou annulation de paiement : le panier reste modifiable, aucune commande n'est créée | Non : déduit, aucune branche sur la commande dans `_post_process` |
 | D3 | Paiement différé (virement) : commande « en attente de paiement » jusqu'à la validation du paiement | Non : transaction `pending`, commande `sent` |
-| D4 | Confirmation quand le paiement est autorisé ou réussi ET que le montant requis est atteint ; une commande par paiement, pas de paiement groupé | Non : `_check_amount_and_confirm_order` ; règle du montant requis non lue |
+| D4 | Confirmation quand le paiement est autorisé ou réussi ET que le montant requis est atteint ; une commande par paiement, pas de paiement groupé | Non : `_check_amount_and_confirm_order` ; confirmé si `_get_prepayment_required_amount() <= amount_paid` (`_is_confirmation_amount_reached`), ces deux valeurs ne sont pas lues |
 | D5 | Prix, taxes et frais de la commande sont figés à sa création : aucun recalcul ensuite (résout ECOM-03 D5) | Oui : Odoo n'a pas de gel explicite, le prix est stocké sur la ligne et recalculé seulement si produit, unité ou quantité changent |
 | D6 | Statuts séparés : commande, paiement (ECOM-07), expédition (ECOM-08), remboursement (ECOM-11) | Partiel : `sale.order.state` n'a que 4 valeurs ; les autres statuts d'Odoo ne sont pas lus |
 | D7 | Verrouillage d'une commande confirmée : option avancée | Non : `locked`, booléen, réglage `sale.group_auto_done_setting` |
+| D8 | Une commande de montant nul est confirmée sans paiement, si le panier est prêt | Non : route de statut de paiement (`_validate_order`, non lu) |
 
 ## 1. Objectif et périmètre
 
@@ -69,7 +70,8 @@ Le panier est en ECOM-05, le paiement en ECOM-07, l'expédition en ECOM-08, les 
 Remarques :
 - Le verrouillage est un booléen indépendant du statut, pas un état.
 - Odoo n'a pas d'état « terminée » dans `sale.order.state`.
-- L'annulation depuis En attente ou Panier : `_action_cancel` ne teste que le verrou. Les surcharges de `sale_stock` et `payment` ne sont pas lues.
+- L'annulation depuis En attente ou Panier : `action_cancel` ne teste que le verrou. `sale_stock` annule les livraisons non terminées ; une livraison terminée n'est pas annulée (voir ECOM-08, ECOM-11). La surcharge de `payment` n'est pas lue.
+- Seul un panier en `draft` est valide pour le checkout : une commande `sent` n'y revient pas (Odoo : `_check_cart`).
 
 ## 5. Invariants et règles de validation
 
@@ -84,6 +86,7 @@ Remarques :
 9. Une commande verrouillée ne peut pas être annulée ni modifiée (Odoo : `action_cancel`, `product_updatable`).
 10. Annuler une commande annule ses factures en brouillon (Odoo : `_action_cancel`).
 11. Les transitions d'état et leurs causes sont tracées (ECOM-19).
+12. Une commande de montant nul est confirmée sans paiement (D8).
 
 ## 6. Erreurs et cas particuliers
 
@@ -91,7 +94,7 @@ Remarques :
 - Paiement partiel sous le montant requis : pas de confirmation.
 - Transaction sans commande ou avec plusieurs commandes : pas de confirmation.
 - Paiement échoué ou annulé : le panier reste utilisable (D2, déduit).
-- Produit devenu indisponible entre l'ajout et le paiement : aucun contrôle de stock trouvé à la confirmation, à étudier en ECOM-09.
+- Produit devenu indisponible entre l'ajout et le paiement : aucun contrôle de stock trouvé avant la confirmation. La confirmation lance les règles de stock (`sale_stock._action_confirm` : `_action_launch_stock_rule`), donc la réservation se fait à la confirmation, pas au panier ; le cas de stock insuffisant n'est pas lu (ECOM-09).
 - Prix modifié à la main par un administrateur : protégé contre le recalcul (`technical_price_unit`).
 - Confirmation avec tarif de livraison en échec : voir ECOM-08.
 
@@ -99,7 +102,10 @@ Remarques :
 
 Étapes d'Odoo (`shop_checkout`) : contrôle du panier et des adresses, choix du mode de livraison (préféré proposé, tarif recalculé), paiement, page de confirmation (`/shop/confirmation`).
 - **Socle :** adresses, mode de livraison, paiement, page de confirmation.
-- **À étudier :** achat sans compte (invité), ordre exact des étapes (`_get_checkout_step_values`), paiement express (option avancée).
+- **Étapes configurables :** dans Odoo, ce sont des enregistrements (`website.checkout.step` : `step_href`, étape suivante et précédente, domaine d'étapes autorisées) ; l'adresse est rattachée à l'étape de livraison. Socle : ordre fixe ; étapes configurables en option avancée.
+- **Achat sans compte :** dépend d'un réglage (Odoo : `_check_cart` exige un utilisateur connecté, ou des commandes publiques autorisées ; nom du réglage non lu). Standard complémentaire.
+- **Retour de paiement :** la route de statut lève la première erreur de paiement si la commande n'est pas confirmée, redirige vers la boutique si le montant est non nul sans transaction, confirme directement une commande de montant nul (D8), vide la session (`sale_reset`), puis redirige vers `/shop/confirmation`. Cette page lit la commande par `sale_last_order_id` en session, sans jeton (ECOM-16).
+- **À étudier :** paiement express (option avancée).
 
 ## 8. Frontières
 
@@ -137,9 +143,9 @@ Licences : `sale` et `website_sale` en LGPL-3 (vérifié). `website_event_sale` 
 
 ## 12. Points non vérifiés
 
-- `_is_confirmation_amount_reached`, `action_quotation_sent`, `_post_process` de base (`payment`).
-- Panier pendant la redirection vers le prestataire (transaction en brouillon).
-- `_check_cart_and_addresses`, `_get_checkout_step_values`, route de confirmation, achat invité.
-- `sale_stock` (`_action_confirm`, annulation), annulation depuis En attente.
+- `_get_prepayment_required_amount`, `amount_paid`, `_validate_order`, `_post_process` de base (`payment`).
+- Panier pendant la redirection vers le prestataire (avant le retour sur la route de statut) ; effet du `sale_reset` sur un visiteur anonyme dont la transaction reste en brouillon (déduit : panier perdu, car la recherche du brouillon ne vaut que pour un client connecté, ECOM-05 D4).
+- Fin de `_check_cart` et `_check_addresses` (redirections), `_get_shop_payment_errors`, réglage des commandes publiques, `_get_allowed_steps_domain`.
+- `_action_launch_stock_rule` si le stock est insuffisant ; fin de `sale_stock._action_cancel` (après la ligne 266) ; commande annulée après livraison terminée.
 - Numérotation de la référence de commande, statuts de livraison et de facturation de `sale.order`.
 - Recalcul de prix après confirmation (dépendance à `date_order`).
