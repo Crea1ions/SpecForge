@@ -1,6 +1,6 @@
 # ECOM-04 — Promotions
 
-**Version :** 0.1 (brouillon)
+**Version :** 0.2 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3 vérifiée : `loyalty`, `sale_loyalty`, `website_sale_loyalty`)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
@@ -49,7 +49,7 @@ Hors périmètre : calcul des prix et taxes (ECOM-03), paiement (ECOM-07), courr
 | Récompense | type `product` ou `discount` (défaut `discount`) | Lu : `loyalty_reward.py:63-70` |
 | Récompense | remise (10), mode (`percent` par défaut), plafond, applicabilité `order`, `cheapest`, `specific` | Lu : l. 74-85, 100 ; liste des modes non lue |
 | Récompense | produit offert, quantité (1) | Lu : l. 114-126 |
-| Carte | code, points, programme, client, date d'expiration | Lu partiellement : `code`, `points`, `partner_id`, `expiration_date` vus dans `sale_order.py` ; modèle non lu |
+| Carte | code, points, programme, client, date d'expiration | Lu : `code` (obligatoire, généré par défaut), `points` (`tracking=True`), `partner_id` (indexé), `expiration_date`, `active` (vrai par défaut) (`loyalty_card.py:28-49`) ; suite du modèle non lue |
 | Commande | programmes et coupons appliqués, lignes de récompense | Lu : `applied_coupon_ids`, `is_reward_line` (`sale_order.py:1060, 1476`) |
 
 ## 4. États et transitions
@@ -108,7 +108,9 @@ Transition clé : une promotion appliquée à un devis est revérifiée à chaqu
 | Annulation d'une commande confirmée | Points retirés, historique et lignes de récompense supprimés, coupons non utilisés supprimés | Lu (`sale_order.py:185-207`) |
 | Confirmation avec un coupon à points négatifs | Refus | Lu (l. 151-154) |
 | Retour ou remboursement après confirmation | Sort des points et coupons | Non lu (ECOM-11) |
-| Lien `/coupon/<code>` ouvert sans connexion | Active un code par requête publique, probablement GET *(déduit)* ; paramètre de redirection `r`, défaut `/shop` | Lu : route (`main.py:38-39`) ; corps non lu |
+| Lien `/coupon/<code>` ouvert sans connexion | Route publique, sans restriction de méthode dans le décorateur ; stocke le code en session, l'applique si un panier existe, sinon avertit qu'il sera appliqué à l'ajout d'un article ; supprime les paramètres entrants `coupon_error` et `coupon_error_type` ; redirige vers `r` (défaut `/shop`), non validé dans ces lignes | Lu (`main.py:38-57`) ; effet de `request.redirect` sur une URL externe non lu |
+| Saisie d'un code sur le panier | Un code inconnu des promotions retombe sur la méthode `pricelist` du module parent ; une erreur est mise en session ; une récompense est appliquée directement si elle est unique ou choisie parmi celles proposées (produit requis pour un `multi_product`) | Lu (`main.py:14-36`) |
+| Réclamation d'une récompense (`/shop/claimreward`) | Route publique ; la récompense doit figurer parmi les récompenses réclamables de la commande en cours, sinon rien n'est appliqué ; selon le déclenchement et le code, bascule vers la saisie d'un code ; l. 77 : appel à `request.redirect` sans `return`, le traitement continue | Lu (`main.py:59-94`) ; corps de `_apply_reward` non lu |
 
 ## 7. Parcours
 
@@ -187,7 +189,8 @@ Licence : LGPL-3 pour `loyalty`, `sale_loyalty`, `website_sale_loyalty` (voir L7
 - Fin de `_best_global_discount_already_applied`, de `_get_confirmed_tx_create_date`, de `_try_apply_code` après la ligne 1530.
 - Modèle `loyalty.card` : champs, expiration, génération de codes.
 - `loyalty_history`, `loyalty_mail`, `product_pricelist`, `res_partner` du module `loyalty`.
-- Module `website_sale_loyalty` : routes vues (`main.py:14-96`), corps non lus ; `cart.py`, `delivery.py`, `payment.py`, `portal.py` et modèles non lus ; contrôle de la redirection `r` ; rôle de `website_links`.
+- Module `website_sale_loyalty` : routes lues (`main.py:14-94`), corps de `_apply_reward` (l. 96 et suivantes) non lu ; `cart.py`, `delivery.py`, `payment.py`, `portal.py` et modèles non lus ; effet de `request.redirect` sur une URL externe (`r` n'est pas validé dans les routes lues) ; rôle de `website_links`.
+- Modèle `loyalty.card` : champs lus l. 28-49 ; suite du fichier, cible de `history_ids` et options de `program_id` non lues.
 - Type `buy_x_get_y` : comportement non lu ; liste des huit types possiblement incomplète (sortie tronquée à la ligne 104).
 - Programmes de paiement : interaction avec ECOM-07 et ECOM-03.
 - Propositions non lues : D1, D6, D7, D9, règles 13 et 14.
