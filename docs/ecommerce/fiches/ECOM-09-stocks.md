@@ -1,6 +1,6 @@
 # ECOM-09 — Stocks et disponibilité
 
-**Version :** 0.2 (brouillon)
+**Version :** 0.3 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3 : `stock`, `sale_stock`, `website_sale_stock`)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
@@ -59,7 +59,7 @@ Le stock n'a pas de cycle de vie propre : il évolue par événements.
 |---|---|
 | Ajout au panier | Aucun : contrôle de plafond seulement (D4) |
 | Confirmation de la commande | Réservation des quantités non encore traitées (Odoo : procurement, `stock.rule.run`, confirmation des expéditions) |
-| Quantité augmentée après confirmation | Réservation de la différence avec la quantité déjà traitée (Odoo : `_get_qty_procurement` = mouvements sortants − mouvements entrants, hors mouvements vers l'inventaire ; un retour réduit donc la quantité traitée, voir ECOM-11) |
+| Quantité augmentée après confirmation | Réservation de la différence avec la quantité déjà traitée (Odoo : `_get_qty_procurement` = mouvements sortants − mouvements entrants, hors mouvements vers l'inventaire ; un retour ne réduit la quantité traitée que si son mouvement est marqué `to_refund`, voir ECOM-11) |
 | Expédition validée | Sortie du stock physique (déduit, ECOM-08) |
 | Annulation de la commande | Libération de la réservation (D9) |
 | Retour reçu | Entrée en stock (ECOM-11) |
@@ -81,7 +81,7 @@ Statut dérivé « épuisé » : suivi activé, vente hors stock interdite, quan
 10. *(Proposition, non lu)* Une réservation ne dépasse pas le stock physique.
 11. Toute variation de stock a un mouvement tracé avec sa cause (D8, ECOM-19).
 12. Une commande annulée libère sa réservation (D9).
-13. *(Déduit)* Un retour reçu diminue la quantité déjà traitée de la ligne (Odoo : `_get_qty_procurement`) ; il ne doit pas déclencher une nouvelle réservation (ECOM-11).
+13. Un retour reçu ne diminue la quantité déjà traitée de la ligne que si son mouvement est marqué `to_refund` (Odoo : `_get_outgoing_incoming_moves`) ; un retour ne doit jamais déclencher une nouvelle réservation (ECOM-11 D12). Pose de `to_refund` non lue.
 
 ## 6. Erreurs et cas particuliers
 
