@@ -1,6 +1,6 @@
 # ECOM-07 — Paiements et intégration de plusieurs prestataires
 
-**Version :** 0.1 (brouillon)
+**Version :** 0.2 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3 : `payment`, `sale`, `website_sale`, `payment_stripe` ; 21 des 23 modules `payment_*` vérifiés)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
@@ -15,7 +15,7 @@
 | D5 | Cycle de la transaction à 6 états, avec table de transitions (§4) | Non |
 | D6 | Remboursements et captures partielles sont des transactions enfants rattachées à la transaction source | Non : `_create_child_transaction(amount, is_refund)` ; sémantique non lue |
 | D7 | Socle : paiement intégral, capture immédiate, au moins un prestataire actif ; virement comme paiement différé | Partiel : Odoo a un prestataire `custom` pour le virement |
-| D8 | Le résultat d'un paiement vient de la notification du prestataire, jamais de la seule redirection du client *(proposition)* | À vérifier : `_process` non lu |
+| D8 | Le résultat d'un paiement vient de la notification du prestataire, jamais de la seule redirection du client *(proposition)* | Partiel : `_process(provider_code, payment_data)` traite les données du prestataire ; l'origine de ces données (notification ou retour client) n'est pas lue |
 | D9 | Mode par prestataire : désactivé, activé, test | Non : `state` du prestataire |
 
 ## 1. Objectif et périmètre
@@ -89,10 +89,10 @@ Effets sur la commande (ECOM-06) :
 3. Un second paiement simultané sur la même commande est refusé (ECOM-05 §7).
 4. Un prestataire désactivé n'est pas proposé ; en mode test, le paiement est factice.
 5. Une opération (capture, annulation, remboursement) n'est proposée que si le prestataire la déclare supportée (D2).
-6. *(Proposition, non lue)* Le montant et la devise notifiés par le prestataire doivent correspondre à la transaction ; sinon la transaction passe en erreur.
-7. *(Proposition, non lue)* Une notification reçue deux fois ne produit pas deux fois ses effets.
-8. *(Proposition, non lue)* Un remboursement ne dépasse pas le montant encaissé non encore remboursé.
-9. *(Proposition)* Les notifications sont authentifiées (signature ou rappel vers le prestataire) avant tout changement d'état (ECOM-16).
+6. Le montant et la devise notifiés doivent correspondre à la transaction, sinon elle passe en erreur et aucune mise à jour n'est appliquée (Odoo : `_process` appelle `_validate_amount` avant `_apply_updates`). Un prestataire peut renvoyer `None` dans `_extract_amount_data` et sauter ce contrôle : le contrat impose qu'il le fournisse.
+7. Une notification reçue deux fois ne produit pas deux fois ses effets : une transaction déjà dans l'état cible est ignorée (Odoo : `_update_state`, log INFO). Le cas d'une transition interdite n'est pas lu.
+8. *(Proposition, non confirmée)* Un remboursement ne dépasse pas le montant encaissé non encore remboursé. `_create_child_transaction` ne contient aucun plafond ; le contrôle éventuel est ailleurs (`action_refund`, non lu).
+9. *(Proposition ; Odoo : `_process` reçoit des données déjà extraites, la vérification est en amont)* Les notifications sont authentifiées (signature ou rappel vers le prestataire) avant tout changement d'état (ECOM-16).
 10. Une transaction ne se supprime pas ; ses changements d'état sont tracés (ECOM-19).
 
 ## 6. Erreurs et cas particuliers
@@ -148,6 +148,7 @@ Effets sur la commande (ECOM-06) :
 - **Paiement ≠ remboursement métier :** le prestataire exécute le remboursement financier ; la décision et le suivi relèvent d'ECOM-11.
 - **Paiement ≠ facture :** facturation automatique possible à la réussite (Odoo : `sale.automatic_invoice`, ECOM-17).
 - **Externalisé :** la saisie des données de carte reste chez le prestataire ; la boutique ne stocke jamais de numéro de carte *(principe, non lu dans Odoo)*.
+- **Compatibilité :** un prestataire est proposé s'il n'est pas désactivé, appartient à la société, est publié (sauf utilisateur interne), accepte le pays du client (liste vide = tous), et selon la devise et le montant (Odoo : `_get_compatible_providers`, suite non lue). Un rapport explique pourquoi chaque prestataire est écarté : principe à conserver.
 - **Virement :** paiement différé géré par le prestataire `custom` d'Odoo ; la transaction reste `pending` jusqu'à validation manuelle (ECOM-12).
 
 ## 9. Dépendances
@@ -168,7 +169,7 @@ Effets sur la commande (ECOM-06) :
 | Parcours | `website_sale` | `/shop/payment`, `/shop/payment/transaction/<id>` |
 | Exemple de prestataire | `payment_stripe` | surcharges du contrat |
 
-Licences : `payment`, `sale`, `website_sale` et `payment_stripe` en LGPL-3 (vérifié). 21 des 23 modules `payment_*` renvoient LGPL-3 ; 2 sans ligne lue, à identifier. Le champ `module_to_buy` (« Odoo Enterprise Module ») indique que certains prestataires peuvent être Enterprise : à vérifier avant toute réutilisation.
+Licences : `payment`, `sale`, `website_sale` et `payment_stripe` en LGPL-3 (vérifié). 21 des 23 modules `payment_*` renvoient LGPL-3 ; 2 sans clé `license` déclarée (`payment_ecpay`, `payment_payu`) : licence à vérifier. Le champ `module_to_buy` (« Odoo Enterprise Module ») indique que certains prestataires peuvent être Enterprise : à vérifier avant toute réutilisation.
 
 ## 11. Classement (T6)
 
@@ -178,8 +179,8 @@ Licences : `payment`, `sale`, `website_sale` et `payment_stripe` en LGPL-3 (vér
 
 ## 12. Points non vérifiés
 
-- `_update_state`, `_update_source_transaction_state`, `_process` de base, `_get_compatible_providers`, `_compute_feature_support_fields`.
-- Contrôle du montant et de la devise, idempotence, authentification des notifications, sémantique des transactions enfants.
+- Fin de `_update_state` (transition interdite), fin de `_update_source_transaction_state`, `_validate_amount`, `_compute_feature_support_fields`, suite de `_get_compatible_providers`, `action_refund`.
+- Authentification des notifications, plafond de remboursement.
 - Valeurs de `operation`, champs `reference` et `amount`, adresses de retour.
-- Les 2 modules `payment_*` sans licence lue ; prestataires Enterprise.
+- Licence de `payment_ecpay` et `payment_payu` (clé absente) ; prestataires Enterprise.
 - Effet des remboursements sur `amount_paid` (ECOM-06).
