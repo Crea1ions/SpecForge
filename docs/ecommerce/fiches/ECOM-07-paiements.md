@@ -1,6 +1,6 @@
 # ECOM-07 — Paiements et intégration de plusieurs prestataires
 
-**Version :** 0.3 (brouillon)
+**Version :** 0.4 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3 : `payment`, `sale`, `website_sale`, `payment_stripe` ; 21 des 23 modules `payment_*` vérifiés)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
@@ -91,7 +91,7 @@ Effets sur la commande (ECOM-06) :
 5. Une opération (capture, annulation, remboursement) n'est proposée que si le prestataire la déclare supportée (D2).
 6. Le montant et la devise notifiés doivent correspondre à la transaction, sinon elle passe en erreur et aucune mise à jour n'est appliquée (Odoo : `_process` appelle `_validate_amount` avant `_apply_updates`). Un prestataire peut renvoyer `None` dans `_extract_amount_data` et sauter ce contrôle : le contrat impose qu'il le fournisse.
 7. Une notification reçue deux fois ne produit pas deux fois ses effets : une transaction déjà dans l'état cible est ignorée (Odoo : `_update_state`, log INFO). Le cas d'une transition interdite n'est pas lu.
-8. *(Proposition, non confirmée)* Un remboursement ne dépasse pas le montant encaissé non encore remboursé. `_create_child_transaction` ne contient aucun plafond. `action_refund` (lu) vérifie les droits et exige des transactions `done` (une autorisation non capturée s'annule, elle ne se rembourse pas), puis délègue à `_refund(amount_to_refund)` (non lu), où se trouverait un éventuel plafond.
+8. Un remboursement ne dépasse pas le montant encaissé non encore remboursé. `_create_child_transaction` ne contient aucun plafond. `action_refund` (lu) vérifie les droits et exige des transactions `done` (une autorisation non capturée s'annule, elle ne se rembourse pas), puis délègue à `_refund(amount_to_refund)` (lu : montant par défaut = montant total de la transaction source, aucun plafond ; l'échec du prestataire met l'enfant en `error`, la source reste inchangée). Le plafond (montant payé moins remboursements confirmés) est dans `account_payment` (`amount_available_for_refund`), module comptable absent de SpecForge : il devient une règle du domaine paiement (ECOM-11 D4).
 9. *(Proposition ; Odoo : `_process` reçoit des données déjà extraites, la vérification est en amont)* Les notifications sont authentifiées (signature ou rappel vers le prestataire) avant tout changement d'état (ECOM-16).
 10. Une transaction ne se supprime pas ; ses changements d'état sont tracés (ECOM-19).
 
@@ -179,8 +179,8 @@ Licences : `payment`, `sale`, `website_sale` et `payment_stripe` en LGPL-3 (vér
 
 ## 12. Points non vérifiés
 
-- Fin de `_update_state` (transition interdite), fin de `_update_source_transaction_state`, `_validate_amount`, `_compute_feature_support_fields`, suite de `_get_compatible_providers`, `_refund`.
-- Authentification des notifications, plafond de remboursement.
+- Fin de `_update_state` (transition interdite), fin de `_update_source_transaction_state`, `_validate_amount`, `_compute_feature_support_fields`, suite de `_get_compatible_providers`.
+- Authentification des notifications ; calcul de `has_pending_refund` (remboursements simultanés).
 - Valeurs de `operation`, champs `reference` et `amount`, adresses de retour.
 - Licence de `payment_ecpay` et `payment_payu` (clé absente) ; prestataires Enterprise.
 - Effet des remboursements sur `amount_paid` (ECOM-06).
