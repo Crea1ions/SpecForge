@@ -16,7 +16,7 @@
 | D6 | Page protégée par mot de passe : option avancée ; son menu reste affiché *(proposition)* | Non : le mode `password` n'est pas filtré |
 | D7 | Duplication d'une page, avec son menu en option | Non : `clone_page` |
 | D8 | Pages légales (conditions, confidentialité, mentions) : socle, contenu libre *(proposition)* | Non lu |
-| D9 | Tout contenu HTML saisi est assaini, y compris celui des menus déroulants *(proposition)* | Oui : `sanitize=False` sur `mega_menu_content` |
+| D9 | Tout contenu HTML saisi est assaini, y compris celui des menus déroulants *(proposition)* | Partiel : `sanitize=False` sur `mega_menu_content` ; un groupe « Bypass HTML Field Sanitize » existe dans `base` (ECOM-16 D6), droits d'écriture du méga-menu non lus |
 | D10 | Édition visuelle, formulaires de contact et blocs dynamiques : option avancée | Non lu |
 
 ## 1. Objectif et périmètre
