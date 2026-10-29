@@ -1,6 +1,6 @@
 # ECOM-10 — Comptes clients
 
-**Version :** 0.1 (brouillon)
+**Version :** 0.2 (brouillon)
 **Référence Odoo :** 19.0 Community (LGPL-3 : `portal`, `auth_signup`, `website_sale`, `website_sale_wishlist`)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
@@ -15,7 +15,7 @@
 | D5 | Carnet d'adresses : contact principal plus adresses typées facturation, livraison, ou les deux | Non : `type` vaut `invoice`, `delivery` ou `other` |
 | D6 | L'adresse d'une commande confirmée est une copie figée *(proposition)* | Oui : Odoo référence le contact vivant (`_update_address`) |
 | D7 | Un client ne modifie que son contact et ses adresses enfants | Non : `_can_be_edited_by_current_customer` |
-| D8 | Mot de passe : ancien exigé, confirmation identique. Désactivation : identifiant et mot de passe retapés. Les commandes sont conservées *(proposition)* | Partiel : `_deactivate_portal_user` lu en partie (note sur le partenaire, liste noire courriel et téléphone sur demande) ; archivage effectif non lu |
+| D8 | Mot de passe : ancien exigé, confirmation identique. Désactivation : identifiant et mot de passe retapés. Les commandes sont conservées *(proposition)* | Oui : Odoo efface le login et le mot de passe, archive compte et contact, puis tente de les supprimer ; les commandes ne sont conservées que par contrainte (`_deactivate_portal_user`, `_gc_portal_users`) |
 | D9 | « Mes commandes » : commandes confirmées du client ; annulées visibles avec leur statut *(proposition)* | Oui : Odoo n'affiche que `state = 'sale'` |
 | D10 | Liste de souhaits : option avancée, par site. Visiteur par session, fusion à la connexion, unicité propriétaire + produit + site | Partiel : l'unicité SQL ne protège pas `partner_id` nul |
 | D11 | Boutique réservée aux connectés : option avancée | Non : `ecommerce_access` vaut `everyone` ou `logged_in` |
@@ -134,7 +134,7 @@ Hors périmètre : sociétés clientes et contacts multiples (B2B), points de fi
 
 - **Invité ≠ client :** l'invité est un contact sans compte (D4).
 - **Compte ≠ contact :** le compte sert à se connecter, le contact porte l'identité et les adresses.
-- **Désactivation ≠ suppression :** le compte est désactivé, les commandes et le contact restent (D8).
+- **Désactivation ≠ suppression :** le compte est désactivé et ne peut plus servir ; le contact et les commandes restent (D8). Odoo tente une suppression différée, qui échoue si le contact est référencé.
 - **Adresse de la commande ≠ carnet d'adresses :** la commande confirmée garde sa copie (D6).
 - **Mode de compte ≠ accès à la boutique :** `account_on_checkout` concerne la caisse, `ecommerce_access` concerne tout le catalogue (D11).
 - **Externalisable :** authentification et inscription par un fournisseur d'identité (ECOM-18).
@@ -170,7 +170,7 @@ Licences : `portal`, `auth_signup`, `website_sale` et `website_sale_wishlist` en
 
 ## 12. Points non vérifiés
 
-- Archivage effectif à la désactivation : `base/models/res_users.py:934`, non lu. Sort du contact et des commandes inconnu.
+- Désactivation : les échecs d'archivage sont avalés sans trace (`except Exception: pass`) ; états de `res.users.deletion` non lus ; délai de la file non lu.
 - Lieu de création du compte en mode `optional` : l'invitation à créer un compte pendant l'achat n'est pas lue.
 - Règles de complexité du mot de passe.
 - Réactivation d'un compte désactivé.
