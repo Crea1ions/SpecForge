@@ -23,3 +23,6 @@ Thumbs.db
 
 # Local development
 *.local
+
+# Artefact régénérable (scripts/ecommerce-schema/extract.py)
+scripts/ecommerce-schema/schema.json
