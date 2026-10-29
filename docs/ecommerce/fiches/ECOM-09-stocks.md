@@ -1,7 +1,7 @@
 # ECOM-09 — Stocks et disponibilité
 
-**Version :** 0.1 (brouillon)
-**Référence Odoo :** 19.0 Community (LGPL-3 : `stock`, `website_sale_stock` ; `sale_stock` non vérifié)
+**Version :** 0.2 (brouillon)
+**Référence Odoo :** 19.0 Community (LGPL-3 : `stock`, `sale_stock`, `website_sale_stock`)
 **Statut :** décisions par défaut, à confirmer à la validation du référentiel (L6)
 
 ## 0. Décisions de conception
@@ -9,7 +9,7 @@
 | # | Décision | Écart avec Odoo |
 |---|---|---|
 | D1 | Quatre quantités distinctes par produit : en stock (physique), réservée, disponible (en stock − réservée), prévisionnelle (disponible + entrant − sortant) | Non : `qty_available`, `reserved_quantity` (quant), `free_qty`, `virtual_available` ; la formule du prévisionnel n'est pas lue |
-| D2 | Le suivi de stock est activé produit par produit ; un produit non suivi est toujours disponible | Non : `is_storable` (défaut `False`) |
+| D2 | Le suivi de stock est activé produit par produit ; un produit non suivi est toujours disponible | Non : `is_storable` (défaut `False`) ; seuls les biens peuvent être suivis (`compute_is_storable` remet `is_storable` à `False` si le type n'est pas `consu`) |
 | D3 | La disponibilité affichée et contrôlée est la quantité disponible, jamais le prévisionnel | Non : `free_qty` |
 | D4 | Le panier ne réserve rien : il plafonne la quantité à l'ajout ; la réservation a lieu à la confirmation de la commande | Non : `_verify_updated_quantity`, `_action_launch_stock_rule` |
 | D5 | La disponibilité est recontrôlée quand le paiement est engagé *(proposition)* | Oui : aucun contrôle de stock trouvé avant ni pendant la confirmation |
@@ -46,7 +46,7 @@ Le produit est en ECOM-01, le panier en ECOM-05, la commande en ECOM-06, l'expé
 | Quant | `stock.quant` : `product_id`, `location_id`, `lot_id`, `package_id`, `owner_id`, `quantity`, `reserved_quantity`, `available_quantity` | Socle / avancé | Une ligne par combinaison emplacement, lot, colis, propriétaire |
 | Inventaire | `inventory_quantity`, `inventory_diff_quantity`, `inventory_date`, `last_count_date` | Standard complémentaire | |
 | Vente hors stock | `allow_out_of_stock_order` (défaut `True`) | Socle | D6 ; défini dans `website_sale_stock` |
-| Seuil d'affichage | `available_threshold` (défaut 5.0), `show_availability` (défaut `False`) | Standard complémentaire | Usage exact non lu |
+| Seuil d'affichage | `available_threshold` (défaut 5.0), `show_availability` (défaut `False`) | Standard complémentaire | Valeurs par défaut globales dans les réglages (`default_available_threshold`, `default_show_availability`), surchargées par le produit ; la quantité restante s'affiche « seulement en dessous du seuil » (libellé du réglage) ; logique d'affichage non lue |
 | Message de rupture | `out_of_stock_message` | Standard complémentaire | ECOM-13 |
 | Entrepôt de la boutique | contexte `warehouse_id` (`_get_shop_warehouse_id`) | Option avancée | Vide = tous les entrepôts |
 | Quantité au panier | `_get_cart_qty` | Dérivé | Somme des lignes du produit, dans l'unité du produit |
@@ -59,7 +59,7 @@ Le stock n'a pas de cycle de vie propre : il évolue par événements.
 |---|---|
 | Ajout au panier | Aucun : contrôle de plafond seulement (D4) |
 | Confirmation de la commande | Réservation des quantités non encore traitées (Odoo : procurement, `stock.rule.run`, confirmation des expéditions) |
-| Quantité augmentée après confirmation | Réservation de la différence (Odoo : `_get_qty_procurement`) |
+| Quantité augmentée après confirmation | Réservation de la différence avec la quantité déjà traitée (Odoo : `_get_qty_procurement` = mouvements sortants − mouvements entrants, hors mouvements vers l'inventaire ; un retour réduit donc la quantité traitée, voir ECOM-11) |
 | Expédition validée | Sortie du stock physique (déduit, ECOM-08) |
 | Annulation de la commande | Libération de la réservation (D9) |
 | Retour reçu | Entrée en stock (ECOM-11) |
@@ -81,10 +81,12 @@ Statut dérivé « épuisé » : suivi activé, vente hors stock interdite, quan
 10. *(Proposition, non lu)* Une réservation ne dépasse pas le stock physique.
 11. Toute variation de stock a un mouvement tracé avec sa cause (D8, ECOM-19).
 12. Une commande annulée libère sa réservation (D9).
+13. *(Déduit)* Un retour reçu diminue la quantité déjà traitée de la ligne (Odoo : `_get_qty_procurement`) ; il ne doit pas déclencher une nouvelle réservation (ECOM-11).
 
 ## 6. Erreurs et cas particuliers
 
 - Stock insuffisant à la confirmation : Odoo ne refuse pas ; l'expédition reste en attente (déduit : état `confirmed` au lieu de `assigned`). Avec D5 et D6, le cas est détecté avant le paiement.
+- Approvisionnement impossible (aucune route ou règle) : `stock.rule.run` lève une `ProcurementException` (docstring : regroupe les approvisionnements en défaut). Effet sur une commande déjà payée non lu : risque de commande payée mais non confirmée, à tester.
 - Stock baissé entre l'ajout au panier et le paiement : non détecté par le contrôle du panier (ECOM-05 §7).
 - Même produit dans deux paniers : chacun voit le stock complet, car le panier ne réserve pas ; le premier à payer l'emporte.
 - Produit épuisé : bouton d'ajout désactivé et message de rupture ; l'ajout rapide est masqué (Odoo : `_website_show_quick_add`).
@@ -129,7 +131,7 @@ Statut dérivé « épuisé » : suivi activé, vente hors stock interdite, quan
 | Plafond au panier | `website_sale_stock` | `_verify_updated_quantity` |
 | Politique de rupture | `website_sale_stock` | `allow_out_of_stock_order`, `available_threshold`, `show_availability`, `out_of_stock_message` |
 
-Licences : `stock` et `website_sale_stock` en LGPL-3 (vérifié). `sale_stock` non vérifié.
+Licences : `stock`, `sale_stock` et `website_sale_stock` en LGPL-3 (vérifié).
 
 ## 11. Classement (T6)
 
@@ -139,9 +141,8 @@ Licences : `stock` et `website_sale_stock` en LGPL-3 (vérifié). `sale_stock` n
 
 ## 12. Points non vérifiés
 
-- Comportement de `stock.rule.run` quand le stock manque ou qu'aucune route n'existe (exception ?), réservation effective des mouvements.
-- `_get_qty_procurement`, `compute_is_storable`, `_is_sold_out` (lu partiellement), usage de `available_threshold` et `show_availability`.
+- Effet d'une `ProcurementException` sur la confirmation d'une commande déjà payée ; réservation effective des mouvements ; stock manquant : comportement déduit, non lu.
+- Logique front de `available_threshold` et `show_availability` ; fin de `_get_outgoing_incoming_moves` (mouvements annulés).
 - Libération de la réservation à l'annulation, livraisons partielles et reliquats.
 - Formule du prévisionnel, `stock.warehouse`, désignation d'un entrepôt par le site.
-- Licence de `sale_stock`.
 - Contrôle de stock négatif, plafond de réservation.
