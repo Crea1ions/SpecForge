@@ -12,9 +12,9 @@ Vue d'ensemble du référentiel : un domaine par ligne, avec son objectif, les m
 
 | Fiche | Objectif | Modules Odoo cités (§ Correspondance) | Fiches liées (§ Dépendances) |
 |---|---|---|---|
-| [ECOM-01 Catalogue et gestion des produits](fiches/ECOM-01-catalogue.md) | Décrire un produit physique simple, de sa création à son archivage, et définir quand il est vendable, publiable et visible. | `delivery`, `loyalty`, `payment`, `product`, `sale`, `stock`, `website`, `website_payment`, `website_sale`, `website_sale_stock` | ECOM-02 |
+| [ECOM-01 Catalogue et gestion des produits](fiches/ECOM-01-catalogue.md) | Décrire un produit physique simple, de sa création à son archivage, et définir quand il est vendable, publiable et visible. | `delivery`, `loyalty`, `payment`, `product`, `sale`, `stock`, `website`, `website_payment`, `website_sale`, `website_sale_stock` | ECOM-02, ECOM-03, ECOM-05, ECOM-06, ECOM-08, ECOM-09, ECOM-13, ECOM-17 |
 | [ECOM-02 Catégories, navigation et recherche](fiches/ECOM-02-categories-navigation.md) | Organiser le catalogue en arbre de catégories, permettre à un visiteur de parcourir et de rechercher les produits visibles. | `product`, `website_sale`, `website_sale_autocomplete` | ECOM-01, ECOM-03, ECOM-05, ECOM-13, ECOM-15 |
-| [ECOM-03 Prix et taxes](fiches/ECOM-03-prix-taxes.md) | Définir comment le prix d'un produit est déterminé, avec quelles taxes, et comment il est affiché. | `account`, `product`, `website_sale` | ECOM-01, ECOM-02, ECOM-04 |
+| [ECOM-03 Prix et taxes](fiches/ECOM-03-prix-taxes.md) | Définir comment le prix d'un produit est déterminé, avec quelles taxes, et comment il est affiché. | `account`, `product`, `website_sale` | ECOM-01, ECOM-02, ECOM-04, ECOM-05, ECOM-06, ECOM-08 |
 | [ECOM-04 Promotions](fiches/ECOM-04-promotions.md) | Définir les réductions et avantages appliqués à une commande. | `loyalty`, `sale_loyalty`, `website_sale_loyalty` | ECOM-03, ECOM-05, ECOM-06, ECOM-07, ECOM-10, ECOM-11, ECOM-14 |
 | [ECOM-05 Panier](fiches/ECOM-05-panier.md) | Permettre à un visiteur ou à un client de constituer une sélection de produits, d'en modifier les quantités et de la valider. | `sale`, `website_sale` | ECOM-01, ECOM-03, ECOM-04, ECOM-06, ECOM-07, ECOM-08, ECOM-09, ECOM-10, ECOM-14, ECOM-15 |
 | [ECOM-06 Commandes et validation](fiches/ECOM-06-commandes.md) | Définir quand une commande existe, comment elle est validée, annulée et verrouillée, et quelles données elle fige. | `sale`, `website_event_sale`, `website_sale`, `website_sale_collect` | ECOM-03, ECOM-05, ECOM-07, ECOM-08, ECOM-09, ECOM-10, ECOM-11, ECOM-14, ECOM-15, ECOM-17, ECOM-19 |
@@ -37,7 +37,7 @@ Vue d'ensemble du référentiel : un domaine par ligne, avec son objectif, les m
 
 - **Objectif** : première phrase de la section « Objectif et périmètre » de la fiche.
 - **Modules Odoo cités** : éléments entre backticks de la section « Correspondance Odoo » dont le premier segment est un dossier de module du dépôt Odoo lu. Liste de modules cités, non exhaustive : elle n'indique ni qu'un module a été lu en entier, ni sa licence (voir L7).
-- **Fiches liées** : numéros ECOM-xx trouvés dans la section « Dépendances » de la fiche, tels que déclarés, sans le sens amont ou aval (voir L4).
+- **Fiches liées** : numéros ECOM-xx trouvés dans la section « Dépendances » de la fiche, tels que déclarés, sans le sens amont ou aval (voir L4). Les listes abrégées (« ECOM-02, 03 ») sont développées.
 
 ## Limites
 
