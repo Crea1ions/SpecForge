@@ -620,6 +620,134 @@ VALUES
 ON CONFLICT (key, locale) DO NOTHING;
 `;
 
+const V2_SCHEMA_MIGRATION = `-- V2 additions. The V1 migrations remain unchanged.
+ALTER TABLE stock_levels
+    ADD COLUMN alert_threshold INTEGER NOT NULL DEFAULT 5
+    CHECK (alert_threshold >= 0);
+
+ALTER TABLE carts
+    ADD COLUMN recovery_notification_queued BOOLEAN NOT NULL DEFAULT false;
+
+UPDATE carts
+SET recovery_notification_queued = recovery_email_sent
+WHERE recovery_email_sent = true;
+
+ALTER TABLE notifications
+    ADD COLUMN cart_id BIGINT REFERENCES carts(id) ON DELETE SET NULL;
+
+CREATE UNIQUE INDEX notifications_cart_recovery_uidx
+    ON notifications (cart_id, template_key)
+    WHERE cart_id IS NOT NULL AND template_key = 'cart_recovery';
+
+ALTER TABLE payment_transactions
+    ADD COLUMN return_request_id BIGINT REFERENCES return_requests(id) ON DELETE RESTRICT;
+
+CREATE INDEX payment_transactions_return_request_idx
+    ON payment_transactions (return_request_id)
+    WHERE return_request_id IS NOT NULL;
+
+CREATE TABLE content_pages (
+    id BIGSERIAL PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+    title JSONB NOT NULL CHECK (jsonb_typeof(title) = 'object'),
+    body JSONB NOT NULL CHECK (jsonb_typeof(body) = 'object'),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+    publish_at TIMESTAMPTZ,
+    is_indexable BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX content_pages_publication_idx ON content_pages (status, publish_at);
+
+CREATE TABLE content_menu_items (
+    id BIGSERIAL PRIMARY KEY,
+    label JSONB NOT NULL CHECK (jsonb_typeof(label) = 'object'),
+    location TEXT NOT NULL CHECK (
+        location IN ('main', 'footer-shop', 'footer-service', 'footer-legal')
+    ),
+    parent_id BIGINT REFERENCES content_menu_items(id) ON DELETE CASCADE,
+    page_id BIGINT REFERENCES content_pages(id) ON DELETE CASCADE,
+    target_url TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    open_new_tab BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (parent_id IS NULL OR parent_id <> id),
+    CHECK (page_id IS NULL OR target_url IS NULL),
+    CHECK (target_url IS NULL OR target_url ~ '^https?://')
+);
+CREATE INDEX content_menu_location_parent_order_idx
+    ON content_menu_items (location, parent_id, sort_order, id);
+
+CREATE TRIGGER content_pages_set_updated_at
+BEFORE UPDATE ON content_pages
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER content_menu_items_set_updated_at
+BEFORE UPDATE ON content_menu_items
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+`;
+
+const V2_SEED_MIGRATION = `-- Small editable starter pages; legal content is deliberately left unpublished.
+INSERT INTO content_pages (slug, title, body, status, is_indexable)
+VALUES
+    (
+        'a-propos',
+        '{"fr":"À propos"}'::jsonb,
+        '{"fr":"Bienvenue dans votre boutique. Remplacez ce texte par votre présentation."}'::jsonb,
+        'published',
+        true
+    ),
+    (
+        'livraison',
+        '{"fr":"Livraison"}'::jsonb,
+        '{"fr":"Les informations de livraison sont à compléter par la boutique."}'::jsonb,
+        'published',
+        true
+    ),
+    (
+        'retours',
+        '{"fr":"Retours"}'::jsonb,
+        '{"fr":"Les modalités de retour sont à compléter et à valider par la boutique."}'::jsonb,
+        'published',
+        true
+    ),
+    (
+        'conditions-generales-de-vente',
+        '{"fr":"Conditions de vente"}'::jsonb,
+        '{"fr":"Contenu à compléter et à faire valider avant publication."}'::jsonb,
+        'draft',
+        false
+    ),
+    (
+        'mentions-legales',
+        '{"fr":"Mentions légales"}'::jsonb,
+        '{"fr":"Contenu à compléter et à faire valider avant publication."}'::jsonb,
+        'draft',
+        false
+    )
+ON CONFLICT (slug) DO NOTHING;
+
+INSERT INTO content_menu_items (label, location, page_id, sort_order)
+SELECT p.title, 'footer-shop', p.id, 10
+FROM content_pages p
+WHERE p.slug = 'a-propos'
+  AND NOT EXISTS (
+      SELECT 1 FROM content_menu_items m
+      WHERE m.location = 'footer-shop' AND m.page_id = p.id
+  );
+
+INSERT INTO content_menu_items (label, location, page_id, sort_order)
+SELECT p.title, 'footer-service', p.id,
+       CASE p.slug WHEN 'livraison' THEN 10 ELSE 20 END
+FROM content_pages p
+WHERE p.slug IN ('livraison', 'retours')
+  AND NOT EXISTS (
+      SELECT 1 FROM content_menu_items m
+      WHERE m.location = 'footer-service' AND m.page_id = p.id
+  );
+`;
+
 function makeMigrationFile(path: string, content: string, reason: string): GeneratedFile {
   const normalizedContent = content.trimStart();
   return {
@@ -649,6 +777,16 @@ export function generateEcommerceSchemaFiles(ctx: GenerationContext): GeneratedF
       'migrations/20261029000001_ecommerce_seed.sql',
       SEED_MIGRATION,
       'Seed deterministic e-commerce defaults with conflict-safe inserts.'
+    ),
+    makeMigrationFile(
+      'migrations/20261030000000_ecommerce_v2.sql',
+      V2_SCHEMA_MIGRATION,
+      'Add stock thresholds, content pages/menus, idempotent cart notification queueing and refund-return links without rewriting V1 migrations.'
+    ),
+    makeMigrationFile(
+      'migrations/20261030000001_ecommerce_v2_seed.sql',
+      V2_SEED_MIGRATION,
+      'Seed editable, non-legal starter content and public footer menu entries.'
     ),
   ];
 }

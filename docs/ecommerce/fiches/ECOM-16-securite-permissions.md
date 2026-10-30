@@ -174,3 +174,10 @@ Licences : `base`, `portal`, `auth_signup` en LGPL-3 ; `auth_totp`, `auth_passwo
 - Contenu des modules `auth_timeout`, `auth_passkey`, `auth_oauth`, `auth_ldap`.
 - En-têtes de sécurité HTTP.
 - Licences des autres modules `auth_*`.
+
+## 13. Application des droits V2
+
+- Les vues et actions d’administration contrôlent les rôles dans chaque handler; masquer un lien dans React n’est jamais une protection.
+- Gestionnaire et opérateur accèdent aux vues opérationnelles des clients, commandes impayées et paniers abandonnés. Seul le gestionnaire accède aux statistiques; l’éditeur gère le contenu et le catalogue selon ECOM-12.
+- Les routes documents contrôlent l’identité et le propriétaire sur la même requête qui charge les données; une référence de commande devinée ne donne pas accès à un autre client.
+- Les PDF ne contiennent que les valeurs snapshot de la commande et du retour ciblés; aucun jeton d’accès n’est inclus dans le nom ou le contenu.

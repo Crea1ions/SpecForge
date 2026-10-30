@@ -12,14 +12,19 @@ use crate::ecommerce::payment::{
     MockPaymentProvider, MockScenario, PaymentOutcome, PaymentProvider,
 };
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
-    response::IntoResponse,
-    routing::{get, patch, post, put},
+    http::{
+        header::{CONTENT_DISPOSITION, CONTENT_TYPE},
+        HeaderMap, StatusCode,
+    },
+    response::{IntoResponse, Response},
+    routing::{delete, get, patch, post, put},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use printpdf::{BuiltinFont, Mm, PdfDocument};
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -28,6 +33,7 @@ use sqlx::types::Json as SqlJson;
 use std::{
     env,
     fmt::Write as FmtWrite,
+    io::Cursor,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -2364,6 +2370,7 @@ struct OrderRow {
     order_number: String,
     status: String,
     payment_status: String,
+    shipment_status: Option<String>,
     currency: String,
     total: i64,
     placed_at: Option<DateTime<Utc>>,
@@ -2374,6 +2381,7 @@ struct OrderResponse {
     order_number: String,
     status: String,
     payment_status: String,
+    shipment_status: Option<String>,
     currency: String,
     total: i64,
     placed_at: Option<DateTime<Utc>>,
@@ -2385,6 +2393,7 @@ impl From<OrderRow> for OrderResponse {
             order_number: row.order_number,
             status: row.status,
             payment_status: row.payment_status,
+            shipment_status: row.shipment_status,
             currency: row.currency.trim().to_owned(),
             total: row.total,
             placed_at: row.placed_at,
@@ -2400,9 +2409,12 @@ async fn customer_orders(
     let customer = customer_id(&headers, &pool).await?;
     let (limit, offset) = pagination.values()?;
     let rows = sqlx::query_as::<_, OrderRow>(
-        "SELECT order_number, status, payment_status, currency, total, placed_at
-         FROM orders WHERE customer_id = $1
-         ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
+        "SELECT o.order_number, o.status, o.payment_status, s.status AS shipment_status,
+                o.currency, o.total, o.placed_at
+         FROM orders o
+         LEFT JOIN shipments s ON s.order_id = o.id
+         WHERE o.customer_id = $1
+         ORDER BY o.created_at DESC, o.id DESC LIMIT $2 OFFSET $3",
     )
     .bind(customer)
     .bind(limit)
@@ -2411,6 +2423,65 @@ async fn customer_orders(
     .await
     .map_err(|_| ApiError::internal())?;
     Ok(Json(rows.into_iter().map(OrderResponse::from).collect()))
+}
+
+#[derive(Debug, FromRow)]
+struct CustomerReturnRow {
+    id: i64,
+    order_number: String,
+    status: String,
+    reason: String,
+    created_at: DateTime<Utc>,
+    successful_refund_count: i64,
+}
+
+#[derive(Serialize)]
+struct CustomerReturnResponse {
+    id: i64,
+    order_number: String,
+    status: String,
+    reason: String,
+    created_at: DateTime<Utc>,
+    successful_refund_count: i64,
+}
+
+async fn customer_returns(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Query(pagination): Query<Pagination>,
+) -> ApiResult<Json<Vec<CustomerReturnResponse>>> {
+    let customer = customer_id(&headers, &pool).await?;
+    let (limit, offset) = pagination.values()?;
+    let rows = sqlx::query_as::<_, CustomerReturnRow>(
+        "SELECT rr.id, o.order_number, rr.status, rr.reason, rr.created_at,
+                COUNT(pt.id)::BIGINT AS successful_refund_count
+         FROM return_requests rr
+         JOIN orders o ON o.id = rr.order_id
+         LEFT JOIN payment_transactions pt
+           ON pt.return_request_id = rr.id AND pt.operation = 'refund' AND pt.status = 'done'
+         WHERE rr.customer_id = $1
+         GROUP BY rr.id, o.id
+         ORDER BY rr.created_at DESC, rr.id DESC
+         LIMIT $2 OFFSET $3",
+    )
+    .bind(customer)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(&pool)
+    .await
+    .map_err(|_| ApiError::internal())?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|row| CustomerReturnResponse {
+                id: row.id,
+                order_number: row.order_number,
+                status: row.status,
+                reason: row.reason,
+                created_at: row.created_at,
+                successful_refund_count: row.successful_refund_count,
+            })
+            .collect(),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -2550,6 +2621,7 @@ struct AdminProductRow {
     is_published: bool,
     stock_tracked: bool,
     quantity_on_hand: Option<i32>,
+    alert_threshold: i32,
 }
 
 #[derive(Serialize)]
@@ -2564,6 +2636,7 @@ struct AdminProductResponse {
     is_published: bool,
     stock_tracked: bool,
     quantity_on_hand: Option<i32>,
+    alert_threshold: i32,
 }
 
 async fn admin_products(
@@ -2576,7 +2649,7 @@ async fn admin_products(
     let rows = sqlx::query_as::<_, AdminProductRow>(
         "SELECT p.id, p.sku, p.name, p.price_catalog, p.currency, p.is_active,
                 p.is_sellable, p.is_published, p.stock_tracked,
-                sl.quantity_on_hand
+                sl.quantity_on_hand, COALESCE(sl.alert_threshold, 5) AS alert_threshold
          FROM products p
          LEFT JOIN stock_levels sl ON sl.product_id = p.id
          ORDER BY p.id LIMIT $1 OFFSET $2",
@@ -2599,6 +2672,7 @@ async fn admin_products(
             is_published: row.is_published,
             stock_tracked: row.stock_tracked,
             quantity_on_hand: row.quantity_on_hand,
+            alert_threshold: row.alert_threshold,
         })
         .collect();
     Ok(Json(products))
@@ -2611,6 +2685,7 @@ struct AdminProductUpdateRequest {
     is_sellable: Option<bool>,
     is_published: Option<bool>,
     quantity_on_hand: Option<i32>,
+    alert_threshold: Option<i32>,
 }
 
 async fn update_admin_product(
@@ -2634,20 +2709,29 @@ async fn update_admin_product(
             "This administrator role cannot manage inventory",
         ));
     }
+    if payload.alert_threshold.is_some() && !role.may_manage_inventory() {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "This administrator role cannot manage inventory",
+        ));
+    }
     if product_id <= 0
         || payload.price_catalog.is_some_and(|price| price < 0)
         || payload.quantity_on_hand.is_some_and(|quantity| quantity < 0)
+        || payload.alert_threshold.is_some_and(|threshold| threshold < 0)
         || (payload.price_catalog.is_none()
             && payload.is_active.is_none()
             && payload.is_sellable.is_none()
             && payload.is_published.is_none()
-            && payload.quantity_on_hand.is_none())
+            && payload.quantity_on_hand.is_none()
+            && payload.alert_threshold.is_none())
     {
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid product update"));
     }
     let mut tx = pool.begin().await.map_err(|_| ApiError::internal())?;
-    let existing: Option<(String, i64, i32)> = sqlx::query_as(
-        "SELECT p.sku, p.price_catalog, COALESCE(sl.quantity_on_hand, 0)
+    let existing: Option<(String, i64, i32, i32)> = sqlx::query_as(
+        "SELECT p.sku, p.price_catalog, COALESCE(sl.quantity_on_hand, 0),
+                COALESCE(sl.alert_threshold, 5)
          FROM products p LEFT JOIN stock_levels sl ON sl.product_id = p.id
          WHERE p.id = $1 FOR UPDATE OF p",
     )
@@ -2655,7 +2739,7 @@ async fn update_admin_product(
     .fetch_optional(&mut *tx)
     .await
     .map_err(|_| ApiError::internal())?;
-    let (sku, previous_price, previous_quantity) =
+    let (sku, previous_price, previous_quantity, previous_threshold) =
         existing.ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Product not found"))?;
     sqlx::query(
         "UPDATE products
@@ -2668,7 +2752,7 @@ async fn update_admin_product(
                  WHEN $5 = false THEN NULL
                  ELSE published_at
              END,
-             stock_tracked = CASE WHEN $6 IS NULL THEN stock_tracked ELSE true END
+             stock_tracked = CASE WHEN $6 IS NULL AND $7 IS NULL THEN stock_tracked ELSE true END
          WHERE id = $1",
     )
     .bind(product_id)
@@ -2677,6 +2761,7 @@ async fn update_admin_product(
     .bind(payload.is_sellable)
     .bind(payload.is_published)
     .bind(payload.quantity_on_hand)
+    .bind(payload.alert_threshold)
     .execute(&mut *tx)
     .await
     .map_err(|_| ApiError::internal())?;
@@ -2726,6 +2811,28 @@ async fn update_admin_product(
             .map_err(|_| ApiError::internal())?;
         }
     }
+    if let Some(threshold) = payload.alert_threshold {
+        let updated: Option<i32> = sqlx::query_scalar(
+            "UPDATE stock_levels SET alert_threshold = $2
+             WHERE product_id = $1 RETURNING alert_threshold",
+        )
+        .bind(product_id)
+        .bind(threshold)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|_| ApiError::internal())?;
+        if updated.is_none() {
+            sqlx::query(
+                "INSERT INTO stock_levels (product_id, quantity_on_hand, alert_threshold)
+                 VALUES ($1, 0, $2)",
+            )
+            .bind(product_id)
+            .bind(threshold)
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| ApiError::internal())?;
+        }
+    }
     sqlx::query(
         "INSERT INTO audit_logs (entity_type, entity_id, event, actor, diff)
          VALUES ('product', $1, 'product.updated', $2, $3)",
@@ -2736,6 +2843,7 @@ async fn update_admin_product(
         "sku": sku,
         "price_catalog": payload.price_catalog.unwrap_or(previous_price),
         "quantity_on_hand": payload.quantity_on_hand.unwrap_or(previous_quantity),
+        "alert_threshold": payload.alert_threshold.unwrap_or(previous_threshold),
         "is_active": payload.is_active,
         "is_sellable": payload.is_sellable,
         "is_published": payload.is_published
@@ -2746,7 +2854,7 @@ async fn update_admin_product(
     let row: AdminProductRow = sqlx::query_as(
         "SELECT p.id, p.sku, p.name, p.price_catalog, p.currency, p.is_active,
                 p.is_sellable, p.is_published, p.stock_tracked,
-                sl.quantity_on_hand
+                sl.quantity_on_hand, COALESCE(sl.alert_threshold, 5) AS alert_threshold
          FROM products p LEFT JOIN stock_levels sl ON sl.product_id = p.id
          WHERE p.id = $1",
     )
@@ -2766,6 +2874,7 @@ async fn update_admin_product(
         is_published: row.is_published,
         stock_tracked: row.stock_tracked,
         quantity_on_hand: row.quantity_on_hand,
+        alert_threshold: row.alert_threshold,
     }))
 }
 
@@ -3014,6 +3123,7 @@ struct AdminReturnRow {
     reason: String,
     customer_email: String,
     created_at: DateTime<Utc>,
+    successful_refund_count: i64,
 }
 
 #[derive(Serialize)]
@@ -3024,6 +3134,7 @@ struct AdminReturnResponse {
     reason: String,
     customer_email: String,
     created_at: DateTime<Utc>,
+    successful_refund_count: i64,
 }
 
 async fn admin_returns(
@@ -3035,10 +3146,14 @@ async fn admin_returns(
     let (limit, offset) = pagination.values()?;
     let rows = sqlx::query_as::<_, AdminReturnRow>(
         "SELECT rr.id, o.order_number, rr.status, rr.reason,
-                c.email AS customer_email, rr.created_at
+                c.email AS customer_email, rr.created_at,
+                COUNT(pt.id)::BIGINT AS successful_refund_count
          FROM return_requests rr
          JOIN orders o ON o.id = rr.order_id
          JOIN customers c ON c.id = rr.customer_id
+         LEFT JOIN payment_transactions pt
+           ON pt.return_request_id = rr.id AND pt.operation = 'refund' AND pt.status = 'done'
+         GROUP BY rr.id, o.id, c.id
          ORDER BY rr.created_at DESC, rr.id DESC LIMIT $1 OFFSET $2",
     )
     .bind(limit)
@@ -3055,6 +3170,7 @@ async fn admin_returns(
                 reason: row.reason,
                 customer_email: row.customer_email,
                 created_at: row.created_at,
+                successful_refund_count: row.successful_refund_count,
             })
             .collect(),
     ))
@@ -3225,16 +3341,17 @@ async fn process_return(
                 let reference = opaque_reference("mock-refund-")?;
                 sqlx::query(
                     "INSERT INTO payment_transactions (
-                        order_id, provider_id, parent_id, reference, operation, amount,
+                        order_id, provider_id, parent_id, return_request_id, reference, operation, amount,
                         currency, status, status_message, last_state_change
                      )
-                     SELECT $1, $2, $3, $4, 'refund', -$5, currency, 'done',
+                     SELECT $1, $2, $3, $4, $5, 'refund', -$6, currency, 'done',
                             'Deterministic mock refund succeeded', CURRENT_TIMESTAMP
                      FROM payment_transactions WHERE id = $3",
                 )
                 .bind(order_id)
                 .bind(provider_id)
                 .bind(payment_id)
+                .bind(return_id)
                 .bind(reference)
                 .bind(refunded_amount)
                 .execute(&mut *tx)
@@ -3300,6 +3417,1577 @@ async fn process_return(
     }))
 }
 
+#[derive(Debug, FromRow)]
+struct OrderDocumentRow {
+    id: i64,
+    order_number: String,
+    status: String,
+    payment_status: String,
+    currency: String,
+    subtotal_excl_tax: i64,
+    tax_total: i64,
+    shipping_total: i64,
+    discount_total: i64,
+    total: i64,
+    billing_address: SqlJson<Value>,
+    shipping_address: SqlJson<Value>,
+    shipping_method_name: Option<String>,
+    placed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, FromRow)]
+struct OrderDocumentLine {
+    sku: String,
+    name: SqlJson<Value>,
+    quantity: i32,
+    total_incl_tax: i64,
+    is_shipping: bool,
+}
+
+#[derive(Debug, FromRow)]
+struct ReturnDocumentRow {
+    id: i64,
+    order_number: String,
+    status: String,
+    reason: String,
+    currency: String,
+    closed_at: Option<DateTime<Utc>>,
+    refunded_amount: i64,
+    refund_count: i64,
+}
+
+fn document_localized_text(value: &Value) -> String {
+    value
+        .get("fr")
+        .and_then(Value::as_str)
+        .or_else(|| value.as_object().and_then(|values| values.values().find_map(Value::as_str)))
+        .unwrap_or("Contenu indisponible")
+        .to_owned()
+}
+
+fn document_address_lines(address: &Value) -> Vec<String> {
+    ["recipient", "street1", "street2", "zip", "city", "region", "country"]
+        .iter()
+        .filter_map(|key| {
+            address
+                .get(*key)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
+fn format_document_amount(amount: i64, currency: &str) -> String {
+    let amount = i128::from(amount);
+    let sign = if amount < 0 { "-" } else { "" };
+    let absolute = amount.abs();
+    format!(
+        "{sign}{} {}.{:02}",
+        currency.trim(),
+        absolute / 100,
+        absolute % 100
+    )
+}
+
+fn wrap_document_text(value: &str, max_chars: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in value.split_whitespace() {
+        if !current.is_empty() && current.chars().count() + word.chars().count() + 1 > max_chars {
+            lines.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(word);
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+fn create_operational_pdf(title: &str, reference: &str, lines: &[String]) -> ApiResult<Vec<u8>> {
+    let (document, page, layer) = PdfDocument::new(title, Mm(210.0), Mm(297.0), "Document");
+    let mut layer = document.get_page(page).get_layer(layer);
+    let regular = document
+        .add_builtin_font(BuiltinFont::Helvetica)
+        .map_err(|_| ApiError::internal())?;
+    let bold = document
+        .add_builtin_font(BuiltinFont::HelveticaBold)
+        .map_err(|_| ApiError::internal())?;
+    layer.use_text(title, 18.0, Mm(18.0), Mm(270.0), &bold);
+    layer.use_text(reference, 10.0, Mm(18.0), Mm(258.0), &regular);
+    let mut y = 244.0_f32;
+    for line in lines {
+        for wrapped in wrap_document_text(line, 92) {
+            if y < 22.0 {
+                let (page, layer_index) = document.add_page(Mm(210.0), Mm(297.0), "Continuation");
+                layer = document.get_page(page).get_layer(layer_index);
+                layer.use_text(title, 14.0, Mm(18.0), Mm(270.0), &bold);
+                layer.use_text(reference, 10.0, Mm(18.0), Mm(258.0), &regular);
+                y = 244.0;
+            }
+            layer.use_text(wrapped, 10.0, Mm(18.0), Mm(y), &regular);
+            y -= 6.0;
+        }
+    }
+    let mut output = std::io::BufWriter::new(Cursor::new(Vec::new()));
+    document
+        .save(&mut output)
+        .map_err(|_| ApiError::internal())?;
+    let cursor = output.into_inner().map_err(|_| ApiError::internal())?;
+    Ok(cursor.into_inner())
+}
+
+fn pdf_attachment(filename: &str, bytes: Vec<u8>) -> ApiResult<Response> {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(CONTENT_TYPE, "application/pdf")
+        .header(CONTENT_DISPOSITION, format!("attachment; filename=\\\"{filename}\\\""))
+        .body(Body::from(bytes))
+        .map_err(|_| ApiError::internal())
+}
+
+fn safe_document_filename(reference: &str, document_type: &str) -> String {
+    let safe_reference: String = reference
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || *character == '-')
+        .take(100)
+        .collect();
+    format!("{safe_reference}-{document_type}.pdf")
+}
+
+async fn load_order_document(
+    pool: &PgPool,
+    order_number: &str,
+    customer: Option<i64>,
+) -> ApiResult<OrderDocumentRow> {
+    let row = if let Some(customer_id) = customer {
+        sqlx::query_as::<_, OrderDocumentRow>(
+            "SELECT id, order_number, status, payment_status, currency,
+                    subtotal_excl_tax, tax_total, shipping_total, discount_total, total,
+                    billing_address, shipping_address, shipping_method_name, placed_at
+             FROM orders WHERE order_number = $1 AND customer_id = $2",
+        )
+        .bind(order_number)
+        .bind(customer_id)
+        .fetch_optional(pool)
+        .await
+    } else {
+        sqlx::query_as::<_, OrderDocumentRow>(
+            "SELECT id, order_number, status, payment_status, currency,
+                    subtotal_excl_tax, tax_total, shipping_total, discount_total, total,
+                    billing_address, shipping_address, shipping_method_name, placed_at
+             FROM orders WHERE order_number = $1",
+        )
+        .bind(order_number)
+        .fetch_optional(pool)
+        .await
+    }
+    .map_err(|_| ApiError::internal())?;
+    row.ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Order not found"))
+}
+
+async fn render_order_document(
+    pool: &PgPool,
+    order: OrderDocumentRow,
+    document_type: &str,
+) -> ApiResult<Response> {
+    if !matches!(
+        order.status.as_str(),
+        "confirmed" | "shipped" | "delivered"
+    ) {
+        return Err(ApiError::new(StatusCode::CONFLICT, "Order document is not available"));
+    }
+    let (title, reference, mut lines) = match document_type {
+        "confirmation" => (
+            "Confirmation de commande".to_owned(),
+            format!("ECOM-ORDER-{}-CONFIRMATION", order.order_number),
+            vec![
+                format!("Commande : {}", order.order_number),
+                format!("Date de commande : {}", order.placed_at.map(|value| value.to_rfc3339()).unwrap_or_else(|| "indisponible".to_owned())),
+                format!("Statut : {}", order.status),
+                format!("Paiement : {}", order.payment_status),
+            ],
+        ),
+        "delivery" => {
+            let shipment: Option<(String, Option<String>, Option<DateTime<Utc>>)> =
+                sqlx::query_as(
+                    "SELECT status, tracking_ref, shipped_at FROM shipments WHERE order_id = $1",
+                )
+                .bind(order.id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|_| ApiError::internal())?;
+            let (shipment_status, tracking_ref, shipped_at) = shipment
+                .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, "Delivery document is not available"))?;
+            if !matches!(shipment_status.as_str(), "ready" | "shipped" | "delivered") {
+                return Err(ApiError::new(StatusCode::CONFLICT, "Delivery document is not available"));
+            }
+            (
+                "Document de livraison".to_owned(),
+                format!("ECOM-ORDER-{}-DELIVERY", order.order_number),
+                vec![
+                    format!("Commande : {}", order.order_number),
+                    format!("Statut d'expédition : {shipment_status}"),
+                    format!("Transport : {}", order.shipping_method_name.as_deref().unwrap_or("non renseigné")),
+                    format!("Suivi : {}", tracking_ref.as_deref().unwrap_or("non renseigné")),
+                    format!("Expédié le : {}", shipped_at.map(|value| value.to_rfc3339()).unwrap_or_else(|| "non expédié".to_owned())),
+                ],
+            )
+        }
+        _ => return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid order document type")),
+    };
+    let (address_title, address) = if document_type == "delivery" {
+        ("Adresse de livraison", &order.shipping_address.0)
+    } else {
+        ("Adresse de facturation", &order.billing_address.0)
+    };
+    lines.push(format!("{address_title} :"));
+    lines.extend(document_address_lines(address));
+    lines.push("Articles :".to_owned());
+    let item_lines = sqlx::query_as::<_, OrderDocumentLine>(
+        "SELECT sku, name, quantity, total_incl_tax, is_shipping
+         FROM order_lines WHERE order_id = $1 ORDER BY is_shipping, id",
+    )
+    .bind(order.id)
+    .fetch_all(pool)
+    .await
+    .map_err(|_| ApiError::internal())?;
+    for item in item_lines {
+        let label = document_localized_text(&item.name.0);
+        lines.push(format!(
+            "{} — {} x {} — {}{}",
+            item.sku,
+            label,
+            item.quantity,
+            format_document_amount(item.total_incl_tax, &order.currency),
+            if item.is_shipping { " (livraison)" } else { "" }
+        ));
+    }
+    lines.extend([
+        format!("Sous-total HT : {}", format_document_amount(order.subtotal_excl_tax, &order.currency)),
+        format!("Taxes : {}", format_document_amount(order.tax_total, &order.currency)),
+        format!("Remise : {}", format_document_amount(order.discount_total, &order.currency)),
+        format!("Livraison : {}", format_document_amount(order.shipping_total, &order.currency)),
+        format!("Total TTC : {}", format_document_amount(order.total, &order.currency)),
+        "Document opérationnel de démonstration — ne constitue pas une facture fiscale.".to_owned(),
+    ]);
+    let bytes = create_operational_pdf(&title, &reference, &lines)?;
+    pdf_attachment(
+        &safe_document_filename(&order.order_number, document_type),
+        bytes,
+    )
+}
+
+async fn customer_order_document(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path((order_number, document_type)): Path<(String, String)>,
+) -> ApiResult<Response> {
+    let customer = customer_id(&headers, &pool).await?;
+    let order = load_order_document(&pool, &order_number, Some(customer)).await?;
+    render_order_document(&pool, order, &document_type).await
+}
+
+async fn admin_order_document(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path((order_number, document_type)): Path<(String, String)>,
+) -> ApiResult<Response> {
+    let _ = admin_id(&headers, &pool, &["manager", "operator"]).await?;
+    let order = load_order_document(&pool, &order_number, None).await?;
+    render_order_document(&pool, order, &document_type).await
+}
+
+async fn load_return_document(
+    pool: &PgPool,
+    return_id: i64,
+    customer: Option<i64>,
+) -> ApiResult<ReturnDocumentRow> {
+    let row = if let Some(customer_id) = customer {
+        sqlx::query_as::<_, ReturnDocumentRow>(
+            "SELECT rr.id, o.order_number, rr.status, rr.reason, o.currency, rr.closed_at,
+                    COALESCE(-SUM(pt.amount), 0)::BIGINT AS refunded_amount,
+                    COUNT(pt.id)::BIGINT AS refund_count
+             FROM return_requests rr
+             JOIN orders o ON o.id = rr.order_id
+             LEFT JOIN payment_transactions pt
+               ON pt.return_request_id = rr.id AND pt.operation = 'refund' AND pt.status = 'done'
+             WHERE rr.id = $1 AND rr.customer_id = $2
+             GROUP BY rr.id, o.id",
+        )
+        .bind(return_id)
+        .bind(customer_id)
+        .fetch_optional(pool)
+        .await
+    } else {
+        sqlx::query_as::<_, ReturnDocumentRow>(
+            "SELECT rr.id, o.order_number, rr.status, rr.reason, o.currency, rr.closed_at,
+                    COALESCE(-SUM(pt.amount), 0)::BIGINT AS refunded_amount,
+                    COUNT(pt.id)::BIGINT AS refund_count
+             FROM return_requests rr
+             JOIN orders o ON o.id = rr.order_id
+             LEFT JOIN payment_transactions pt
+               ON pt.return_request_id = rr.id AND pt.operation = 'refund' AND pt.status = 'done'
+             WHERE rr.id = $1
+             GROUP BY rr.id, o.id",
+        )
+        .bind(return_id)
+        .fetch_optional(pool)
+        .await
+    }
+    .map_err(|_| ApiError::internal())?;
+    row.ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Return request not found"))
+}
+
+async fn render_return_document(
+    pool: &PgPool,
+    return_id: i64,
+    customer: Option<i64>,
+) -> ApiResult<Response> {
+    let row = load_return_document(pool, return_id, customer).await?;
+    if row.status != "closed" || row.refund_count == 0 {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "Return refund document is not available",
+        ));
+    }
+    let reference = format!("ECOM-RETURN-{}-REFUND", row.id);
+    let lines = vec![
+        format!("Retour : {}", row.id),
+        format!("Commande : {}", row.order_number),
+        format!("Clôturé le : {}", row.closed_at.map(|value| value.to_rfc3339()).unwrap_or_else(|| "indisponible".to_owned())),
+        format!("Motif déclaré : {}", row.reason),
+        format!("Remboursements réussis : {}", row.refund_count),
+        format!("Montant remboursé : {}", format_document_amount(row.refunded_amount, &row.currency)),
+        "Justificatif opérationnel de démonstration — ne constitue pas un avoir fiscal.".to_owned(),
+    ];
+    let bytes = create_operational_pdf("Justificatif de retour et remboursement", &reference, &lines)?;
+    pdf_attachment(
+        &safe_document_filename(&format!("return-{}", row.id), "refund"),
+        bytes,
+    )
+}
+
+async fn customer_return_document(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(return_id): Path<i64>,
+) -> ApiResult<Response> {
+    let customer = customer_id(&headers, &pool).await?;
+    render_return_document(&pool, return_id, Some(customer)).await
+}
+
+async fn admin_return_document(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Path(return_id): Path<i64>,
+) -> ApiResult<Response> {
+    let _ = admin_id(&headers, &pool, &["manager", "operator"]).await?;
+    render_return_document(&pool, return_id, None).await
+}
+
+#[derive(Debug, FromRow)]
+struct ContentPageRow {
+   id: i64,
+   slug: String,
+   title: SqlJson<Value>,
+   body: SqlJson<Value>,
+   status: String,
+   publish_at: Option<DateTime<Utc>>,
+   is_indexable: bool,
+   created_at: DateTime<Utc>,
+   updated_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+struct ContentPageResponse {
+   id: i64,
+   slug: String,
+   title: Value,
+   body: Value,
+   status: String,
+   publish_at: Option<DateTime<Utc>>,
+   is_indexable: bool,
+   created_at: DateTime<Utc>,
+   updated_at: DateTime<Utc>,
+}
+
+fn content_page_response(row: ContentPageRow) -> ContentPageResponse {
+   let status = if row.status == "published"
+       && row.publish_at.as_ref().is_some_and(|date| date > &Utc::now())
+   {
+       "scheduled".to_owned()
+   } else {
+       row.status
+   };
+   ContentPageResponse {
+       id: row.id,
+       slug: row.slug,
+       title: row.title.0,
+       body: row.body.0,
+       status,
+       publish_at: row.publish_at,
+       is_indexable: row.is_indexable,
+       created_at: row.created_at,
+       updated_at: row.updated_at,
+   }
+}
+
+fn valid_localized_text(value: &Value, max_chars: usize) -> bool {
+   value.as_object().is_some_and(|entries| {
+       !entries.is_empty()
+           && entries.values().all(|entry| {
+               entry.as_str().is_some_and(|text| {
+                   !text.trim().is_empty() && text.chars().count() <= max_chars
+               })
+           })
+   })
+}
+
+fn valid_content_slug(slug: &str) -> bool {
+   !slug.is_empty()
+       && slug.len() <= 160
+       && slug
+           .bytes()
+           .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+       && !slug.starts_with('-')
+       && !slug.ends_with('-')
+       && !slug.contains("--")
+}
+
+fn content_write_error(error: sqlx::Error) -> ApiError {
+   if matches!(
+       &error,
+       sqlx::Error::Database(database_error)
+           if database_error.code().as_deref() == Some("23505")
+   ) {
+       ApiError::new(StatusCode::CONFLICT, "A content page with this slug already exists")
+   } else {
+       ApiError::internal()
+   }
+}
+
+#[derive(Deserialize)]
+struct ContentPageWriteRequest {
+   slug: String,
+   title: Value,
+   body: Value,
+   status: String,
+   publish_at: Option<DateTime<Utc>>,
+   is_indexable: bool,
+}
+
+fn validate_content_page(payload: &ContentPageWriteRequest) -> ApiResult<&'static str> {
+   if !valid_content_slug(&payload.slug)
+       || !valid_localized_text(&payload.title, 200)
+       || !valid_localized_text(&payload.body, 20_000)
+   {
+       return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid page content or slug"));
+   }
+   match payload.status.as_str() {
+       "draft" => Ok("draft"),
+       "published" => Ok("published"),
+       "scheduled" if payload.publish_at.is_some() => Ok("published"),
+       _ => Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid publication status")),
+   }
+}
+
+async fn public_content_pages(
+   State(pool): State<PgPool>,
+) -> ApiResult<Json<Vec<ContentPageResponse>>> {
+   let rows = sqlx::query_as::<_, ContentPageRow>(
+       "SELECT id, slug, title, body, status, publish_at, is_indexable, created_at, updated_at
+        FROM content_pages
+        WHERE status = 'published'
+          AND (publish_at IS NULL OR publish_at <= CURRENT_TIMESTAMP)
+        ORDER BY slug, id",
+   )
+   .fetch_all(&pool)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   Ok(Json(rows.into_iter().map(content_page_response).collect()))
+}
+
+async fn public_content_page(
+   State(pool): State<PgPool>,
+   Path(slug): Path<String>,
+) -> ApiResult<Json<ContentPageResponse>> {
+   let row = sqlx::query_as::<_, ContentPageRow>(
+       "SELECT id, slug, title, body, status, publish_at, is_indexable, created_at, updated_at
+        FROM content_pages
+        WHERE slug = $1 AND status = 'published'
+          AND (publish_at IS NULL OR publish_at <= CURRENT_TIMESTAMP)",
+   )
+   .bind(slug)
+   .fetch_optional(&pool)
+   .await
+   .map_err(|_| ApiError::internal())?
+   .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Content page not found"))?;
+   Ok(Json(content_page_response(row)))
+}
+
+async fn admin_content_pages(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Query(pagination): Query<Pagination>,
+) -> ApiResult<Json<Vec<ContentPageResponse>>> {
+   let _ = admin_id(&headers, &pool, &["manager", "editor"]).await?;
+   let (limit, offset) = pagination.values()?;
+   let rows = sqlx::query_as::<_, ContentPageRow>(
+       "SELECT id, slug, title, body, status, publish_at, is_indexable, created_at, updated_at
+        FROM content_pages ORDER BY slug, id LIMIT $1 OFFSET $2",
+   )
+   .bind(limit)
+   .bind(offset)
+   .fetch_all(&pool)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   Ok(Json(rows.into_iter().map(content_page_response).collect()))
+}
+
+async fn create_admin_content_page(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Json(payload): Json<ContentPageWriteRequest>,
+) -> ApiResult<(StatusCode, Json<ContentPageResponse>)> {
+   let _ = admin_id(&headers, &pool, &["manager", "editor"]).await?;
+   let status = validate_content_page(&payload)?;
+   if payload.status == "scheduled"
+       && payload.publish_at.as_ref().is_some_and(|date| date <= &Utc::now())
+   {
+       return Err(ApiError::new(StatusCode::BAD_REQUEST, "Scheduled publication must be in the future"));
+   }
+   let row = sqlx::query_as::<_, ContentPageRow>(
+       "INSERT INTO content_pages (slug, title, body, status, publish_at, is_indexable)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, slug, title, body, status, publish_at, is_indexable, created_at, updated_at",
+   )
+   .bind(&payload.slug)
+   .bind(SqlJson(payload.title))
+   .bind(SqlJson(payload.body))
+   .bind(status)
+   .bind(payload.publish_at)
+   .bind(payload.is_indexable)
+   .fetch_one(&pool)
+   .await
+   .map_err(content_write_error)?;
+   Ok((StatusCode::CREATED, Json(content_page_response(row))))
+}
+
+async fn update_admin_content_page(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Path(page_id): Path<i64>,
+   Json(payload): Json<ContentPageWriteRequest>,
+) -> ApiResult<Json<ContentPageResponse>> {
+   let _ = admin_id(&headers, &pool, &["manager", "editor"]).await?;
+   if page_id <= 0 {
+       return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid content page"));
+   }
+   let status = validate_content_page(&payload)?;
+   if payload.status == "scheduled"
+       && payload.publish_at.as_ref().is_some_and(|date| date <= &Utc::now())
+   {
+       return Err(ApiError::new(StatusCode::BAD_REQUEST, "Scheduled publication must be in the future"));
+   }
+   let row = sqlx::query_as::<_, ContentPageRow>(
+       "UPDATE content_pages
+        SET slug = $2, title = $3, body = $4, status = $5, publish_at = $6,
+            is_indexable = $7
+        WHERE id = $1
+        RETURNING id, slug, title, body, status, publish_at, is_indexable, created_at, updated_at",
+   )
+   .bind(page_id)
+   .bind(&payload.slug)
+   .bind(SqlJson(payload.title))
+   .bind(SqlJson(payload.body))
+   .bind(status)
+   .bind(payload.publish_at)
+   .bind(payload.is_indexable)
+   .fetch_optional(&pool)
+   .await
+   .map_err(content_write_error)?
+   .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Content page not found"))?;
+   Ok(Json(content_page_response(row)))
+}
+
+async fn delete_admin_content_page(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Path(page_id): Path<i64>,
+) -> ApiResult<StatusCode> {
+   let _ = admin_id(&headers, &pool, &["manager", "editor"]).await?;
+   if page_id <= 0 {
+       return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid content page"));
+   }
+   let result = sqlx::query("DELETE FROM content_pages WHERE id = $1")
+       .bind(page_id)
+       .execute(&pool)
+       .await
+       .map_err(|_| ApiError::internal())?;
+   if result.rows_affected() == 0 {
+       return Err(ApiError::new(StatusCode::NOT_FOUND, "Content page not found"));
+   }
+   Ok(StatusCode::NO_CONTENT)
+}
+
+async fn duplicate_admin_content_page(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Path(page_id): Path<i64>,
+) -> ApiResult<(StatusCode, Json<ContentPageResponse>)> {
+   let _ = admin_id(&headers, &pool, &["manager", "editor"]).await?;
+   let original = sqlx::query_as::<_, ContentPageRow>(
+       "SELECT id, slug, title, body, status, publish_at, is_indexable, created_at, updated_at
+        FROM content_pages WHERE id = $1",
+   )
+   .bind(page_id)
+   .fetch_optional(&pool)
+   .await
+   .map_err(|_| ApiError::internal())?
+   .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Content page not found"))?;
+   let mut suffix = 1_u32;
+   let slug = loop {
+      let suffix_text = if suffix == 1 {
+          "copie".to_owned()
+       } else {
+          format!("copie-{suffix}")
+       };
+      let prefix_length = 160_usize.saturating_sub(suffix_text.len() + 1);
+      let prefix = original.slug.chars().take(prefix_length).collect::<String>();
+      let candidate = format!("{prefix}-{suffix_text}");
+      let exists: bool =
+          sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content_pages WHERE slug = $1)")
+               .bind(&candidate)
+               .fetch_one(&pool)
+               .await
+               .map_err(|_| ApiError::internal())?;
+       if !exists {
+           break candidate;
+       }
+       suffix = suffix.saturating_add(1);
+       if suffix > 1000 {
+           return Err(ApiError::new(StatusCode::CONFLICT, "Could not allocate a unique page slug"));
+       }
+   };
+   let row = sqlx::query_as::<_, ContentPageRow>(
+       "INSERT INTO content_pages (slug, title, body, status, is_indexable)
+        VALUES ($1, $2, $3, 'draft', $4)
+        RETURNING id, slug, title, body, status, publish_at, is_indexable, created_at, updated_at",
+   )
+   .bind(slug)
+   .bind(original.title)
+   .bind(original.body)
+   .bind(original.is_indexable)
+   .fetch_one(&pool)
+   .await
+   .map_err(content_write_error)?;
+   Ok((StatusCode::CREATED, Json(content_page_response(row))))
+}
+
+#[derive(Debug, FromRow)]
+struct ContentMenuRow {
+   id: i64,
+   label: SqlJson<Value>,
+   location: String,
+   parent_id: Option<i64>,
+   page_id: Option<i64>,
+   target_url: Option<String>,
+   sort_order: i32,
+   open_new_tab: bool,
+   page_slug: Option<String>,
+   page_status: Option<String>,
+   page_publish_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize)]
+struct ContentMenuResponse {
+   id: i64,
+   label: Value,
+   location: String,
+   parent_id: Option<i64>,
+   page_id: Option<i64>,
+   page_slug: Option<String>,
+   target_url: Option<String>,
+   sort_order: i32,
+   open_new_tab: bool,
+}
+
+fn content_menu_response(row: ContentMenuRow) -> ContentMenuResponse {
+   let visible_page = row.page_status.as_deref() == Some("published")
+       && row
+           .page_publish_at
+           .as_ref()
+           .map_or(true, |date| date <= &Utc::now());
+   ContentMenuResponse {
+       id: row.id,
+       label: row.label.0,
+       location: row.location,
+       parent_id: row.parent_id,
+       page_id: row.page_id,
+       page_slug: visible_page.then_some(row.page_slug).flatten(),
+       target_url: if row.page_id.is_none() { row.target_url } else { None },
+       sort_order: row.sort_order,
+       open_new_tab: row.open_new_tab,
+   }
+}
+
+const CONTENT_MENU_SELECT: &str =
+   "SELECT m.id, m.label, m.location, m.parent_id, m.page_id, m.target_url,
+           m.sort_order, m.open_new_tab, p.slug AS page_slug,
+           p.status AS page_status, p.publish_at AS page_publish_at
+    FROM content_menu_items m
+    LEFT JOIN content_pages p ON p.id = m.page_id";
+
+#[derive(Deserialize)]
+struct ContentMenuQuery {
+   location: String,
+}
+
+async fn public_content_menu(
+   State(pool): State<PgPool>,
+   Query(query): Query<ContentMenuQuery>,
+) -> ApiResult<Json<Vec<ContentMenuResponse>>> {
+   if !matches!(
+       query.location.as_str(),
+       "main" | "footer-shop" | "footer-service" | "footer-legal"
+   ) {
+       return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid menu location"));
+   }
+   let sql = format!(
+       "{} WHERE m.location = $1
+          AND (m.page_id IS NULL OR (
+              p.status = 'published'
+              AND (p.publish_at IS NULL OR p.publish_at <= CURRENT_TIMESTAMP)
+          ))
+        ORDER BY m.parent_id NULLS FIRST, m.sort_order, m.id",
+       CONTENT_MENU_SELECT
+   );
+   let rows = sqlx::query_as::<_, ContentMenuRow>(&sql)
+       .bind(query.location)
+       .fetch_all(&pool)
+       .await
+       .map_err(|_| ApiError::internal())?;
+   Ok(Json(rows.into_iter().map(content_menu_response).collect()))
+}
+
+async fn admin_content_menus(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+) -> ApiResult<Json<Vec<ContentMenuResponse>>> {
+   let _ = admin_id(&headers, &pool, &["manager", "editor"]).await?;
+   let query = format!(
+       "{} ORDER BY m.location, m.parent_id NULLS FIRST, m.sort_order, m.id",
+       CONTENT_MENU_SELECT
+   );
+   let rows = sqlx::query_as::<_, ContentMenuRow>(&query)
+       .fetch_all(&pool)
+       .await
+       .map_err(|_| ApiError::internal())?;
+   Ok(Json(rows.into_iter().map(content_menu_response).collect()))
+}
+
+#[derive(Deserialize)]
+struct ContentMenuWriteRequest {
+   label: Value,
+   location: String,
+   parent_id: Option<i64>,
+   page_id: Option<i64>,
+   target_url: Option<String>,
+   sort_order: i32,
+   open_new_tab: bool,
+}
+
+fn validate_menu_payload(payload: &ContentMenuWriteRequest) -> ApiResult<()> {
+   if !valid_localized_text(&payload.label, 200)
+       || !matches!(
+           payload.location.as_str(),
+           "main" | "footer-shop" | "footer-service" | "footer-legal"
+       )
+       || payload.parent_id.is_some_and(|id| id <= 0)
+       || payload.page_id.is_some_and(|id| id <= 0)
+       || payload.target_url.as_ref().is_some_and(|url| {
+           url.chars().count() > 2_000
+               || !(url.starts_with("https://") || url.starts_with("http://"))
+       })
+       || (payload.page_id.is_some() && payload.target_url.is_some())
+   {
+       return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid menu item"));
+   }
+   Ok(())
+}
+
+async fn validate_menu_relations(
+   tx: &mut Transaction<'_, Postgres>,
+   payload: &ContentMenuWriteRequest,
+   menu_id: Option<i64>,
+) -> ApiResult<()> {
+   if let Some(page_id) = payload.page_id {
+       let exists: bool =
+           sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content_pages WHERE id = $1)")
+               .bind(page_id)
+               .fetch_one(&mut **tx)
+               .await
+               .map_err(|_| ApiError::internal())?;
+       if !exists {
+           return Err(ApiError::new(StatusCode::BAD_REQUEST, "Menu page does not exist"));
+       }
+   }
+   if let Some(parent_id) = payload.parent_id {
+       if Some(parent_id) == menu_id {
+           return Err(ApiError::new(StatusCode::BAD_REQUEST, "A menu item cannot parent itself"));
+       }
+       let same_location: bool = sqlx::query_scalar(
+           "SELECT EXISTS(SELECT 1 FROM content_menu_items WHERE id = $1 AND location = $2)",
+       )
+       .bind(parent_id)
+       .bind(&payload.location)
+       .fetch_one(&mut **tx)
+       .await
+       .map_err(|_| ApiError::internal())?;
+       if !same_location {
+           return Err(ApiError::new(StatusCode::BAD_REQUEST, "Menu parent must use the same location"));
+       }
+       if let Some(menu_id) = menu_id {
+           let would_cycle: bool = sqlx::query_scalar(
+               "WITH RECURSIVE descendants(id) AS (
+                    SELECT id FROM content_menu_items WHERE parent_id = $1
+                    UNION ALL
+                    SELECT child.id FROM content_menu_items child
+                    JOIN descendants parent ON child.parent_id = parent.id
+                )
+                SELECT EXISTS(SELECT 1 FROM descendants WHERE id = $2)",
+           )
+           .bind(menu_id)
+           .bind(parent_id)
+           .fetch_one(&mut **tx)
+           .await
+           .map_err(|_| ApiError::internal())?;
+           if would_cycle {
+               return Err(ApiError::new(StatusCode::CONFLICT, "Menu hierarchy cannot contain a cycle"));
+           }
+       }
+   }
+   Ok(())
+}
+
+async fn lock_content_menu(tx: &mut Transaction<'_, Postgres>) -> ApiResult<()> {
+   sqlx::query("SELECT pg_advisory_xact_lock(hashtext('specforge-content-menu'))")
+       .execute(&mut **tx)
+       .await
+       .map_err(|_| ApiError::internal())?;
+   Ok(())
+}
+
+async fn create_admin_content_menu(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Json(payload): Json<ContentMenuWriteRequest>,
+) -> ApiResult<(StatusCode, Json<ContentMenuResponse>)> {
+   let _ = admin_id(&headers, &pool, &["manager", "editor"]).await?;
+   validate_menu_payload(&payload)?;
+   let mut tx = pool.begin().await.map_err(|_| ApiError::internal())?;
+   lock_content_menu(&mut tx).await?;
+   validate_menu_relations(&mut tx, &payload, None).await?;
+   let id: i64 = sqlx::query_scalar(
+       "INSERT INTO content_menu_items
+           (label, location, parent_id, page_id, target_url, sort_order, open_new_tab)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id",
+   )
+   .bind(SqlJson(payload.label))
+   .bind(&payload.location)
+   .bind(payload.parent_id)
+   .bind(payload.page_id)
+   .bind(payload.target_url)
+   .bind(payload.sort_order)
+   .bind(payload.open_new_tab)
+   .fetch_one(&mut *tx)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   let row = sqlx::query_as::<_, ContentMenuRow>(
+       &(CONTENT_MENU_SELECT.to_owned() + " WHERE m.id = $1"),
+   )
+   .bind(id)
+   .fetch_one(&mut *tx)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   tx.commit().await.map_err(|_| ApiError::internal())?;
+   Ok((StatusCode::CREATED, Json(content_menu_response(row))))
+}
+
+async fn update_admin_content_menu(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Path(menu_id): Path<i64>,
+   Json(payload): Json<ContentMenuWriteRequest>,
+) -> ApiResult<Json<ContentMenuResponse>> {
+   let _ = admin_id(&headers, &pool, &["manager", "editor"]).await?;
+   if menu_id <= 0 {
+       return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid menu item"));
+   }
+   validate_menu_payload(&payload)?;
+   let mut tx = pool.begin().await.map_err(|_| ApiError::internal())?;
+   lock_content_menu(&mut tx).await?;
+   validate_menu_relations(&mut tx, &payload, Some(menu_id)).await?;
+   let updated = sqlx::query(
+       "UPDATE content_menu_items
+        SET label = $2, location = $3, parent_id = $4, page_id = $5, target_url = $6,
+            sort_order = $7, open_new_tab = $8
+        WHERE id = $1",
+   )
+   .bind(menu_id)
+   .bind(SqlJson(payload.label))
+   .bind(&payload.location)
+   .bind(payload.parent_id)
+   .bind(payload.page_id)
+   .bind(payload.target_url)
+   .bind(payload.sort_order)
+   .bind(payload.open_new_tab)
+   .execute(&mut *tx)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   if updated.rows_affected() == 0 {
+       return Err(ApiError::new(StatusCode::NOT_FOUND, "Menu item not found"));
+   }
+   let query = CONTENT_MENU_SELECT.to_owned() + " WHERE m.id = $1";
+   let row = sqlx::query_as::<_, ContentMenuRow>(&query)
+       .bind(menu_id)
+       .fetch_one(&mut *tx)
+       .await
+       .map_err(|_| ApiError::internal())?;
+       tx.commit().await.map_err(|_| ApiError::internal())?;
+       Ok(Json(content_menu_response(row)))
+}
+
+async fn delete_admin_content_menu(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Path(menu_id): Path<i64>,
+) -> ApiResult<StatusCode> {
+   let _ = admin_id(&headers, &pool, &["manager", "editor"]).await?;
+   let mut tx = pool.begin().await.map_err(|_| ApiError::internal())?;
+   lock_content_menu(&mut tx).await?;
+   let result = sqlx::query("DELETE FROM content_menu_items WHERE id = $1")
+       .bind(menu_id)
+       .execute(&mut *tx)
+       .await
+       .map_err(|_| ApiError::internal())?;
+   if result.rows_affected() == 0 {
+       return Err(ApiError::new(StatusCode::NOT_FOUND, "Menu item not found"));
+   }
+   tx.commit().await.map_err(|_| ApiError::internal())?;
+   Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct DashboardRangeQuery {
+    from: Option<String>,
+    to: Option<String>,
+}
+
+fn dashboard_range(
+    query: DashboardRangeQuery,
+) -> ApiResult<(DateTime<Utc>, DateTime<Utc>, String, String)> {
+    let (from, to) = match (query.from, query.to) {
+        (Some(from), Some(to)) => (from, to),
+        (None, None) => {
+            let today = Utc::now().date_naive();
+            let from = (today - chrono::Duration::days(29)).format("%Y-%m-%d").to_string();
+            let to = today
+                .succ_opt()
+                .ok_or_else(ApiError::internal)?
+                .format("%Y-%m-%d")
+                .to_string();
+            (from, to)
+        }
+        _ => {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Both dashboard range dates must be provided",
+            ))
+        }
+    };
+    let from_date = chrono::NaiveDate::parse_from_str(&from, "%Y-%m-%d")
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Invalid dashboard start date"))?;
+    let to_date = chrono::NaiveDate::parse_from_str(&to, "%Y-%m-%d")
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Invalid dashboard end date"))?;
+    let days = to_date.signed_duration_since(from_date).num_days();
+    if days <= 0 || days > 366 {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Dashboard range must be a positive interval of at most 366 days",
+        ));
+    }
+    let start = from_date
+        .and_hms_opt(0, 0, 0)
+        .ok_or_else(ApiError::internal)?
+        .and_utc();
+    let end = to_date
+        .and_hms_opt(0, 0, 0)
+        .ok_or_else(ApiError::internal)?
+        .and_utc();
+    Ok((start, end, from, to))
+}
+
+#[derive(Debug, FromRow)]
+struct DashboardTopProductRow {
+    product_id: Option<i64>,
+    sku: String,
+    name: SqlJson<Value>,
+    currency: String,
+    units_sold: i64,
+    sales: i64,
+}
+
+#[derive(Serialize)]
+struct DashboardTopProduct {
+    product_id: Option<i64>,
+    sku: String,
+    name: Value,
+    currency: String,
+    units_sold: i64,
+    sales: i64,
+}
+
+#[derive(Debug, FromRow)]
+struct DashboardCurrencySalesRow {
+    currency: String,
+    order_count: i64,
+    sales_ttc: i64,
+}
+
+#[derive(Serialize)]
+struct DashboardCurrencySales {
+    currency: String,
+    order_count: i64,
+    sales_ttc: i64,
+    average_order_value_ttc: i64,
+}
+
+#[derive(Debug, FromRow)]
+struct DashboardRefundAmountRow {
+    currency: String,
+    refund_count: i64,
+    refunded_amount: i64,
+}
+
+#[derive(Serialize)]
+struct DashboardRefundAmount {
+    currency: String,
+    refunded_amount: i64,
+}
+
+#[derive(Debug, FromRow)]
+struct DashboardStockAlertRow {
+    product_id: i64,
+    sku: String,
+    name: SqlJson<Value>,
+    available: i32,
+    alert_threshold: i32,
+}
+
+#[derive(Serialize)]
+struct DashboardStockAlert {
+    product_id: i64,
+    sku: String,
+    name: Value,
+    available: i32,
+    alert_threshold: i32,
+}
+
+#[derive(Serialize)]
+struct AdminDashboardResponse {
+    from: String,
+    to: String,
+    order_count: i64,
+    sales_by_currency: Vec<DashboardCurrencySales>,
+    top_products: Vec<DashboardTopProduct>,
+    closed_return_count: i64,
+    successful_refund_count: i64,
+    refunded_amounts_by_currency: Vec<DashboardRefundAmount>,
+    stock_alert_count: i64,
+    stock_alerts: Vec<DashboardStockAlert>,
+}
+
+async fn admin_dashboard(
+    State(pool): State<PgPool>,
+    headers: HeaderMap,
+    Query(query): Query<DashboardRangeQuery>,
+) -> ApiResult<Json<AdminDashboardResponse>> {
+    let _ = admin_id(&headers, &pool, &["manager"]).await?;
+    let (start, end, from, to) = dashboard_range(query)?;
+    let sales_rows = sqlx::query_as::<_, DashboardCurrencySalesRow>(
+        "SELECT currency, COUNT(*)::BIGINT AS order_count,
+                COALESCE(SUM(total), 0)::BIGINT AS sales_ttc
+         FROM orders
+         WHERE status IN ('confirmed', 'shipped', 'delivered')
+           AND placed_at >= $1 AND placed_at < $2
+         GROUP BY currency
+         ORDER BY currency",
+    )
+    .bind(&start)
+    .bind(&end)
+    .fetch_all(&pool)
+    .await
+    .map_err(|_| ApiError::internal())?;
+    let mut order_count = 0_i64;
+    let mut sales_by_currency = Vec::with_capacity(sales_rows.len());
+    for row in sales_rows {
+        order_count = order_count
+            .checked_add(row.order_count)
+            .ok_or_else(ApiError::internal)?;
+        let average_order_value_ttc = if row.order_count == 0 {
+            0
+        } else {
+            row.sales_ttc
+                .checked_div(row.order_count)
+                .ok_or_else(ApiError::internal)?
+        };
+        sales_by_currency.push(DashboardCurrencySales {
+            currency: row.currency.trim().to_owned(),
+            order_count: row.order_count,
+            sales_ttc: row.sales_ttc,
+            average_order_value_ttc,
+        });
+    }
+    let top_products = sqlx::query_as::<_, DashboardTopProductRow>(
+        "SELECT ol.product_id, ol.sku, ol.name, ol.currency,
+                SUM(ol.quantity)::BIGINT AS units_sold,
+                SUM(ol.total_incl_tax)::BIGINT AS sales
+         FROM order_lines ol
+         JOIN orders o ON o.id = ol.order_id
+         WHERE o.status IN ('confirmed', 'shipped', 'delivered')
+           AND o.placed_at >= $1 AND o.placed_at < $2
+           AND ol.is_shipping = false
+         GROUP BY ol.product_id, ol.sku, ol.name, ol.currency
+         ORDER BY units_sold DESC, sales DESC, ol.sku
+         LIMIT 5",
+    )
+    .bind(&start)
+    .bind(&end)
+    .fetch_all(&pool)
+    .await
+    .map_err(|_| ApiError::internal())?
+    .into_iter()
+    .map(|row| DashboardTopProduct {
+        product_id: row.product_id,
+        sku: row.sku,
+        name: row.name.0,
+        currency: row.currency.trim().to_owned(),
+        units_sold: row.units_sold,
+        sales: row.sales,
+    })
+    .collect();
+    let closed_return_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::BIGINT FROM return_requests
+         WHERE status = 'closed' AND closed_at >= $1 AND closed_at < $2",
+    )
+    .bind(&start)
+    .bind(&end)
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| ApiError::internal())?;
+    let refund_rows = sqlx::query_as::<_, DashboardRefundAmountRow>(
+        "SELECT currency, COUNT(*)::BIGINT AS refund_count,
+                COALESCE(-SUM(amount), 0)::BIGINT AS refunded_amount
+         FROM payment_transactions
+         WHERE operation = 'refund' AND status = 'done'
+           AND last_state_change >= $1 AND last_state_change < $2
+         GROUP BY currency
+         ORDER BY currency",
+    )
+    .bind(&start)
+    .bind(&end)
+    .fetch_all(&pool)
+    .await
+    .map_err(|_| ApiError::internal())?;
+    let mut successful_refund_count = 0_i64;
+    let mut refunded_amounts_by_currency = Vec::with_capacity(refund_rows.len());
+    for row in refund_rows {
+        successful_refund_count = successful_refund_count
+            .checked_add(row.refund_count)
+            .ok_or_else(ApiError::internal)?;
+        refunded_amounts_by_currency.push(DashboardRefundAmount {
+            currency: row.currency.trim().to_owned(),
+            refunded_amount: row.refunded_amount,
+        });
+    }
+    let stock_alert_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::BIGINT
+         FROM stock_levels sl
+         JOIN products p ON p.id = sl.product_id
+         WHERE p.is_active = true AND sl.available <= sl.alert_threshold",
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| ApiError::internal())?;
+    let stock_alerts = sqlx::query_as::<_, DashboardStockAlertRow>(
+        "SELECT p.id AS product_id, p.sku, p.name, sl.available, sl.alert_threshold
+         FROM stock_levels sl
+         JOIN products p ON p.id = sl.product_id
+         WHERE p.is_active = true AND sl.available <= sl.alert_threshold
+         ORDER BY sl.available, p.sku
+         LIMIT 10",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|_| ApiError::internal())?
+    .into_iter()
+    .map(|row| DashboardStockAlert {
+        product_id: row.product_id,
+        sku: row.sku,
+        name: row.name.0,
+        available: row.available,
+        alert_threshold: row.alert_threshold,
+    })
+    .collect();
+    Ok(Json(AdminDashboardResponse {
+        from,
+        to,
+        order_count,
+        sales_by_currency,
+        top_products,
+        closed_return_count,
+        successful_refund_count,
+        refunded_amounts_by_currency,
+        stock_alert_count,
+        stock_alerts,
+    }))
+}
+
+#[derive(Debug, FromRow)]
+struct AdminCustomerRow {
+   id: i64,
+   email: String,
+   full_name: String,
+   locale: String,
+   is_active: bool,
+   created_at: DateTime<Utc>,
+   order_count: i64,
+}
+
+#[derive(Serialize)]
+struct AdminCustomerResponse {
+   id: i64,
+   email: String,
+   full_name: String,
+   locale: String,
+   is_active: bool,
+   created_at: DateTime<Utc>,
+   order_count: i64,
+}
+
+impl From<AdminCustomerRow> for AdminCustomerResponse {
+   fn from(row: AdminCustomerRow) -> Self {
+       Self {
+           id: row.id,
+           email: row.email,
+           full_name: row.full_name,
+           locale: row.locale,
+           is_active: row.is_active,
+           created_at: row.created_at,
+           order_count: row.order_count,
+       }
+   }
+}
+
+async fn admin_customers(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Query(pagination): Query<Pagination>,
+) -> ApiResult<Json<Vec<AdminCustomerResponse>>> {
+   let _ = admin_id(&headers, &pool, &["manager", "operator"]).await?;
+   let (limit, offset) = pagination.values()?;
+   let rows = sqlx::query_as::<_, AdminCustomerRow>(
+       "SELECT c.id, c.email, c.full_name, c.locale, c.is_active, c.created_at,
+               COUNT(o.id)::BIGINT AS order_count
+        FROM customers c
+        LEFT JOIN orders o ON o.customer_id = c.id
+        GROUP BY c.id
+        ORDER BY c.created_at DESC, c.id DESC
+        LIMIT $1 OFFSET $2",
+   )
+   .bind(limit)
+   .bind(offset)
+   .fetch_all(&pool)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   Ok(Json(rows.into_iter().map(AdminCustomerResponse::from).collect()))
+}
+
+async fn admin_customer(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Path(customer_id): Path<i64>,
+) -> ApiResult<Json<AdminCustomerResponse>> {
+   let _ = admin_id(&headers, &pool, &["manager", "operator"]).await?;
+   let row = sqlx::query_as::<_, AdminCustomerRow>(
+       "SELECT c.id, c.email, c.full_name, c.locale, c.is_active, c.created_at,
+               COUNT(o.id)::BIGINT AS order_count
+        FROM customers c
+        LEFT JOIN orders o ON o.customer_id = c.id
+        WHERE c.id = $1
+        GROUP BY c.id",
+   )
+   .bind(customer_id)
+   .fetch_optional(&pool)
+   .await
+   .map_err(|_| ApiError::internal())?
+   .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Customer not found"))?;
+   Ok(Json(AdminCustomerResponse::from(row)))
+}
+
+#[derive(Debug, FromRow)]
+struct AdminUnpaidOrderRow {
+   order_number: String,
+   customer_id: i64,
+   customer_name: String,
+   customer_email: String,
+   payment_status: String,
+   currency: String,
+   total: i64,
+   placed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize)]
+struct AdminUnpaidOrderResponse {
+   order_number: String,
+   customer_id: i64,
+   customer_name: String,
+   customer_email: String,
+   payment_status: String,
+   currency: String,
+   total: i64,
+   placed_at: Option<DateTime<Utc>>,
+}
+
+async fn admin_unpaid_orders(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Query(pagination): Query<Pagination>,
+) -> ApiResult<Json<Vec<AdminUnpaidOrderResponse>>> {
+   let _ = admin_id(&headers, &pool, &["manager", "operator"]).await?;
+   let (limit, offset) = pagination.values()?;
+   let rows = sqlx::query_as::<_, AdminUnpaidOrderRow>(
+       "SELECT o.order_number, c.id AS customer_id, c.full_name AS customer_name,
+               c.email AS customer_email, o.payment_status, o.currency, o.total, o.placed_at
+        FROM orders o
+        JOIN customers c ON c.id = o.customer_id
+        WHERE o.status = 'pending_payment'
+          AND o.payment_status IN ('pending', 'authorized')
+        ORDER BY o.placed_at DESC NULLS LAST, o.id DESC
+        LIMIT $1 OFFSET $2",
+   )
+   .bind(limit)
+   .bind(offset)
+   .fetch_all(&pool)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   Ok(Json(
+       rows.into_iter()
+           .map(|row| AdminUnpaidOrderResponse {
+               order_number: row.order_number,
+               customer_id: row.customer_id,
+               customer_name: row.customer_name,
+               customer_email: row.customer_email,
+               payment_status: row.payment_status,
+               currency: row.currency.trim().to_owned(),
+               total: row.total,
+               placed_at: row.placed_at,
+           })
+           .collect(),
+   ))
+}
+
+async fn cart_recovery_delay_hours(pool: &PgPool) -> ApiResult<i64> {
+   let configured: Option<String> = sqlx::query_scalar(
+       "SELECT value #>> '{}' FROM settings WHERE key = 'shop.cart_abandon_delay_hours'",
+   )
+   .fetch_optional(pool)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   let hours = configured
+       .ok_or_else(ApiError::internal)?
+       .parse::<i64>()
+       .map_err(|_| ApiError::internal())?;
+   if !(1..=720).contains(&hours) {
+       return Err(ApiError::internal());
+   }
+   Ok(hours)
+}
+
+#[derive(Debug, FromRow)]
+struct AdminAbandonedCartRow {
+   id: i64,
+   customer_id: i64,
+   customer_name: String,
+   customer_email: String,
+   currency: String,
+   updated_at: DateTime<Utc>,
+   line_count: i64,
+   subtotal: i64,
+}
+
+#[derive(Serialize)]
+struct AdminAbandonedCartResponse {
+   id: i64,
+   customer_id: i64,
+   customer_name: String,
+   customer_email: String,
+   currency: String,
+   updated_at: DateTime<Utc>,
+   line_count: i64,
+   subtotal: i64,
+   recovery_notification_queued: bool,
+}
+
+async fn admin_abandoned_carts(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Query(pagination): Query<Pagination>,
+) -> ApiResult<Json<Vec<AdminAbandonedCartResponse>>> {
+   let _ = admin_id(&headers, &pool, &["manager", "operator"]).await?;
+   let delay_hours = cart_recovery_delay_hours(&pool).await?;
+   let (limit, offset) = pagination.values()?;
+   let rows = sqlx::query_as::<_, AdminAbandonedCartRow>(
+       "SELECT c.id, cu.id AS customer_id, cu.full_name AS customer_name,
+               cu.email AS customer_email, c.currency, c.updated_at,
+               COUNT(cl.id)::BIGINT AS line_count,
+               COALESCE(SUM(cl.unit_price * cl.quantity), 0)::BIGINT AS subtotal
+        FROM carts c
+        JOIN customers cu ON cu.id = c.customer_id AND cu.is_active = true
+        JOIN cart_lines cl ON cl.cart_id = c.id
+        WHERE c.status = 'open'
+          AND c.recovery_notification_queued = false
+          AND c.updated_at <= CURRENT_TIMESTAMP - ($1 * INTERVAL '1 hour')
+        GROUP BY c.id, cu.id
+        ORDER BY c.updated_at, c.id
+        LIMIT $2 OFFSET $3",
+   )
+   .bind(delay_hours)
+   .bind(limit)
+   .bind(offset)
+   .fetch_all(&pool)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   Ok(Json(
+       rows.into_iter()
+           .map(|row| AdminAbandonedCartResponse {
+               id: row.id,
+               customer_id: row.customer_id,
+               customer_name: row.customer_name,
+               customer_email: row.customer_email,
+               currency: row.currency.trim().to_owned(),
+               updated_at: row.updated_at,
+               line_count: row.line_count,
+               subtotal: row.subtotal,
+               recovery_notification_queued: false,
+           })
+           .collect(),
+   ))
+}
+
+#[derive(Serialize)]
+struct CartRecoveryQueueResponse {
+   cart_id: i64,
+   status: &'static str,
+   message: &'static str,
+}
+
+async fn queue_admin_cart_recovery(
+   State(pool): State<PgPool>,
+   headers: HeaderMap,
+   Path(cart_id): Path<i64>,
+) -> ApiResult<Json<CartRecoveryQueueResponse>> {
+   let (admin, _) = admin_id(&headers, &pool, &["manager", "operator"]).await?;
+   if cart_id <= 0 {
+       return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid cart"));
+   }
+   let delay_hours = cart_recovery_delay_hours(&pool).await?;
+   let mut tx = pool.begin().await.map_err(|_| ApiError::internal())?;
+   let cart: Option<(String, String, String, DateTime<Utc>, bool, bool, bool)> =
+       sqlx::query_as(
+           "SELECT c.status, cu.email, cu.locale, c.updated_at, cu.is_active,
+                   c.recovery_notification_queued,
+                   EXISTS(SELECT 1 FROM cart_lines cl WHERE cl.cart_id = c.id)
+            FROM carts c JOIN customers cu ON cu.id = c.customer_id
+            WHERE c.id = $1
+            FOR UPDATE OF c",
+       )
+       .bind(cart_id)
+       .fetch_optional(&mut *tx)
+       .await
+       .map_err(|_| ApiError::internal())?;
+   let (status, email, locale, updated_at, customer_active, queued, has_lines) =
+       cart.ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Cart not found"))?;
+   let eligible_before = Utc::now() - chrono::Duration::hours(delay_hours);
+   if status != "open" || !customer_active || queued || !has_lines || updated_at > eligible_before {
+       return Err(ApiError::new(StatusCode::CONFLICT, "Cart is not eligible for recovery"));
+   }
+   let template_exists: bool = sqlx::query_scalar(
+       "SELECT EXISTS(
+            SELECT 1 FROM notification_templates
+            WHERE key = 'cart_recovery' AND locale IN ($1, 'fr') AND is_active = true
+        )",
+   )
+   .bind(&locale)
+   .fetch_one(&mut *tx)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   if !template_exists {
+       return Err(ApiError::new(
+           StatusCode::CONFLICT,
+           "No active cart recovery notification template is configured",
+       ));
+   }
+   let notification_id: Option<i64> = sqlx::query_scalar(
+       "INSERT INTO notifications (cart_id, template_key, recipient_email, channel, status)
+        VALUES ($1, 'cart_recovery', $2, 'email', 'pending')
+        ON CONFLICT (cart_id, template_key)
+            WHERE cart_id IS NOT NULL AND template_key = 'cart_recovery'
+        DO NOTHING
+        RETURNING id",
+   )
+   .bind(cart_id)
+   .bind(&email)
+   .fetch_optional(&mut *tx)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   if notification_id.is_none() {
+       return Err(ApiError::new(StatusCode::CONFLICT, "Cart recovery is already queued"));
+   }
+   sqlx::query("UPDATE carts SET recovery_notification_queued = true WHERE id = $1")
+       .bind(cart_id)
+       .execute(&mut *tx)
+       .await
+       .map_err(|_| ApiError::internal())?;
+   sqlx::query(
+       "INSERT INTO audit_logs (entity_type, entity_id, event, actor, diff)
+        VALUES ('cart', $1, 'cart.recovery_queued', $2, $3)",
+   )
+   .bind(cart_id)
+   .bind(format!("admin:{admin}"))
+   .bind(SqlJson(json!({"notification_id": notification_id})))
+   .execute(&mut *tx)
+   .await
+   .map_err(|_| ApiError::internal())?;
+   tx.commit().await.map_err(|_| ApiError::internal())?;
+   Ok(Json(CartRecoveryQueueResponse {
+       cart_id,
+       status: "queued",
+       message: "Notification queued; no email was sent",
+   }))
+}
+
 pub fn router() -> Router<PgPool> {
     Router::new()
         .route("/api/health", get(health))
@@ -3307,6 +4995,9 @@ pub fn router() -> Router<PgPool> {
         .route("/api/products/:product_id", get(public_product))
         .route("/api/categories", get(public_categories))
         .route("/api/shipping-methods", get(public_shipping_methods))
+        .route("/api/content/pages", get(public_content_pages))
+        .route("/api/content/pages/:slug", get(public_content_page))
+        .route("/api/content/menu", get(public_content_menu))
         .route("/api/auth/register", post(register))
         .route("/api/auth/login", post(customer_login))
         .route("/api/admin/login", post(admin_login))
@@ -3323,13 +5014,50 @@ pub fn router() -> Router<PgPool> {
         .route("/api/cart/items/:product_id", patch(update_cart_item).delete(delete_cart_item))
         .route("/api/orders/checkout", post(checkout))
         .route("/api/customer/orders", get(customer_orders))
+        .route("/api/customer/returns", get(customer_returns))
         .route("/api/customer/orders/:reference/returns", post(request_return))
+        .route(
+            "/api/customer/orders/:order_number/documents/:document_type",
+            get(customer_order_document),
+        )
+        .route(
+            "/api/customer/returns/:return_id/documents/refund",
+            get(customer_return_document),
+        )
         .route("/api/admin/products", get(admin_products))
         .route("/api/admin/products/:product_id", patch(update_admin_product))
         .route("/api/admin/orders", get(admin_orders))
         .route("/api/admin/orders/:order_number/shipment", post(update_shipment))
+        .route(
+            "/api/admin/orders/:order_number/documents/:document_type",
+            get(admin_order_document),
+        )
         .route("/api/admin/returns", get(admin_returns))
         .route("/api/admin/returns/:return_id/process", post(process_return))
+        .route(
+            "/api/admin/returns/:return_id/documents/refund",
+            get(admin_return_document),
+        )
+        .route("/api/admin/dashboard", get(admin_dashboard))
+        .route("/api/admin/customers", get(admin_customers))
+        .route("/api/admin/customers/:customer_id", get(admin_customer))
+        .route("/api/admin/unpaid-orders", get(admin_unpaid_orders))
+        .route("/api/admin/carts/abandoned", get(admin_abandoned_carts))
+        .route("/api/admin/carts/:cart_id/recovery", post(queue_admin_cart_recovery))
+        .route("/api/admin/content/pages", get(admin_content_pages).post(create_admin_content_page))
+        .route(
+            "/api/admin/content/pages/:page_id",
+            put(update_admin_content_page).delete(delete_admin_content_page),
+        )
+        .route(
+            "/api/admin/content/pages/:page_id/duplicate",
+            post(duplicate_admin_content_page),
+        )
+        .route("/api/admin/content/menu", get(admin_content_menus).post(create_admin_content_menu))
+        .route(
+            "/api/admin/content/menu/:menu_id",
+            put(update_admin_content_menu).delete(delete_admin_content_menu),
+        )
 }
 `;
 

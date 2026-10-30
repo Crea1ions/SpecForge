@@ -171,7 +171,7 @@ if (rootElement) {
 }
 `;
 
-  const appTsx = `import { useEffect, useMemo, useState, type FormEvent } from 'react';
+  const appTsx = `import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 
 const STORE_NAME = ${projectName};
 const STORE_DESCRIPTION = ${projectDescription};
@@ -179,6 +179,7 @@ const TOKEN_KEY = 'specforge-customer-token';
 const ADMIN_TOKEN_KEY = 'specforge-admin-token';
 const ADMIN_ROLE_KEY = 'specforge-admin-role';
 const CART_SESSION_KEY = 'specforge-cart-session';
+const THEME_KEY = 'specforge-ecommerce-theme';
 
 type LocalizedText = string | Record<string, string> | null | undefined;
 
@@ -209,6 +210,7 @@ interface Product {
   stock_tracked?: boolean;
   available_quantity?: number | null;
   quantity_on_hand?: number | null;
+  alert_threshold?: number;
   is_active?: boolean;
   is_published?: boolean;
   is_sellable?: boolean;
@@ -268,6 +270,107 @@ interface AdminReturn {
   reason: string;
   customer_email: string;
   created_at: string;
+  successful_refund_count?: number;
+}
+
+interface CustomerReturn {
+  id: number;
+  order_number: string;
+  status: string;
+  reason: string;
+  created_at: string;
+  successful_refund_count: number;
+}
+
+interface ContentPage {
+  id: number;
+  slug: string;
+  title: Record<string, string>;
+  body: Record<string, string>;
+  status: 'draft' | 'published' | 'scheduled';
+  publish_at: string | null;
+  is_indexable: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface ContentMenuItem {
+  id: number;
+  label: Record<string, string>;
+  location: 'main' | 'footer-shop' | 'footer-service' | 'footer-legal';
+  parent_id: number | null;
+  page_id: number | null;
+  page_slug: string | null;
+  target_url: string | null;
+  sort_order: number;
+  open_new_tab: boolean;
+}
+
+interface AdminCustomer {
+  id: number;
+  email: string;
+  full_name: string;
+  locale: string;
+  is_active: boolean;
+  created_at: string;
+  order_count: number;
+}
+
+interface AdminUnpaidOrder {
+  order_number: string;
+  customer_id: number;
+  customer_name: string;
+  customer_email: string;
+  payment_status: string;
+  currency: string;
+  total: number;
+  placed_at: string | null;
+}
+
+interface AbandonedCart {
+  id: number;
+  customer_id: number;
+  customer_name: string;
+  customer_email: string;
+  currency: string;
+  updated_at: string;
+  line_count: number;
+  subtotal: number;
+  recovery_notification_queued: boolean;
+}
+
+interface AdminDashboard {
+  from: string;
+  to: string;
+  order_count: number;
+  sales_by_currency: Array<{
+    currency: string;
+    order_count: number;
+    sales_ttc: number;
+    average_order_value_ttc: number;
+  }>;
+  top_products: Array<{
+    product_id: number | null;
+    sku: string;
+    name: LocalizedText;
+    currency: string;
+    units_sold: number;
+    sales: number;
+  }>;
+  closed_return_count: number;
+  successful_refund_count: number;
+  refunded_amounts_by_currency: Array<{
+    currency: string;
+    refunded_amount: number;
+  }>;
+  stock_alert_count: number;
+  stock_alerts: Array<{
+    product_id: number;
+    sku: string;
+    name: LocalizedText;
+    available: number;
+    alert_threshold: number;
+  }>;
 }
 
 interface ShippingMethod {
@@ -292,7 +395,16 @@ interface CheckoutResponse {
   status?: string;
 }
 
-type Page = 'catalog' | 'product' | 'cart' | 'checkout' | 'account' | 'admin';
+type Page = 'catalog' | 'product' | 'cart' | 'checkout' | 'account' | 'content' | 'admin';
+type AdminSection =
+  | 'dashboard'
+  | 'products'
+  | 'orders'
+  | 'customers'
+  | 'unpaid'
+  | 'carts'
+  | 'returns'
+  | 'content';
 type Collection<T> = T[] | { items?: T[]; data?: T[] };
 
 function rows<T>(collection: Collection<T>): T[] {
@@ -329,6 +441,24 @@ function productPrice(product: Product): number {
 
 function displayOrderNumber(order: Order): string {
   return order.reference ?? order.order_number ?? order.number ?? String(order.id ?? '—');
+}
+
+function defaultDashboardRange(): { from: string; to: string } {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const end = new Date(today);
+  end.setUTCDate(end.getUTCDate() + 1);
+  const start = new Date(today);
+  start.setUTCDate(start.getUTCDate() - 29);
+  return { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10) };
+}
+
+function localDateTimeInput(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 16);
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -374,6 +504,39 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function downloadPdf(path: string): Promise<void> {
+  const headers = new Headers();
+  const token = window.localStorage.getItem(
+    path.startsWith('/api/admin') ? ADMIN_TOKEN_KEY : TOKEN_KEY
+  );
+  if (token) headers.set('Authorization', 'Bearer ' + token);
+  const response = await fetch(path, { headers, credentials: 'same-origin' });
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const body: unknown = await response.json();
+      if (typeof body === 'object' && body !== null && 'error' in body) {
+        const error = body.error;
+        if (typeof error === 'string') detail = error;
+      }
+    } catch {
+      detail = '';
+    }
+    throw new Error(detail || 'Le document n’est pas disponible (' + response.status + ').');
+  }
+  if (!response.headers.get('content-type')?.toLowerCase().includes('application/pdf')) {
+    throw new Error('Le serveur n’a pas renvoyé un document PDF.');
+  }
+  const objectUrl = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = path.split('/').filter(Boolean).slice(-2).join('-') + '.pdf';
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+}
+
 function jsonBody(value: unknown): string {
   return JSON.stringify(value);
 }
@@ -391,6 +554,7 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [cartLoading, setCartLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -407,6 +571,7 @@ export default function App() {
   const [adminProducts, setAdminProducts] = useState<Product[]>([]);
   const [adminOrders, setAdminOrders] = useState<Order[]>([]);
   const [adminReturns, setAdminReturns] = useState<AdminReturn[]>([]);
+  const [customerReturns, setCustomerReturns] = useState<CustomerReturn[]>([]);
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [editingAddress, setEditingAddress] = useState<CustomerAddress | null>(null);
   const [checkoutAddressId, setCheckoutAddressId] = useState('');
@@ -414,6 +579,48 @@ export default function App() {
   const [promotionCode, setPromotionCode] = useState('');
   const [returnReasons, setReturnReasons] = useState<Record<string, string>>({});
   const [adminRefusalReasons, setAdminRefusalReasons] = useState<Record<number, string>>({});
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminSection, setAdminSection] = useState<AdminSection>(() => {
+    const role = window.localStorage.getItem(ADMIN_ROLE_KEY);
+    return role === 'editor' ? 'content' : role === 'operator' ? 'orders' : 'dashboard';
+  });
+  const [adminDashboard, setAdminDashboard] = useState<AdminDashboard | null>(null);
+  const [dashboardRange, setDashboardRange] = useState(defaultDashboardRange);
+  const [dashboardFromDraft, setDashboardFromDraft] = useState(() => defaultDashboardRange().from);
+  const [dashboardToDraft, setDashboardToDraft] = useState(() => defaultDashboardRange().to);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [adminCustomers, setAdminCustomers] = useState<AdminCustomer[]>([]);
+  const [unpaidOrders, setUnpaidOrders] = useState<AdminUnpaidOrder[]>([]);
+  const [abandonedCarts, setAbandonedCarts] = useState<AbandonedCart[]>([]);
+  const [adminContentPages, setAdminContentPages] = useState<ContentPage[]>([]);
+  const [adminContentMenus, setAdminContentMenus] = useState<ContentMenuItem[]>([]);
+  const [editingContentPage, setEditingContentPage] = useState<ContentPage | null>(null);
+  const [editingMenuItem, setEditingMenuItem] = useState<ContentMenuItem | null>(null);
+  const [publicMainMenu, setPublicMainMenu] = useState<ContentMenuItem[]>([]);
+  const [publicFooterMenus, setPublicFooterMenus] = useState<ContentMenuItem[]>([]);
+  const [publicMenuLoading, setPublicMenuLoading] = useState(true);
+  const [selectedContentSlug, setSelectedContentSlug] = useState<string | null>(null);
+  const [publicContentPage, setPublicContentPage] = useState<ContentPage | null>(null);
+  const [publicContentLoading, setPublicContentLoading] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    window.localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'
+  );
+
+  useEffect(() => {
+    document.body.classList.toggle('theme-dark', theme === 'dark');
+    window.localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    function closeOnEscape(event: KeyboardEvent): void {
+      if (event.key === 'Escape') setMobileMenuOpen(false);
+    }
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [mobileMenuOpen]);
 
   const cartLines = cart?.items ?? cart?.lines ?? cart?.cart_lines ?? [];
   const cartCount = cartLines.reduce((sum, line) => sum + line.quantity, 0);
@@ -497,6 +704,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    setCartLoading(true);
     void api<Cart>('/api/cart')
       .then((result) => {
         if (!cancelled) setCart(result);
@@ -506,6 +714,9 @@ export default function App() {
           setCart(null);
           setError(cause instanceof Error ? cause.message : 'Panier indisponible.');
         }
+      })
+      .finally(() => {
+        if (!cancelled) setCartLoading(false);
       });
     return () => {
       cancelled = true;
@@ -531,12 +742,22 @@ export default function App() {
   useEffect(() => {
     if (page !== 'account' || !authenticated) return;
     let cancelled = false;
-    void api<Collection<Order>>('/api/customer/orders')
-      .then((result) => {
-        if (!cancelled) setOrders(rows(result));
+    setCustomerLoading(true);
+    Promise.all([
+      api<Collection<Order>>('/api/customer/orders'),
+      api<Collection<CustomerReturn>>('/api/customer/returns'),
+    ])
+      .then(([orderResult, returnResult]) => {
+        if (!cancelled) {
+          setOrders(rows(orderResult));
+          setCustomerReturns(rows(returnResult));
+        }
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : 'Historique indisponible.');
+      })
+      .finally(() => {
+        if (!cancelled) setCustomerLoading(false);
       });
     return () => {
       cancelled = true;
@@ -564,6 +785,7 @@ export default function App() {
   useEffect(() => {
     if (page !== 'admin' || !adminAuthenticated || !adminRole) return;
     let cancelled = false;
+    setAdminLoading(true);
     setError('');
     Promise.all([
       api<Collection<Product>>('/api/admin/products'),
@@ -573,12 +795,41 @@ export default function App() {
       ['manager', 'operator'].includes(adminRole)
         ? api<Collection<AdminReturn>>('/api/admin/returns')
         : Promise.resolve([] as AdminReturn[]),
+      ['manager', 'operator'].includes(adminRole)
+        ? api<Collection<AdminCustomer>>('/api/admin/customers')
+        : Promise.resolve([] as AdminCustomer[]),
+      ['manager', 'operator'].includes(adminRole)
+        ? api<Collection<AdminUnpaidOrder>>('/api/admin/unpaid-orders')
+        : Promise.resolve([] as AdminUnpaidOrder[]),
+      ['manager', 'operator'].includes(adminRole)
+        ? api<Collection<AbandonedCart>>('/api/admin/carts/abandoned')
+        : Promise.resolve([] as AbandonedCart[]),
+      ['manager', 'editor'].includes(adminRole)
+        ? api<Collection<ContentPage>>('/api/admin/content/pages')
+        : Promise.resolve([] as ContentPage[]),
+      ['manager', 'editor'].includes(adminRole)
+        ? api<Collection<ContentMenuItem>>('/api/admin/content/menu')
+        : Promise.resolve([] as ContentMenuItem[]),
     ])
-      .then(([productResult, orderResult, returnResult]) => {
+      .then(([
+        productResult,
+        orderResult,
+        returnResult,
+        customerResult,
+        unpaidResult,
+        cartResult,
+        pageResult,
+        menuResult,
+      ]) => {
         if (!cancelled) {
           setAdminProducts(rows(productResult));
           setAdminOrders(rows(orderResult));
           setAdminReturns(rows(returnResult));
+          setAdminCustomers(rows(customerResult));
+          setUnpaidOrders(rows(unpaidResult));
+          setAbandonedCarts(rows(cartResult));
+          setAdminContentPages(rows(pageResult));
+          setAdminContentMenus(rows(menuResult));
         }
       })
       .catch((cause: unknown) => {
@@ -589,11 +840,85 @@ export default function App() {
               : 'Les données d’administration sont indisponibles.'
           );
         }
+      })
+      .finally(() => {
+        if (!cancelled) setAdminLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [page, adminAuthenticated, adminRole]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPublicMenuLoading(true);
+    Promise.all([
+      api<Collection<ContentMenuItem>>('/api/content/menu?location=main'),
+      api<Collection<ContentMenuItem>>('/api/content/menu?location=footer-shop'),
+      api<Collection<ContentMenuItem>>('/api/content/menu?location=footer-service'),
+      api<Collection<ContentMenuItem>>('/api/content/menu?location=footer-legal'),
+    ])
+      .then(([main, shop, service, legal]) => {
+        if (!cancelled) {
+          setPublicMainMenu(rows(main));
+          setPublicFooterMenus([...rows(shop), ...rows(service), ...rows(legal)]);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setPublicMainMenu([]);
+          setPublicFooterMenus([]);
+          setError(cause instanceof Error ? cause.message : 'Navigation indisponible.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPublicMenuLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (page !== 'content' || !selectedContentSlug) return;
+    let cancelled = false;
+    setPublicContentLoading(true);
+    setPublicContentPage(null);
+    setError('');
+    void api<ContentPage>('/api/content/pages/' + encodeURIComponent(selectedContentSlug))
+      .then((content) => {
+        if (!cancelled) setPublicContentPage(content);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Page indisponible.');
+      })
+      .finally(() => {
+        if (!cancelled) setPublicContentLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [page, selectedContentSlug]);
+
+  useEffect(() => {
+    if (page !== 'admin' || !adminAuthenticated || adminRole !== 'manager') return;
+    let cancelled = false;
+    const params = new URLSearchParams({ from: dashboardRange.from, to: dashboardRange.to });
+    setDashboardLoading(true);
+    void api<AdminDashboard>('/api/admin/dashboard?' + params.toString())
+      .then((result) => {
+        if (!cancelled) setAdminDashboard(result);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Statistiques indisponibles.');
+      })
+      .finally(() => {
+        if (!cancelled) setDashboardLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [page, adminAuthenticated, adminRole, dashboardRange]);
 
   const featuredProducts = useMemo(() => products.slice(0, 3), [products]);
 
@@ -650,6 +975,57 @@ export default function App() {
     setPage(nextPage);
     setError('');
     setNotice('');
+    setMobileMenuOpen(false);
+  }
+
+  function openContent(slug: string): void {
+    setSelectedContentSlug(slug);
+    goTo('content');
+  }
+
+  function renderMenuItems(parentId: number | null): ReactNode {
+    return publicMainMenu
+      .filter((item) => item.parent_id === parentId)
+      .map((item) => {
+        const children = publicMainMenu.some((child) => child.parent_id === item.id);
+        return (
+          <div className="main-menu-item" key={item.id}>
+            {item.page_slug ? (
+              <button type="button" aria-current={selectedContentSlug === item.page_slug ? 'page' : undefined} onClick={() => openContent(item.page_slug ?? '')}>{localized(item.label)}</button>
+            ) : item.target_url ? (
+              <a href={item.target_url} target={item.open_new_tab ? '_blank' : undefined} rel={item.open_new_tab ? 'noreferrer' : undefined}>{localized(item.label)}</a>
+            ) : (
+              <span tabIndex={children ? 0 : undefined}>{localized(item.label)}</span>
+            )}
+            {children && <div className="main-menu-children">{renderMenuItems(item.id)}</div>}
+          </div>
+        );
+      });
+  }
+
+  function renderFooterMenuItems(location: ContentMenuItem['location']): ReactNode {
+    if (publicMenuLoading) return <span className="muted">Chargement des informations…</span>;
+    return publicFooterMenus
+      .filter((item) => item.location === location)
+      .map((item) => item.page_slug ? (
+        <button type="button" key={item.id} onClick={() => openContent(item.page_slug ?? '')}>{localized(item.label)}</button>
+      ) : item.target_url ? (
+        <a key={item.id} href={item.target_url} target={item.open_new_tab ? '_blank' : undefined} rel={item.open_new_tab ? 'noreferrer' : undefined}>{localized(item.label)}</a>
+      ) : null);
+  }
+
+  async function downloadDocument(path: string): Promise<void> {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await downloadPdf(path);
+      setNotice('Le document PDF a été téléchargé.');
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'Le document n’a pas pu être téléchargé.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submitAuth(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -706,6 +1082,7 @@ export default function App() {
       window.localStorage.setItem(ADMIN_ROLE_KEY, role);
       setAdminAuthenticated(true);
       setAdminRole(role);
+      setAdminSection(role === 'editor' ? 'content' : role === 'operator' ? 'orders' : 'dashboard');
       setNotice('Connexion à l’administration réussie.');
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : 'Connexion à l’administration impossible.');
@@ -718,6 +1095,7 @@ export default function App() {
     window.localStorage.removeItem(TOKEN_KEY);
     setAuthenticated(false);
     setOrders([]);
+    setCustomerReturns([]);
     setAddresses([]);
     setEditingAddress(null);
     setCheckoutAddressId('');
@@ -731,6 +1109,12 @@ export default function App() {
     setAdminRole(null);
     setAdminProducts([]);
     setAdminOrders([]);
+    setAdminReturns([]);
+    setAdminCustomers([]);
+    setUnpaidOrders([]);
+    setAbandonedCarts([]);
+    setAdminContentPages([]);
+    setAdminContentMenus([]);
     setNotice('Vous êtes déconnecté(e) de l’administration.');
   }
 
@@ -857,6 +1241,7 @@ export default function App() {
         method: 'POST',
         body: jsonBody({ reason }),
       });
+      setCustomerReturns(rows(await api<Collection<CustomerReturn>>('/api/customer/returns')));
       setNotice('Votre demande de retour a été enregistrée.');
       setReturnReasons((current) => ({ ...current, [reference]: '' }));
     } catch (cause: unknown) {
@@ -926,6 +1311,24 @@ export default function App() {
     }
   }
 
+  async function queueRecoveryNotification(cartItem: AbandonedCart): Promise<void> {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api<{ status: string; message: string }>(
+        '/api/admin/carts/' + cartItem.id + '/recovery',
+        { method: 'POST' }
+      );
+      setAbandonedCarts(rows(await api<Collection<AbandonedCart>>('/api/admin/carts/abandoned')));
+      setNotice(result.message);
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'La notification n’a pas été mise en file.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function updateAdminProduct(
     event: FormEvent<HTMLFormElement>,
     product: Product
@@ -939,6 +1342,7 @@ export default function App() {
     if (['manager', 'operator'].includes(adminRole ?? '')) {
       payload.price_catalog = Number(formData.get('price_catalog'));
       payload.quantity_on_hand = Number(formData.get('quantity_on_hand'));
+      payload.alert_threshold = Number(formData.get('alert_threshold'));
     }
     setBusy(true);
     setError('');
@@ -957,6 +1361,149 @@ export default function App() {
     }
   }
 
+  async function saveAdminContentPage(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const titleText = String(formData.get('title') ?? '').trim();
+    const bodyText = String(formData.get('body') ?? '').trim();
+    const status = String(formData.get('status') ?? 'draft') as ContentPage['status'];
+    const publishValue = String(formData.get('publish_at') ?? '');
+    const publishDate = publishValue ? new Date(publishValue) : null;
+    if (!titleText || !bodyText || (publishDate && Number.isNaN(publishDate.getTime()))) {
+      setError('Le titre, le contenu et la date de publication doivent être valides.');
+      return;
+    }
+    if (status === 'scheduled' && !publishDate) {
+      setError('Une date de publication future est requise pour une page programmée.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const payload = {
+        slug: String(formData.get('slug') ?? '').trim(),
+        title: { ...(editingContentPage?.title ?? {}), fr: titleText },
+        body: { ...(editingContentPage?.body ?? {}), fr: bodyText },
+        status,
+        publish_at: status === 'scheduled' ? publishDate?.toISOString() : null,
+        is_indexable: formData.get('is_indexable') === 'on',
+      };
+      const path = editingContentPage
+        ? '/api/admin/content/pages/' + editingContentPage.id
+        : '/api/admin/content/pages';
+      await api<ContentPage>(path, {
+        method: editingContentPage ? 'PUT' : 'POST',
+        body: jsonBody(payload),
+      });
+      setAdminContentPages(rows(await api<Collection<ContentPage>>('/api/admin/content/pages')));
+      setEditingContentPage(null);
+      setNotice('Page de contenu enregistrée.');
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'La page n’a pas pu être enregistrée.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function duplicateContentPage(contentPage: ContentPage): Promise<void> {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const duplicated = await api<ContentPage>(
+        '/api/admin/content/pages/' + contentPage.id + '/duplicate',
+        { method: 'POST' }
+      );
+      setAdminContentPages(rows(await api<Collection<ContentPage>>('/api/admin/content/pages')));
+      setEditingContentPage(duplicated);
+      setNotice('La page a été dupliquée en brouillon.');
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'La page n’a pas pu être dupliquée.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteContentPage(contentPage: ContentPage): Promise<void> {
+    if (!window.confirm('Supprimer cette page et ses liens de menu éventuels ?')) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await api('/api/admin/content/pages/' + contentPage.id, { method: 'DELETE' });
+      setAdminContentPages(rows(await api<Collection<ContentPage>>('/api/admin/content/pages')));
+      setAdminContentMenus(rows(await api<Collection<ContentMenuItem>>('/api/admin/content/menu')));
+      if (editingContentPage?.id === contentPage.id) setEditingContentPage(null);
+      setNotice('Page supprimée.');
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'La page n’a pas pu être supprimée.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveAdminContentMenu(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const pageIdValue = String(formData.get('page_id') ?? '');
+    const parentValue = String(formData.get('parent_id') ?? '');
+    const targetUrl = String(formData.get('target_url') ?? '').trim();
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const payload = {
+        label: { ...(editingMenuItem?.label ?? {}), fr: String(formData.get('label') ?? '').trim() },
+        location: String(formData.get('location') ?? 'main') as ContentMenuItem['location'],
+        parent_id: parentValue ? Number(parentValue) : null,
+        page_id: pageIdValue ? Number(pageIdValue) : null,
+        target_url: pageIdValue ? null : targetUrl || null,
+        sort_order: Number(formData.get('sort_order') ?? 0),
+        open_new_tab: formData.get('open_new_tab') === 'on',
+      };
+      const path = editingMenuItem
+        ? '/api/admin/content/menu/' + editingMenuItem.id
+        : '/api/admin/content/menu';
+      await api<ContentMenuItem>(path, {
+        method: editingMenuItem ? 'PUT' : 'POST',
+        body: jsonBody(payload),
+      });
+      setAdminContentMenus(rows(await api<Collection<ContentMenuItem>>('/api/admin/content/menu')));
+      setEditingMenuItem(null);
+      setNotice('Lien de menu enregistré.');
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'Le lien de menu n’a pas pu être enregistré.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteContentMenuItem(menuItem: ContentMenuItem): Promise<void> {
+    if (!window.confirm('Supprimer cet élément de menu et ses éventuels sous-éléments ?')) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await api('/api/admin/content/menu/' + menuItem.id, { method: 'DELETE' });
+      setAdminContentMenus(rows(await api<Collection<ContentMenuItem>>('/api/admin/content/menu')));
+      if (editingMenuItem?.id === menuItem.id) setEditingMenuItem(null);
+      setNotice('Lien de menu supprimé.');
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'Le lien de menu n’a pas pu être supprimé.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function applyDashboardRange(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const from = String(formData.get('from') ?? '');
+    const to = String(formData.get('to') ?? '');
+    setDashboardRange({ from, to });
+  }
+
   const selectedProduct =
     loadedProduct ??
     products.find((product) => String(product.id) === selectedProductId) ??
@@ -964,24 +1511,70 @@ export default function App() {
   const selectedCheckoutAddress = addresses.find(
     (address) => String(address.id) === checkoutAddressId
   );
+  const adminNavigationItems: Array<{ section: AdminSection; label: string }> = [];
+  if (adminRole === 'manager') adminNavigationItems.push({ section: 'dashboard', label: 'Vue d’ensemble' });
+  adminNavigationItems.push({ section: 'products', label: 'Produits (' + adminProducts.length + ')' });
+  if (adminRole !== 'editor') {
+    adminNavigationItems.push(
+      { section: 'orders', label: 'Commandes (' + adminOrders.length + ')' },
+      { section: 'customers', label: 'Clients (' + adminCustomers.length + ')' },
+      { section: 'unpaid', label: 'Impayées (' + unpaidOrders.length + ')' },
+      { section: 'carts', label: 'Paniers (' + abandonedCarts.length + ')' },
+      { section: 'returns', label: 'Retours (' + adminReturns.length + ')' }
+    );
+  }
+  if (['manager', 'editor'].includes(adminRole ?? '')) {
+    adminNavigationItems.push({ section: 'content', label: 'Contenus' });
+  }
 
   return (
     <div className="storefront">
       <a className="skip-link" href="#main-content">Aller au contenu</a>
+      {page === 'admin' && <div className="top-note admin-top-note">ESPACE DE GESTION · ACCÈS ÉQUIPE</div>}
       <header className="site-header">
         <button className="brand" type="button" onClick={() => goTo('catalog')}>
           <span className="brand-mark" aria-hidden="true">S</span>
-          <span>{STORE_NAME}</span>
+          <span className="brand-copy">
+            <span className="brand-name">{STORE_NAME}</span>
+            <span className="brand-sub">{page === 'admin' ? 'Console administration' : 'Objets du quotidien'}</span>
+          </span>
         </button>
-        <nav className="main-nav" aria-label="Navigation principale">
-          <button type="button" aria-current={page === 'catalog' ? 'page' : undefined} onClick={() => goTo('catalog')}>Boutique</button>
+        <div className="header-actions">
+          <button
+            className="icon-button theme-toggle"
+            type="button"
+            aria-label={theme === 'dark' ? 'Activer le thème clair' : 'Activer le thème sombre'}
+            onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
+          >
+            <span aria-hidden="true">{theme === 'dark' ? '☼' : '◐'}</span>
+          </button>
+          <button
+            className="mobile-menu-toggle"
+            type="button"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="primary-navigation"
+            aria-label={mobileMenuOpen ? 'Fermer le menu de navigation' : 'Ouvrir le menu de navigation'}
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            <span aria-hidden="true">{mobileMenuOpen ? '×' : '☰'}</span>
+          </button>
+          <button className="cart-link" type="button" onClick={() => goTo('cart')} aria-label={'Voir le panier, ' + cartCount + ' article(s)'}>
+            Panier <span className="cart-count" aria-hidden="true">{cartCount}</span>
+          </button>
+        </div>
+        <nav
+          id="primary-navigation"
+          className={mobileMenuOpen ? 'main-nav is-open' : 'main-nav'}
+          aria-label="Navigation principale"
+        >
+          {mobileMenuOpen && <div className="mobile-menu-head"><strong>Navigation</strong><button className="icon-button" type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Fermer le menu">×</button></div>}
+          <button type="button" aria-current={page === 'catalog' ? 'page' : undefined} onClick={() => goTo('catalog')}>La boutique</button>
           <button type="button" aria-current={page === 'account' ? 'page' : undefined} onClick={() => goTo('account')}>Mon compte</button>
+          {renderMenuItems(null)}
           <button type="button" aria-current={page === 'admin' ? 'page' : undefined} onClick={() => goTo('admin')}>Administration</button>
         </nav>
-        <button className="cart-link" type="button" onClick={() => goTo('cart')} aria-label={'Voir le panier, ' + cartCount + ' article(s)'}>
-          Panier <span className="cart-count" aria-hidden="true">{cartCount}</span>
-        </button>
       </header>
+      {mobileMenuOpen && <button className="mobile-menu-backdrop" type="button" aria-label="Fermer le menu" onClick={() => setMobileMenuOpen(false)} />}
 
       <main id="main-content">
         {page === 'catalog' && (
@@ -1142,12 +1735,34 @@ export default function App() {
           </section>
         )}
 
+        {page === 'content' && (
+          <section className="page-section narrow-section">
+            <button className="back-link" type="button" onClick={() => goTo('catalog')}>← Retour à la boutique</button>
+            {publicContentLoading ? (
+              <p className="empty-state" role="status">Chargement de la page…</p>
+            ) : publicContentPage ? (
+              <article className="content-page">
+                <p className="eyebrow">INFORMATIONS DE LA BOUTIQUE</p>
+                <h1>{localized(publicContentPage.title)}</h1>
+                <div className="content-body">{localized(publicContentPage.body)}</div>
+              </article>
+            ) : (
+              <div className="empty-state">
+                {error ? <p className="feedback error" role="alert">{error}</p> : <p>Cette page n’est pas disponible.</p>}
+                <button className="button button-outline" type="button" onClick={() => goTo('catalog')}>Revenir à la boutique</button>
+              </div>
+            )}
+          </section>
+        )}
+
         {page === 'cart' && (
           <section className="page-section narrow-section">
             <p className="eyebrow">VOTRE SÉLECTION</p>
             <h1>Mon panier</h1>
             {error && <p className="feedback error" role="alert">{error}</p>}
-            {cartLines.length === 0 ? (
+            {cartLoading ? (
+              <p className="empty-state" role="status">Chargement du panier…</p>
+            ) : cartLines.length === 0 ? (
               <div className="empty-state">
                 <p>Votre panier est encore vide.</p>
                 <button className="button button-dark" type="button" onClick={() => goTo('catalog')}>Découvrir la boutique</button>
@@ -1355,7 +1970,9 @@ export default function App() {
                     </div>
                   )}
                 </section>
-                {orders.length === 0 ? (
+                {customerLoading ? (
+                  <p className="empty-state" role="status">Chargement de vos commandes et retours…</p>
+                ) : orders.length === 0 ? (
                   <p className="empty-state">Aucune commande pour le moment.</p>
                 ) : (
                   <div className="order-list">
@@ -1369,6 +1986,33 @@ export default function App() {
                           <span className="status-pill">{order.status}</span>
                           <strong>{money(order.total_incl_tax ?? order.total, order.currency ?? currency)}</strong>
                         </div>
+                        {['confirmed', 'shipped', 'delivered'].includes(order.status) && (
+                          <button
+                            className="button button-outline"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void downloadDocument(
+                              '/api/customer/orders/' + encodeURIComponent(displayOrderNumber(order)) + '/documents/confirmation'
+                            )}
+                          >
+                            Télécharger la confirmation PDF
+                          </button>
+                        )}
+                        {['ready', 'shipped', 'delivered'].includes(order.shipment_status ?? '') && (
+                          <button
+                            className="button button-outline"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void downloadDocument(
+                              '/api/customer/orders/' + encodeURIComponent(displayOrderNumber(order)) + '/documents/delivery'
+                            )}
+                          >
+                            Télécharger le document de livraison
+                          </button>
+                        )}
+                        <button className="button button-outline" type="button" disabled title="Une juridiction et des règles fiscales doivent être définies avant de générer ces documents.">
+                          Facture, pro forma et avoir indisponibles
+                        </button>
                         {order.status === 'delivered' && (
                           <form className="return-form" onSubmit={(event) => void requestReturn(event, order)}>
                             <label>
@@ -1393,13 +2037,45 @@ export default function App() {
                     ))}
                   </div>
                 )}
+                <section className="admin-section" aria-labelledby="customer-returns-heading">
+                  <h2 id="customer-returns-heading">Mes retours</h2>
+                  {customerLoading ? (
+                    <p className="empty-state" role="status">Chargement…</p>
+                  ) : customerReturns.length === 0 ? (
+                    <p className="empty-state">Aucune demande de retour.</p>
+                  ) : (
+                    <div className="order-list">
+                      {customerReturns.map((returnRequest) => (
+                        <article className="order-row" key={returnRequest.id}>
+                          <div className="order-main">
+                            <strong>Commande {returnRequest.order_number}</strong>
+                            <span className="status-pill">{returnRequest.status}</span>
+                            <span>{returnRequest.reason}</span>
+                          </div>
+                          {returnRequest.status === 'closed' && returnRequest.successful_refund_count > 0 && (
+                            <button
+                              className="button button-outline"
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void downloadDocument(
+                                '/api/customer/returns/' + returnRequest.id + '/documents/refund'
+                              )}
+                            >
+                              Télécharger le justificatif de remboursement
+                            </button>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </>
             )}
           </section>
         )}
 
         {page === 'admin' && (
-          <section className="page-section">
+          <section className="page-section admin-page-section">
             <p className="eyebrow">ESPACE DE GESTION</p>
             <h1>Administration</h1>
             <p className="muted">Vue de suivi des produits et des commandes. Les droits sont contrôlés par le serveur.</p>
@@ -1421,16 +2097,75 @@ export default function App() {
                     Se déconnecter
                   </button>
                 </div>
-            <div className="admin-nav" aria-label="Navigation d’administration">
-              <a href="#admin-products">Produits ({adminProducts.length})</a>
-              {adminRole !== 'editor' && (
-                <>
-                  <a href="#admin-orders">Commandes ({adminOrders.length})</a>
-                  <a href="#admin-returns">Retours ({adminReturns.length})</a>
-                </>
-              )}
-            </div>
-            <section id="admin-products" className="admin-section">
+                <div className="admin-workspace">
+                  <aside className="admin-sidebar" aria-label="Navigation d’administration">
+                    <span className="admin-sidebar-label">ESPACE DE TRAVAIL</span>
+                    {adminNavigationItems.map((item) => (
+                      <button
+                        className={adminSection === item.section ? 'active' : ''}
+                        type="button"
+                        key={item.section}
+                        aria-current={adminSection === item.section ? 'page' : undefined}
+                        onClick={() => setAdminSection(item.section)}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                    <button className="admin-sidebar-store" type="button" onClick={() => goTo('catalog')}>← Voir la boutique</button>
+                  </aside>
+                  <div className="admin-main-content">
+                    {adminLoading && <p className="empty-state" role="status">Chargement des données d’administration…</p>}
+            {adminSection === 'dashboard' && adminRole === 'manager' && (
+              <section className="admin-section" aria-labelledby="dashboard-heading" aria-busy={dashboardLoading}>
+                <h2 id="dashboard-heading">Vue d’ensemble</h2>
+                <form className="dashboard-range" onSubmit={applyDashboardRange}>
+                  <label>Début UTC<input name="from" type="date" value={dashboardFromDraft} onChange={(event) => setDashboardFromDraft(event.target.value)} required /></label>
+                  <label>Fin UTC exclue<input name="to" type="date" value={dashboardToDraft} onChange={(event) => setDashboardToDraft(event.target.value)} required /></label>
+                  <button className="button button-dark" type="submit" disabled={dashboardLoading}>Actualiser</button>
+                </form>
+                {dashboardLoading ? (
+                  <p className="empty-state" role="status">Calcul des indicateurs…</p>
+                ) : adminDashboard ? (
+                  <>
+                    <p className="muted">Période UTC semi-ouverte : {adminDashboard.from} inclus, {adminDashboard.to} exclu.</p>
+                    <div className="dashboard-metrics">
+                      <article><span>Commandes confirmées</span><strong>{adminDashboard.order_count}</strong></article>
+                      <article><span>Ventes TTC par devise</span><strong>{adminDashboard.sales_by_currency.length === 0 ? money(0, currency) : adminDashboard.sales_by_currency.map((item) => money(item.sales_ttc, item.currency)).join(' · ')}</strong></article>
+                      <article><span>Panier moyen TTC par devise</span><strong>{adminDashboard.sales_by_currency.length === 0 ? money(0, currency) : adminDashboard.sales_by_currency.map((item) => money(item.average_order_value_ttc, item.currency)).join(' · ')}</strong></article>
+                      <article><span>Retours clôturés</span><strong>{adminDashboard.closed_return_count}</strong></article>
+                      <article><span>Remboursements réussis</span><strong>{adminDashboard.successful_refund_count}{adminDashboard.refunded_amounts_by_currency.length > 0 ? ' · ' + adminDashboard.refunded_amounts_by_currency.map((item) => money(item.refunded_amount, item.currency)).join(' · ') : ''}</strong></article>
+                      <article><span>Alertes de stock</span><strong>{adminDashboard.stock_alert_count}</strong></article>
+                    </div>
+                    <div className="dashboard-columns">
+                      <section>
+                        <h3>Produits les plus vendus</h3>
+                        {adminDashboard.top_products.length === 0 ? <p className="empty-state">Aucune vente sur cette période.</p> : (
+                          <div className="table-scroll"><table>
+                            <thead><tr><th>SKU</th><th>Produit</th><th>Unités</th><th>Ventes TTC</th></tr></thead>
+                            <tbody>{adminDashboard.top_products.map((item) => (
+                              <tr key={item.sku + '-' + item.currency}><td>{item.sku}</td><td>{localized(item.name)}</td><td>{item.units_sold}</td><td>{money(item.sales, item.currency)}</td></tr>
+                            ))}</tbody>
+                          </table></div>
+                        )}
+                      </section>
+                      <section>
+                        <h3>Stock à surveiller</h3>
+                        {adminDashboard.stock_alerts.length === 0 ? <p className="empty-state">Aucune alerte de stock.</p> : (
+                          <div className="table-scroll"><table>
+                            <thead><tr><th>SKU</th><th>Produit</th><th>Disponible</th><th>Seuil</th></tr></thead>
+                            <tbody>{adminDashboard.stock_alerts.map((item) => (
+                              <tr key={item.product_id}><td>{item.sku}</td><td>{localized(item.name)}</td><td>{item.available}</td><td>{item.alert_threshold}</td></tr>
+                            ))}</tbody>
+                          </table></div>
+                        )}
+                      </section>
+                    </div>
+                    <p className="muted">Formules : ventes TTC = somme des totaux figés des commandes confirmées, expédiées ou livrées ; panier moyen = ventes / commandes ; retours par date de clôture ; remboursements réussis par date de transaction. Les lignes de livraison sont exclues des produits principaux.</p>
+                  </>
+                ) : <p className="empty-state">Aucune statistique disponible.</p>}
+              </section>
+            )}
+            {adminSection === 'products' && <section id="admin-products" className="admin-section">
               <h2>Produits</h2>
               {adminProducts.length === 0 ? <p className="muted">Aucun produit à afficher ou accès refusé.</p> : (
                 <div className="table-scroll">
@@ -1448,6 +2183,7 @@ export default function App() {
                               <>
                                 <label>Prix en unités mineures<input name="price_catalog" type="number" min="0" step="1" defaultValue={product.price_catalog} required /></label>
                                 <label>Stock<input name="quantity_on_hand" type="number" min="0" step="1" defaultValue={product.quantity_on_hand ?? 0} required /></label>
+                                <label>Seuil d’alerte<input name="alert_threshold" type="number" min="0" step="1" defaultValue={product.alert_threshold ?? 5} required /></label>
                               </>
                             )}
                             <label><input name="is_sellable" type="checkbox" defaultChecked={product.is_sellable !== false} /> Vendable</label>
@@ -1460,10 +2196,10 @@ export default function App() {
                   </table>
                 </div>
               )}
-            </section>
+            </section>}
             {adminRole !== 'editor' && (
               <>
-            <section id="admin-orders" className="admin-section">
+            {adminSection === 'orders' && <section id="admin-orders" className="admin-section">
               <h2>Commandes</h2>
               {adminOrders.length === 0 ? <p className="muted">Aucune commande à afficher ou accès refusé.</p> : (
                 <div className="table-scroll">
@@ -1477,6 +2213,15 @@ export default function App() {
                         <td>{order.payment_status ?? '—'}</td>
                         <td>{money(order.total_incl_tax ?? order.total, order.currency ?? currency)}</td>
                         <td>
+                          {['confirmed', 'shipped', 'delivered'].includes(order.status) && (
+                            <button className="button button-outline" disabled={busy} onClick={() => void downloadDocument('/api/admin/orders/' + encodeURIComponent(displayOrderNumber(order)) + '/documents/confirmation')}>Confirmation PDF</button>
+                          )}
+                          {['ready', 'shipped', 'delivered'].includes(order.shipment_status ?? '') && (
+                            <button className="button button-outline" disabled={busy} onClick={() => void downloadDocument('/api/admin/orders/' + encodeURIComponent(displayOrderNumber(order)) + '/documents/delivery')}>Livraison PDF</button>
+                          )}
+                          <button className="button button-outline" type="button" disabled title="Une juridiction et des règles fiscales doivent être définies avant de générer ces documents.">
+                            Facture, pro forma et avoir indisponibles
+                          </button>
                           {order.shipment_status === 'pending' && (
                             <button className="button button-outline" disabled={busy} onClick={() => void advanceShipment(order, 'ready')}>Préparer</button>
                           )}
@@ -1492,8 +2237,8 @@ export default function App() {
                   </table>
                 </div>
               )}
-            </section>
-            <section id="admin-returns" className="admin-section">
+            </section>}
+            {adminSection === 'returns' && <section id="admin-returns" className="admin-section">
               <h2>Retours et remboursements</h2>
               {adminReturns.length === 0 ? <p className="muted">Aucune demande de retour.</p> : (
                 <div className="order-list">
@@ -1534,27 +2279,249 @@ export default function App() {
                           Recevoir, remettre en stock et rembourser
                         </button>
                       )}
+                      {returnRequest.status === 'closed' && (returnRequest.successful_refund_count ?? 0) > 0 && (
+                        <button className="button button-outline" disabled={busy} onClick={() => void downloadDocument('/api/admin/returns/' + returnRequest.id + '/documents/refund')}>
+                          Télécharger le justificatif PDF
+                        </button>
+                      )}
                     </article>
                   ))}
                 </div>
               )}
-            </section>
+            </section>}
+            {adminSection === 'customers' && <section className="admin-section">
+              <h2>Clients</h2>
+              {adminLoading ? <p className="empty-state" role="status">Chargement des clients…</p> : adminCustomers.length === 0 ? <p className="empty-state">Aucun client à afficher.</p> : (
+                <div className="table-scroll"><table>
+                  <thead><tr><th>Client</th><th>E-mail</th><th>Langue</th><th>Commandes</th><th>Compte</th><th>Inscription</th></tr></thead>
+                  <tbody>{adminCustomers.map((customer) => (
+                    <tr key={customer.id}>
+                      <td>{customer.full_name}</td><td>{customer.email}</td><td>{customer.locale}</td>
+                      <td>{customer.order_count}</td><td>{customer.is_active ? 'Actif' : 'Désactivé'}</td>
+                      <td>{new Date(customer.created_at).toLocaleDateString('fr-FR')}</td>
+                    </tr>
+                  ))}</tbody>
+                </table></div>
+              )}
+            </section>}
+            {adminSection === 'unpaid' && <section className="admin-section">
+              <h2>Commandes impayées</h2>
+              {adminLoading ? <p className="empty-state" role="status">Chargement des commandes…</p> : unpaidOrders.length === 0 ? <p className="empty-state">Aucune commande en attente de paiement.</p> : (
+                <div className="table-scroll"><table>
+                  <thead><tr><th>Référence</th><th>Client</th><th>E-mail</th><th>Paiement</th><th>Total</th></tr></thead>
+                  <tbody>{unpaidOrders.map((order) => (
+                    <tr key={order.order_number}>
+                      <td>{order.order_number}</td><td>{order.customer_name}</td><td>{order.customer_email}</td>
+                      <td>{order.payment_status}</td><td>{money(order.total, order.currency)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table></div>
+              )}
+            </section>}
+            {adminSection === 'carts' && <section className="admin-section">
+              <h2>Paniers abandonnés</h2>
+              <p className="muted">La mise en file crée une notification interne en attente ; aucun courriel n’est envoyé.</p>
+              {adminLoading ? <p className="empty-state" role="status">Chargement des paniers…</p> : abandonedCarts.length === 0 ? <p className="empty-state">Aucun panier abandonné éligible.</p> : (
+                <div className="table-scroll"><table>
+                  <thead><tr><th>Client</th><th>E-mail</th><th>Articles</th><th>Sous-total</th><th>Dernière activité</th><th>Action</th></tr></thead>
+                  <tbody>{abandonedCarts.map((cartItem) => (
+                    <tr key={cartItem.id}>
+                      <td>{cartItem.customer_name}</td><td>{cartItem.customer_email}</td>
+                      <td>{cartItem.line_count}</td><td>{money(cartItem.subtotal, cartItem.currency)}</td>
+                      <td>{new Date(cartItem.updated_at).toLocaleString('fr-FR')}</td>
+                      <td><button className="button button-outline" type="button" disabled={busy} onClick={() => void queueRecoveryNotification(cartItem)}>Mettre la notification en file</button></td>
+                    </tr>
+                  ))}</tbody>
+                </table></div>
+              )}
+            </section>}
               </>
             )}
+            {adminSection === 'content' && ['manager', 'editor'].includes(adminRole ?? '') && (
+              <section className="admin-section content-admin" aria-labelledby="content-admin-heading">
+                <h2 id="content-admin-heading">Pages et menus</h2>
+                <p className="muted">Le contenu est enregistré comme texte/Markdown et rendu sans HTML brut. Les exemples juridiques doivent être complétés et validés avant publication.</p>
+                <div className="content-admin-grid">
+                  <section>
+                    <h3>Pages</h3>
+                    <button className="button button-outline" type="button" onClick={() => setEditingContentPage(null)}>Nouvelle page</button>
+                    {adminLoading ? <p className="empty-state" role="status">Chargement…</p> : adminContentPages.length === 0 ? <p className="empty-state">Aucune page de contenu.</p> : (
+                      <div className="content-page-list">
+                        {adminContentPages.map((contentPage) => (
+                          <article className="content-admin-row" key={contentPage.id}>
+                            <button className="inline-link" type="button" onClick={() => setEditingContentPage(contentPage)}>
+                              {localized(contentPage.title)} · /{contentPage.slug}
+                            </button>
+                            <span className="status-pill">{contentPage.status}</span>
+                            <div className="admin-actions">
+                              <button className="button button-outline" type="button" disabled={busy} onClick={() => void duplicateContentPage(contentPage)}>Dupliquer</button>
+                              <button className="button button-outline" type="button" disabled={busy} onClick={() => void deleteContentPage(contentPage)}>Supprimer</button>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                  <section>
+                    <h3>{editingContentPage ? 'Modifier une page' : 'Créer une page'}</h3>
+                    <form
+                      key={editingContentPage?.id ?? 'new-content-page'}
+                      className="form-card content-form"
+                      onSubmit={(event) => void saveAdminContentPage(event)}
+                    >
+                      <label>Slug<input name="slug" pattern="[a-z0-9]+(-[a-z0-9]+)*" maxLength={160} defaultValue={editingContentPage?.slug ?? ''} required /></label>
+                      <label>Titre<input name="title" defaultValue={localized(editingContentPage?.title)} maxLength={200} required /></label>
+                      <label>Contenu (texte ou Markdown)<textarea name="body" rows={8} maxLength={20000} defaultValue={localized(editingContentPage?.body)} required /></label>
+                      <label>Publication
+                        <select name="status" defaultValue={editingContentPage?.status ?? 'draft'}>
+                          <option value="draft">Brouillon</option>
+                          <option value="published">Publié</option>
+                          <option value="scheduled">Programmé</option>
+                        </select>
+                      </label>
+                      <label>Publication programmée<input name="publish_at" type="datetime-local" defaultValue={localDateTimeInput(editingContentPage?.publish_at)} /></label>
+                      <label className="checkbox-field"><input name="is_indexable" type="checkbox" defaultChecked={editingContentPage?.is_indexable ?? true} /> Indexable par les moteurs de recherche</label>
+                      <div className="admin-actions">
+                        <button className="button button-dark" type="submit" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer la page'}</button>
+                        {editingContentPage && <button className="button button-outline" type="button" onClick={() => setEditingContentPage(null)}>Nouvelle page</button>}
+                      </div>
+                    </form>
+                  </section>
+                </div>
+                <section className="admin-section">
+                  <h3>Navigation</h3>
+                  <p className="muted">Les entrées peuvent cibler une page, une URL HTTP(S) ou servir de groupe parent. Les sous-éléments conservent leur emplacement.</p>
+                  <div className="content-admin-grid">
+                    <div className="content-page-list">
+                      {adminContentMenus.length === 0 ? <p className="empty-state">Aucun lien de menu configuré.</p> : adminContentMenus.map((menuItem) => (
+                        <article className="content-admin-row" key={menuItem.id}>
+                          <div>
+                            <strong>{localized(menuItem.label)}</strong>
+                            <span className="muted">{menuItem.location}{menuItem.parent_id ? ' · sous-menu #' + menuItem.parent_id : ''} · {menuItem.page_slug ? '/' + menuItem.page_slug : menuItem.target_url ?? 'groupe'}</span>
+                          </div>
+                          <div className="admin-actions">
+                            <button className="button button-outline" type="button" onClick={() => setEditingMenuItem(menuItem)}>Modifier</button>
+                            <button className="button button-outline" type="button" disabled={busy} onClick={() => void deleteContentMenuItem(menuItem)}>Supprimer</button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                    <form
+                      key={editingMenuItem?.id ?? 'new-content-menu'}
+                      className="form-card content-form"
+                      onSubmit={(event) => void saveAdminContentMenu(event)}
+                    >
+                      <h4>{editingMenuItem ? 'Modifier un lien' : 'Ajouter un lien'}</h4>
+                      <label>Libellé<input name="label" defaultValue={localized(editingMenuItem?.label)} maxLength={200} required /></label>
+                      <label>Emplacement
+                        <select name="location" defaultValue={editingMenuItem?.location ?? 'main'}>
+                          <option value="main">Navigation principale</option>
+                          <option value="footer-shop">Pied de page · boutique</option>
+                          <option value="footer-service">Pied de page · service</option>
+                          <option value="footer-legal">Pied de page · mentions</option>
+                        </select>
+                      </label>
+                      <label>Page interne
+                        <select name="page_id" defaultValue={editingMenuItem?.page_id ?? ''}>
+                          <option value="">Aucune (groupe ou URL)</option>
+                          {adminContentPages.map((contentPage) => (
+                            <option key={contentPage.id} value={contentPage.id}>{localized(contentPage.title)} · /{contentPage.slug}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>URL externe (HTTP ou HTTPS)<input name="target_url" type="url" defaultValue={editingMenuItem?.target_url ?? ''} /></label>
+                      <label>Élément parent
+                        <select name="parent_id" defaultValue={editingMenuItem?.parent_id ?? ''}>
+                          <option value="">Aucun</option>
+                          {adminContentMenus.filter((item) => item.id !== editingMenuItem?.id).map((item) => (
+                            <option key={item.id} value={item.id}>{item.location} · {localized(item.label)}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>Ordre<input name="sort_order" type="number" step="1" defaultValue={editingMenuItem?.sort_order ?? 0} required /></label>
+                      <label className="checkbox-field"><input name="open_new_tab" type="checkbox" defaultChecked={editingMenuItem?.open_new_tab ?? false} /> Ouvrir dans un nouvel onglet</label>
+                      <div className="admin-actions">
+                        <button className="button button-dark" type="submit" disabled={busy}>Enregistrer le menu</button>
+                        {editingMenuItem && <button className="button button-outline" type="button" onClick={() => setEditingMenuItem(null)}>Nouveau lien</button>}
+                      </div>
+                    </form>
+                  </div>
+                </section>
+              </section>
+            )}
+                  </div>
+                </div>
               </>
             )}
           </section>
         )}
       </main>
 
-      <footer className="site-footer">
-        <button className="brand footer-brand" type="button" onClick={() => goTo('catalog')}>
-          <span className="brand-mark" aria-hidden="true">S</span>{STORE_NAME}
-        </button>
-        <p>{STORE_DESCRIPTION}</p>
-        <div><button type="button" onClick={() => goTo('account')}>Compte client</button><button type="button" onClick={() => goTo('admin')}>Administration</button></div>
-        <small>© {new Date().getFullYear()} {STORE_NAME}. Tous droits réservés.</small>
+      <footer className={page === 'admin' ? 'site-footer admin-footer' : 'site-footer'}>
+        {page === 'admin' ? (
+          <div className="admin-footer-inner">
+            <span>{STORE_NAME} · Console d’administration</span>
+            <span>Les changements sont gérés par l’API du projet.</span>
+          </div>
+        ) : (
+          <div className="footer-wrap">
+            <div className="footer-grid">
+              <section className="footer-brand-block" aria-label={STORE_NAME}>
+                <button className="brand footer-brand" type="button" onClick={() => goTo('catalog')}>
+                  <span className="brand-mark" aria-hidden="true">S</span>
+                  <span className="brand-copy"><span className="brand-name">{STORE_NAME}</span><span className="brand-sub">Objets du quotidien</span></span>
+                </button>
+                <p>{STORE_DESCRIPTION || 'Une sélection pensée pour accompagner le quotidien.'}</p>
+                <span className="footer-signature">Une sélection choisie avec soin.</span>
+              </section>
+              <nav className="footer-column" aria-label="La boutique">
+                <h2 className="footer-heading">La boutique</h2>
+                <div className="footer-links">
+                  <button type="button" onClick={() => goTo('catalog')}>Tous les produits</button>
+                  {renderFooterMenuItems('footer-shop')}
+                </div>
+              </nav>
+              <nav className="footer-column" aria-label="Service client">
+                <h2 className="footer-heading">Service client</h2>
+                <div className="footer-links">
+                  <button type="button" onClick={() => goTo('account')}>Mes commandes</button>
+                  {renderFooterMenuItems('footer-service')}
+                </div>
+              </nav>
+              <nav className="footer-column footer-legal-column" aria-label="Informations">
+                <h2 className="footer-heading">Informations</h2>
+                <div className="footer-links">
+                  {renderFooterMenuItems('footer-legal')}
+                  <button className="footer-team-access" type="button" onClick={() => goTo('admin')}>Accès équipe · Administration</button>
+                </div>
+              </nav>
+            </div>
+            <div className="footer-bottom">
+              <span>© {new Date().getFullYear()} {STORE_NAME}</span>
+              <span>Prototype de projet · Contenus à valider avant publication.</span>
+            </div>
+          </div>
+        )}
       </footer>
+
+      {page === 'admin' && adminAuthenticated ? (
+        <nav className="mobile-bottom-nav admin-mobile-nav" aria-label="Navigation mobile administration">
+          {adminNavigationItems.map((item) => (
+            <button type="button" key={item.section} aria-current={adminSection === item.section ? 'page' : undefined} onClick={() => setAdminSection(item.section)}>
+              <span className="mobile-nav-icon" aria-hidden="true">{item.section === 'dashboard' ? '⌂' : item.section === 'products' ? '◇' : item.section === 'orders' ? '▤' : item.section === 'customers' ? '♙' : item.section === 'returns' ? '↶' : item.section === 'content' ? '¶' : '•'}</span>
+              <span>{item.label.replace(/\\s\\(\\d+\\)$/, '')}</span>
+            </button>
+          ))}
+          <button type="button" onClick={() => goTo('catalog')}><span className="mobile-nav-icon" aria-hidden="true">↗</span><span>Boutique</span></button>
+        </nav>
+      ) : (
+        <nav className="mobile-bottom-nav" aria-label="Navigation mobile">
+          <button type="button" aria-current={page === 'catalog' ? 'page' : undefined} onClick={() => goTo('catalog')}><span className="mobile-nav-icon" aria-hidden="true">⌂</span><span>Boutique</span></button>
+          <button type="button" aria-current={page === 'cart' ? 'page' : undefined} onClick={() => goTo('cart')}><span className="mobile-nav-icon" aria-hidden="true">◇</span><span>Panier</span></button>
+          <button type="button" aria-current={page === 'account' ? 'page' : undefined} onClick={() => goTo('account')}><span className="mobile-nav-icon" aria-hidden="true">♙</span><span>Compte</span></button>
+          <button type="button" aria-current={page === 'admin' ? 'page' : undefined} onClick={() => goTo('admin')}><span className="mobile-nav-icon" aria-hidden="true">▤</span><span>Admin</span></button>
+        </nav>
+      )}
 
       {notice && <p className="toast" role="status">{notice}</p>}
     </div>
@@ -1564,26 +2531,33 @@ export default function App() {
 
   const indexCss = `:root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #24231f;
-  background: #f9f8f5;
+  color: #222a25;
+  background: #f5f2ec;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --ink: #24231f;
-  --muted: #77766f;
-  --line: #e8e5de;
+  --bg: #f5f2ec;
+  --ink: #222a25;
+  --muted: #6d756f;
+  --line: #deded5;
   --paper: #fffefa;
-  --accent: #c7613d;
-  --accent-dark: #9c4428;
-  --sage: #dce5d8;
+  --surface-2: #eeebe4;
+  --brand: #2f5a4b;
+  --brand-strong: #24483c;
+  --brand-soft: #e2ebe5;
+  --accent: #c47b55;
+  --accent-dark: #24483c;
+  --sage: #e2ebe5;
+  --radius: 18px;
+  --radius-sm: 12px;
 }
 
 * { box-sizing: border-box; }
 html { min-width: 320px; scroll-behavior: smooth; }
-body { margin: 0; min-width: 320px; background: #f9f8f5; }
-button, input { font: inherit; }
+body { margin: 0; min-width: 320px; background: var(--bg); color: var(--ink); }
+button, input, select, textarea { font: inherit; }
 button { color: inherit; }
-button:focus-visible, a:focus-visible, input:focus-visible {
-  outline: 3px solid #c7613d;
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid var(--accent);
   outline-offset: 3px;
 }
 button:disabled { cursor: not-allowed; opacity: .58; }
@@ -1601,6 +2575,7 @@ a { color: inherit; }
 }
 .skip-link:focus { top: 12px; }
 .site-header {
+  position: relative;
   height: 82px;
   display: flex;
   align-items: center;
@@ -1633,6 +2608,23 @@ a { color: inherit; }
   font-size: 15px;
 }
 .main-nav { display: flex; align-items: center; gap: clamp(14px, 3vw, 38px); }
+.mobile-menu-toggle { display: none; }
+.main-menu-item { position: relative; }
+.main-menu-item > a, .main-menu-item > span { display: inline-block; padding: 8px 0; color: #5e5b55; text-decoration: none; }
+.main-menu-children {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  display: none;
+  min-width: 190px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: 0 8px 22px #00000014;
+}
+.main-menu-item:hover .main-menu-children, .main-menu-item:focus-within .main-menu-children { display: grid; }
+.main-menu-children button, .main-menu-children a { padding: 9px; text-align: left; text-decoration: none; }
 .main-nav button, .site-footer button {
   border: 0;
   padding: 8px 0;
@@ -1955,10 +2947,46 @@ h1, h2, h3, p { overflow-wrap: anywhere; }
 .feedback.error { border-color: #e4aaa0; background: #fff3f0; color: #843526; }
 .feedback.info { border-color: #d7d2c4; background: #f3f0e8; color: #48443c; }
 .feedback.success { border-color: #b4c9ad; background: #eff6ed; color: #345331; }
-.admin-nav { display: flex; gap: 20px; margin: 24px 0; }
-.admin-nav a { color: var(--accent-dark); }
+.admin-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
+.admin-nav button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 14px;
+  background: var(--paper);
+  cursor: pointer;
+}
+.admin-nav button[aria-selected="true"] { border-color: var(--ink); background: var(--ink); color: white; }
 .admin-section { margin: 38px 0; }
 .admin-section h2 { font-family: Georgia, serif; font-weight: 500; }
+.admin-section h3 { font-family: Georgia, serif; font-weight: 500; }
+.admin-product-form, .content-form { display: grid; gap: 12px; min-width: 220px; }
+.admin-product-form label, .content-form label, .dashboard-range label { display: grid; gap: 6px; font-size: 12px; }
+.admin-product-form input:not([type="checkbox"]), .content-form input, .content-form select, .content-form textarea, .dashboard-range input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #d8d5ce;
+  border-radius: 2px;
+  padding: 8px 10px;
+  background: var(--paper);
+}
+.content-form textarea { resize: vertical; line-height: 1.6; }
+.content-form .checkbox-field { display: flex; align-items: center; gap: 8px; }
+.content-form .checkbox-field input { width: auto; min-height: auto; }
+.admin-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.dashboard-range { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+.dashboard-range label { min-width: 180px; }
+.dashboard-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 22px 0; }
+.dashboard-metrics article { display: grid; gap: 9px; border: 1px solid var(--line); padding: 18px; background: var(--paper); }
+.dashboard-metrics span { color: var(--muted); font-size: 12px; }
+.dashboard-metrics strong { font-family: Georgia, serif; font-size: 24px; }
+.dashboard-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.content-admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 24px; }
+.content-page-list { display: grid; gap: 10px; margin-top: 16px; }
+.content-admin-row { display: grid; gap: 8px; border: 1px solid var(--line); padding: 14px; background: var(--paper); }
+.content-admin-row > div:first-child { display: grid; gap: 5px; }
+.content-page { max-width: 760px; margin: 0 auto; }
+.content-page h1 { font-family: Georgia, serif; font-weight: 500; }
+.content-body { white-space: pre-wrap; line-height: 1.85; color: #55524c; }
 .table-scroll { overflow-x: auto; border: 1px solid var(--line); background: var(--paper); }
 table { width: 100%; border-collapse: collapse; text-align: left; }
 th, td { padding: 13px 15px; border-bottom: 1px solid var(--line); }
@@ -1974,7 +3002,8 @@ td { font-size: 14px; }
   background: var(--paper);
 }
 .site-footer > p { margin: 0; color: var(--muted); font-size: 13px; }
-.site-footer > div { display: flex; gap: 20px; }
+.site-footer > div { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+.footer-links a { color: var(--accent-dark); }
 .site-footer small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
 .footer-brand { font-size: 16px; }
 .toast {
@@ -2002,6 +3031,8 @@ td { font-size: 14px; }
 @media (max-width: 850px) {
   .site-header { height: 72px; padding: 0 20px; }
   .main-nav { gap: 15px; }
+  .dashboard-columns, .content-admin-grid { grid-template-columns: 1fr; }
+  .admin-nav { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 5px; }
   .hero { min-height: 410px; padding: 35px 36px; }
   .hero-art { min-height: 320px; }
   .catalog-layout { grid-template-columns: 155px minmax(0, 1fr); gap: 20px; }
@@ -2009,11 +3040,25 @@ td { font-size: 14px; }
   .featured-strip { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
-  .site-header { gap: 10px; }
+  .site-header { height: auto; min-height: 72px; flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
   .brand { font-size: 15px; }
   .brand-mark { width: 27px; height: 27px; }
-  .main-nav { gap: 9px; }
-  .main-nav button { font-size: 11px; }
+  .mobile-menu-toggle {
+    display: inline-grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--paper);
+    cursor: pointer;
+  }
+  .main-nav { display: none; order: 4; width: 100%; align-items: stretch; flex-direction: column; gap: 4px; padding: 10px 0 2px; border-top: 1px solid var(--line); }
+  .main-nav.is-open { display: flex; }
+  .main-nav > button, .main-menu-item > button, .main-menu-item > a, .main-menu-item > span { width: 100%; padding: 11px 8px; text-align: left; }
+  .main-menu-children { position: static; display: grid; min-width: 0; margin-left: 12px; border: 0; border-left: 1px solid var(--line); box-shadow: none; }
+  .cart-link { margin-left: auto; }
+  .main-nav button { font-size: 13px; }
   .cart-link { gap: 5px; padding: 7px 9px; font-size: 12px; }
   .cart-count { min-width: 19px; height: 19px; }
   .hero { grid-template-columns: 1fr; padding: 32px 22px; }
@@ -2050,6 +3095,9 @@ td { font-size: 14px; }
   .status-pill { grid-column: 2; grid-row: 1 / span 2; }
   .site-footer { grid-template-columns: 1fr; gap: 12px; }
   .site-footer small { grid-column: auto; }
+  .dashboard-range { align-items: stretch; flex-direction: column; }
+  .dashboard-range label { min-width: 0; }
+  .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -2058,6 +3106,312 @@ td { font-size: 14px; }
     animation-duration: .01ms !important;
   }
 }
+
+body.theme-dark {
+  color-scheme: dark;
+  --bg: #151b18;
+  --paper: #202923;
+  --surface-2: #29332c;
+  --ink: #edf0e9;
+  --muted: #a9b2aa;
+  --line: #39453d;
+  --brand: #9ab9a6;
+  --brand-strong: #b8d1c0;
+  --brand-soft: #2c4034;
+  --accent: #d69a76;
+  --accent-dark: #b8d1c0;
+  --sage: #2c4034;
+}
+
+.storefront { background: var(--bg); color: var(--ink); }
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 52;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  height: auto;
+  min-height: 82px;
+  padding: 10px max(20px, calc((100vw - 1220px) / 2));
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  box-shadow: 0 5px 22px rgba(26, 36, 29, .045);
+  backdrop-filter: blur(14px);
+}
+.brand {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: max-content;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: left;
+}
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 11px 11px 11px 3px;
+  background: var(--brand);
+  color: #fff;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 19px;
+}
+.brand-copy { display: block; }
+.brand-name {
+  display: block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  line-height: 1;
+}
+.brand-sub {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+.main-nav {
+  grid-column: 2;
+  grid-row: 1;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+}
+.main-nav > button, .main-menu-item > button, .main-menu-item > a, .main-menu-item > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.main-nav > button:hover, .main-menu-item > button:hover, .main-menu-item > a:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.main-nav > button[aria-current="page"] { background: var(--brand-soft); color: var(--brand-strong); }
+.main-menu-item > button[aria-current="page"] { background: var(--brand-soft); color: var(--brand-strong); }
+.main-menu-item > button { cursor: pointer; }
+.main-menu-children {
+  z-index: 45;
+  border-color: var(--line);
+  border-radius: var(--radius-sm, 12px);
+  background: var(--paper);
+}
+.header-actions { grid-column: 3; grid-row: 1; display: flex; align-items: center; gap: 8px; }
+.icon-button, .mobile-menu-toggle {
+  min-width: 40px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.theme-toggle { display: inline-flex; align-items: center; justify-content: center; font-size: 16px; }
+.cart-link {
+  min-height: 42px;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--brand) 16%, transparent);
+}
+.cart-link:hover { background: var(--brand-strong); color: #fff; }
+.cart-count { background: rgba(255,255,255,.2); }
+.mobile-menu-toggle, .mobile-menu-head, .mobile-menu-backdrop, .mobile-bottom-nav { display: none; }
+.top-note { background: var(--brand); color: #fff; text-align: center; padding: 7px 16px; font-size: 11px; letter-spacing: .07em; }
+.top-note strong { color: inherit; }
+.hero {
+  width: min(1220px, calc(100% - 40px));
+  min-height: 490px;
+  margin: 28px auto 0;
+  overflow: hidden;
+  border-radius: 28px;
+  box-shadow: 0 18px 50px rgba(40, 43, 36, .08);
+}
+.hero-copy .eyebrow { color: #597263; }
+.hero-copy > p:not(.eyebrow) { color: #526258; }
+.hero-art { border-radius: 0 28px 28px 0; }
+.button, .button-dark {
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  transition: transform .15s, background .15s, border-color .15s;
+}
+.button:hover:not(:disabled), .button-dark:hover:not(:disabled) { transform: translateY(-1px); background: var(--brand-strong); color: #fff; }
+.button-outline, .button-light { border-radius: 999px; }
+.product-image, .detail-image { border-radius: 15px; }
+.featured-card, .form-card, .dashboard-metrics article, .content-admin-row, .table-scroll {
+  border-radius: var(--radius, 18px);
+}
+.form-card input, .search-form input, .admin-product-form input:not([type="checkbox"]),
+.content-form input, .content-form select, .content-form textarea, .dashboard-range input {
+  border-color: var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.category-option { border-radius: 999px; }
+.category-option:hover, .category-option.active { background: var(--brand-soft); color: var(--brand-strong); }
+.page-section { width: min(1220px, 100%); margin-inline: auto; }
+.admin-page-section { width: 100%; max-width: none; padding: 38px max(20px, calc((100vw - 1220px) / 2)) 70px; }
+.admin-workspace { display: grid; grid-template-columns: 230px minmax(0, 1fr); align-items: start; gap: 24px; }
+.admin-sidebar {
+  position: sticky;
+  top: 104px;
+  display: grid;
+  gap: 5px;
+  padding: 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+}
+.admin-sidebar-label { padding: 5px 10px 10px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+.admin-sidebar button {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.admin-sidebar button:hover, .admin-sidebar button.active { background: var(--brand-soft); color: var(--brand-strong); }
+.admin-sidebar .admin-sidebar-store { margin-top: 12px; border-top: 1px solid var(--line); border-radius: 0; color: var(--brand-strong); }
+.admin-main-content { min-width: 0; }
+.admin-main-content .admin-section { margin: 0 0 30px; }
+.admin-main-content .admin-section > h2 { margin-bottom: 20px; }
+.admin-footer { padding: 18px max(20px, calc((100vw - 1220px) / 2)); background: var(--paper); }
+.admin-footer-inner { display: flex; justify-content: space-between; gap: 12px 24px; color: var(--muted); font-size: 11px; }
+.site-footer {
+  display: block;
+  padding: 48px 0 27px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+.site-footer > .footer-wrap { display: block; }
+.footer-wrap { width: min(1220px, calc(100% - 40px)); margin-inline: auto; }
+.footer-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) repeat(3, minmax(140px, .72fr)); align-items: start; gap: clamp(20px, 4vw, 52px); }
+.footer-brand-block { min-width: 0; max-width: 420px; }
+.footer-brand-block > p { max-width: 330px; margin: 17px 0 11px; font-size: 13px; line-height: 1.75; }
+.footer-signature { color: var(--brand-strong); font-family: Georgia, "Times New Roman", serif; font-size: 13px; font-style: italic; }
+.footer-column { min-width: 0; }
+.footer-heading { margin: 4px 0 16px; color: var(--ink); font-family: inherit; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.footer-links { display: grid; justify-items: start; gap: 11px; color: var(--muted); font-size: 13px; }
+.footer-links button, .footer-links a { max-width: 100%; padding: 0; border: 0; background: none; color: var(--muted); font-size: inherit; line-height: 1.45; text-align: left; text-decoration: none; overflow-wrap: anywhere; cursor: pointer; }
+.footer-links button:hover, .footer-links a:hover { color: var(--brand-strong); }
+.footer-team-access { margin-top: 8px; padding-top: 10px !important; border-top: 1px solid var(--line) !important; }
+.footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 14px 24px; margin-top: 35px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.footer-bottom span:last-child { text-align: right; }
+.admin-footer-inner span:last-child { text-align: right; }
+.toast { z-index: 70; border-radius: 12px; }
+body.theme-dark .hero { background: #29332c; color: var(--ink); }
+body.theme-dark .hero-copy .eyebrow, body.theme-dark .hero-copy > p:not(.eyebrow),
+body.theme-dark .detail-copy > p:not(.eyebrow), body.theme-dark .content-body { color: var(--muted); }
+body.theme-dark .hero-art { background: linear-gradient(140deg, #394a3d, #293a30 58%, #1d2b24); }
+body.theme-dark .benefits, body.theme-dark .newsletter { background: var(--surface-2); color: var(--ink); }
+body.theme-dark .benefits p, body.theme-dark .newsletter > p:not(.eyebrow) { color: var(--muted); }
+body.theme-dark .newsletter .eyebrow { color: var(--accent); }
+body.theme-dark .feedback.error { border-color: #744541; background: #482d2c; color: #edaaa5; }
+body.theme-dark .feedback.info { border-color: var(--line); background: var(--surface-2); color: var(--ink); }
+body.theme-dark .feedback.success { border-color: #46654f; background: #2b4435; color: #b8d1c0; }
+body.theme-dark .status-pill { background: var(--brand-soft); color: var(--ink); }
+body.theme-dark th { background: var(--surface-2); }
+body.theme-dark .toast { border-color: #46654f; background: #2b4435; color: var(--ink); }
+
+@media (max-width: 1050px) {
+  .site-header { grid-template-columns: minmax(0, 1fr) auto; min-height: 70px; gap: 12px; padding: 8px 20px; }
+  .brand { grid-column: 1; grid-row: 1; }
+  .header-actions { grid-column: 2; grid-row: 1; }
+  .mobile-menu-toggle { display: inline-grid; place-items: center; }
+  .cart-link { min-height: 40px; padding: 8px 12px; }
+  .main-nav { display: none; }
+  .main-nav.is-open {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 52;
+    display: flex;
+    width: min(360px, 88vw);
+    height: 100dvh;
+    align-items: stretch;
+    justify-content: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    padding: 22px;
+    border: 0;
+    border-radius: 0;
+    background: var(--paper);
+    box-shadow: -16px 0 48px rgba(0, 0, 0, .16);
+  }
+  .main-nav.is-open > button, .main-nav.is-open .main-menu-item > button,
+  .main-nav.is-open .main-menu-item > a, .main-nav.is-open .main-menu-item > span { width: 100%; justify-content: flex-start; }
+  .main-nav.is-open .main-menu-children { position: static; display: grid; min-width: 0; margin-left: 12px; border: 0; border-left: 1px solid var(--line); border-radius: 0; box-shadow: none; }
+  .mobile-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+  .mobile-menu-head strong { font-family: Georgia, "Times New Roman", serif; font-size: 20px; }
+  .mobile-menu-backdrop { position: fixed; inset: 0; z-index: 50; display: block; border: 0; background: rgba(17, 24, 19, .45); }
+  .mobile-bottom-nav { position: fixed; inset: auto 0 0; z-index: 45; display: flex; align-items: stretch; gap: 3px; overflow-x: auto; padding: 7px 8px calc(7px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: color-mix(in srgb, var(--paper) 96%, transparent); backdrop-filter: blur(14px); }
+  .mobile-bottom-nav button { display: grid; flex: 1 0 68px; min-width: 62px; justify-items: center; align-content: center; gap: 2px; min-height: 48px; padding: 3px 6px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+  .mobile-bottom-nav button[aria-current="page"] { background: var(--brand-soft); color: var(--brand-strong); }
+  .mobile-nav-icon { font-size: 17px; line-height: 1.1; }
+  .storefront { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .site-footer:not(.admin-footer) { padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
+  .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 22px; }
+  .footer-brand-block { grid-column: 1 / -1; max-width: none; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+  .footer-brand-block > p { max-width: 520px; }
+  .footer-legal-column { grid-column: 1 / -1; padding-top: 18px; border-top: 1px solid var(--line); }
+  .footer-bottom { margin-top: 26px; }
+  .admin-workspace { grid-template-columns: minmax(0, 1fr); }
+  .admin-sidebar { display: none; }
+  .admin-page-section { padding-bottom: 38px; }
+  .admin-footer { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+  .admin-footer-inner { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .admin-footer-inner span:last-child { text-align: left; }
+}
+@media (max-width: 620px) {
+  .site-header { min-height: 66px; padding-inline: 14px; }
+  .brand { gap: 8px; }
+  .brand-mark { width: 30px; height: 30px; flex-basis: 30px; font-size: 17px; }
+  .brand-name { font-size: 16px; }
+  .brand-sub { font-size: 8px; letter-spacing: .12em; }
+  .header-actions { gap: 5px; }
+  .header-actions .icon-button, .mobile-menu-toggle { min-width: 36px; min-height: 36px; }
+  .cart-link { min-height: 36px; gap: 5px; padding: 7px 9px; font-size: 11px; }
+  .cart-count { min-width: 19px; height: 19px; }
+  .hero { width: calc(100% - 24px); min-height: 0; margin-top: 12px; grid-template-columns: 1fr; border-radius: 22px; }
+  .hero-copy { padding: 32px 22px 24px; }
+  .hero-art { min-height: 260px; border-radius: 0 0 22px 22px; }
+  .page-section, .admin-page-section { padding: 36px 16px 48px; }
+  .footer-wrap { width: calc(100% - 32px); }
+  .footer-grid { gap: 22px 15px; }
+  .footer-heading { margin-bottom: 12px; }
+  .footer-links { gap: 10px; font-size: 12px; }
+  .footer-bottom { align-items: flex-start; flex-direction: column; gap: 5px; font-size: 10px; }
+  .footer-bottom span:last-child { text-align: left; }
+  .admin-footer { padding-inline: 16px; }
+  .admin-page-section > h1 { font-size: clamp(34px, 10vw, 48px); }
+}
 `;
 
   return [
@@ -2065,10 +3419,10 @@ td { font-size: 14px; }
       'frontend/public/images/demo-product.svg',
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" role="img" aria-labelledby="title">
   <title id="title">Produit de démonstration</title>
-  <rect width="640" height="480" fill="#e8e4da"/>
-  <circle cx="320" cy="210" r="115" fill="#c7613d" opacity=".9"/>
+  <rect width="640" height="480" fill="#eeebe4"/>
+  <circle cx="320" cy="210" r="115" fill="#c47b55" opacity=".9"/>
   <path d="M250 210h140M320 140v140" stroke="#fffefa" stroke-width="14" stroke-linecap="round"/>
-  <text x="320" y="390" text-anchor="middle" fill="#24231f" font-family="sans-serif" font-size="24">Votre catalogue commence ici</text>
+  <text x="320" y="390" text-anchor="middle" fill="#222a25" font-family="sans-serif" font-size="24">Votre catalogue commence ici</text>
 </svg>`,
       'html',
       'Illustration locale déterministe du produit exemple seedé dans la migration PostgreSQL.'

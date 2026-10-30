@@ -156,3 +156,13 @@ Licences : `website` en LGPL-3 (vérifié). `google_recaptcha`, `html_builder`, 
 - Suite de `_compute_visible` du menu (pages de modèle).
 - Modes de `visibility` autres que `password` et `restricted_group`.
 - Licences de `google_recaptcha`, `html_builder`, `html_editor`.
+
+## 13. Décisions d’implémentation V2
+
+- Pages persistées en base avec titre, slug unique, contenu texte/Markdown, statut, date de publication et indexabilité.
+- Menus hiérarchiques, ordonnés et rattachés à un emplacement de navigation; une entrée cible une page ou une URL HTTP(S).
+- La consultation publique exclut les brouillons et les publications programmées dont la date UTC n’est pas atteinte. L’administration peut les prévisualiser.
+- L’éditeur et le gestionnaire peuvent créer, modifier, programmer, dupliquer et organiser les pages; les vérifications sont faites côté serveur.
+- La duplication crée un brouillon avec un slug unique et ne copie pas les sous-menus.
+- Le contenu est rendu comme texte échappé; le HTML brut n’est pas accepté. Les pages légales générées sont des exemples à compléter.
+- La migration, les contrats d’API et les états vide/erreur/publication sont testés sur le preset généré.

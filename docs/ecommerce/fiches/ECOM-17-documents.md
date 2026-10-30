@@ -164,3 +164,13 @@ Licence : LGPL-3 pour `sale`, `account`, `stock` (voir L7).
 - Numérotation et continuité des séquences (D4).
 - Durées de conservation par pays (D10).
 - Propositions non lues : D3, D4, D10.
+
+## 13. Décisions d’implémentation V2
+
+- Documents téléchargeables générés localement en PDF : confirmation/récapitulatif de commande, document de livraison et justificatif de retour/remboursement.
+- Les documents sont rendus depuis les lignes, adresses, montants et états figés; une modification ultérieure du catalogue ne change pas un document de commande.
+- Références stables par type dérivées du numéro de commande ou du retour; aucune séquence de facture, émission fiscale, hash comptable ou conservation légale n’est revendiquée.
+- Le client authentifié ne peut télécharger que les documents de ses commandes et retours. L’administration passe par une route protégée et vérifie le rôle côté serveur.
+- Un justificatif de retour/remboursement n’est disponible que lorsque les événements métier nécessaires sont aboutis.
+- Facture, proforma et avoir sont indiqués comme indisponibles dans l’interface et ne sont pas générés.
+- Aucun courriel, PSP ou transporteur réel n’est appelé. Tests sur le contenu PDF et sur les accès propriétaire/non-propriétaire.

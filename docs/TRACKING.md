@@ -74,6 +74,17 @@
 - [x] Parcours catalogue → panier → commande → paiement mock → stock → retour/remboursement
 - [x] Vérification runtime Compose : santé API, catalogue seedé et storefront servi
 
+### Rust E-commerce V2 — implémentation livrée
+- [x] ADR V2 : pages/menus, métriques, rôles, relances internes et documents PDF opérationnels
+- [x] Pages de contenu persistées, publication programmée, menus hiérarchiques et duplication
+- [x] Dashboard gestionnaire avec agrégations et montants groupés par devise
+- [x] Vues admin clients, commandes impayées et paniers abandonnés
+- [x] Relance manuelle idempotente vers la file interne, sans envoi d’e-mail
+- [x] PDFs confirmation, livraison et retour/remboursement avec contrôle d’accès propriétaire
+- [x] UI générée alignée sur le prototype statique responsive
+- [x] Build/test scaffold neuf, golden des autres presets inchangés et déterminisme vérifié
+- [ ] Exécution du test d’acceptation complet sur une base PostgreSQL jetable
+
 ## Stabilisation Templates
 - [x] Cohérence des presets
 - [x] Chaque preset correspond à un template réel

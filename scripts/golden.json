@@ -2,7 +2,7 @@
   "_brick-order": "c9ed9afaf1d4e4712af3ff2d06afc3a962d6a10ae44b0c76ea27228acb02e272",
   "rust-web-app": "44dd9279ac1f6f237c3b6132a1345926311f3b003e93dc8bc6b08d0270b31ba4",
   "rust-react-postgres": "28d85cfa602064e453b190390c8c05af9530b3dd4ffa97a170149724e394b60e",
-  "rust-ecommerce": "244ef45250c1dd8432d55f7943f8caead549b69069e58cf838bb665f37564992",
+  "rust-ecommerce": "be50968b9dbfb3de6cff415379d8e712987f183239ac5a399d3ad01543b0a803",
   "rust-tauri-react": "05f3b7312a9b0222779baec07b7240153197c24ae644d4db44f3f9c03269f7e1",
   "rust-backend-only": "bd69d2c7ac46ce30d613b6a39c14f03d47cb42e3e32f36e1133ef1fe08cb963b",
   "react-frontend-only": "f519dd96c874ae95c04a05dc482f5d1e00e07b96d5732592d793c4dc76df83df",

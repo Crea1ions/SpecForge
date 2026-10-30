@@ -288,6 +288,42 @@ async fn json_response(response: Response, expected: StatusCode) -> Value {
     serde_json::from_slice(&body).expect("decode JSON response")
 }
 
+async fn pdf_response(response: Response) -> Vec<u8> {
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").and_then(|value| value.to_str().ok()),
+        Some("application/pdf")
+    );
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("read PDF response")
+        .to_bytes();
+    assert!(bytes.starts_with(b"%PDF-"), "response must contain a PDF");
+    bytes.to_vec()
+}
+
+fn dashboard_currency_metrics(dashboard: &Value, currency: &str) -> (i64, i64, i64) {
+    dashboard["sales_by_currency"]
+        .as_array()
+        .and_then(|rows| rows.iter().find(|row| row["currency"] == currency))
+        .map(|row| (
+            row["order_count"].as_i64().expect("currency order count"),
+            row["sales_ttc"].as_i64().expect("currency sales"),
+            row["average_order_value_ttc"].as_i64().expect("currency average"),
+        ))
+        .unwrap_or((0, 0, 0))
+}
+
+fn dashboard_refunded_amount(dashboard: &Value, currency: &str) -> i64 {
+    dashboard["refunded_amounts_by_currency"]
+        .as_array()
+        .and_then(|rows| rows.iter().find(|row| row["currency"] == currency))
+        .map(|row| row["refunded_amount"].as_i64().expect("refunded amount"))
+        .unwrap_or(0)
+}
+
 async fn stock_quantity(pool: &PgPool, product_id: i64) -> i32 {
     sqlx::query_scalar(
         "SELECT quantity_on_hand FROM stock_levels WHERE product_id = $1",
@@ -468,6 +504,35 @@ async fn catalog_to_mock_refund_acceptance_flow() {
         .and_then(|rows| rows.first())
         .and_then(|row| row["id"].as_i64())
         .expect("seeded shipping method");
+    let admin = json_response(
+        call(
+            &app,
+            Method::POST,
+            "/api/admin/login",
+            None,
+            &cart_session,
+            Some(json!({"email": admin_email, "password": admin_password})),
+        )
+        .await,
+        StatusCode::OK,
+    )
+    .await;
+    let admin_token = admin["access_token"]
+        .as_str()
+        .expect("administrator access token");
+    let dashboard_before_order = json_response(
+        call(
+            &app,
+            Method::GET,
+            "/api/admin/dashboard",
+            Some(admin_token),
+            &cart_session,
+            None,
+        )
+        .await,
+        StatusCode::OK,
+    )
+    .await;
     let cart = json_response(
         call(
             &app,
@@ -505,6 +570,150 @@ async fn catalog_to_mock_refund_acceptance_flow() {
     let order_number = checkout["order_number"]
         .as_str()
         .expect("created order number");
+    let dashboard_after_order = json_response(
+        call(
+            &app,
+            Method::GET,
+            "/api/admin/dashboard",
+            Some(admin_token),
+            &cart_session,
+            None,
+        )
+        .await,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        dashboard_after_order["order_count"].as_i64(),
+        Some(dashboard_before_order["order_count"].as_i64().expect("baseline order count") + 1)
+    );
+    let currency = checkout["currency"].as_str().expect("checkout currency");
+    let total = checkout["total"].as_i64().expect("checkout total");
+    let (before_currency_orders, before_currency_sales, _) =
+        dashboard_currency_metrics(&dashboard_before_order, currency);
+    let (after_currency_orders, after_currency_sales, after_currency_average) =
+        dashboard_currency_metrics(&dashboard_after_order, currency);
+    assert_eq!(after_currency_orders, before_currency_orders + 1);
+    assert_eq!(after_currency_sales, before_currency_sales + total);
+    assert_eq!(
+        after_currency_average,
+        (before_currency_sales + total) / (before_currency_orders + 1),
+        "average order value uses integer division per currency"
+    );
+    let customer_id: i64 = sqlx::query_scalar("SELECT id FROM customers WHERE email = $1")
+        .bind(&email)
+        .fetch_one(&pool)
+        .await
+        .expect("find acceptance customer");
+    let usd_order_number = format!("ACCEPTANCE-USD-{nonce}");
+    let usd_order_id: i64 = sqlx::query_scalar(
+        "INSERT INTO orders (
+            order_number, customer_id, status, payment_status, currency,
+            subtotal_excl_tax, tax_total, shipping_total, discount_total, total,
+            billing_address, shipping_address, access_token, placed_at, confirmed_at
+         )
+         VALUES ($1, $2, 'confirmed', 'paid', 'USD', 1000, 234, 0, 0, 1234,
+                 '{}'::jsonb, '{}'::jsonb, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         RETURNING id",
+    )
+    .bind(&usd_order_number)
+    .bind(customer_id)
+    .bind(format!("acceptance-token-{nonce}"))
+    .fetch_one(&pool)
+    .await
+    .expect("create second-currency order fixture");
+    sqlx::query(
+        "INSERT INTO order_lines (
+            order_id, product_id, sku, name, quantity, unit_price_excl_tax,
+            discount_excl_tax, tax_rate_bp, tax_amount, total_excl_tax,
+            total_incl_tax, currency, is_shipping
+         )
+         SELECT $1, p.id, p.sku, p.name, 1, 1000, 0, 2340, 234, 1000,
+                1234, 'USD', false
+         FROM products p WHERE p.id = $2",
+    )
+    .bind(usd_order_id)
+    .bind(product_id)
+    .execute(&pool)
+    .await
+    .expect("create second-currency order line fixture");
+    let dashboard_after_currency_fixture = json_response(
+        call(
+            &app,
+            Method::GET,
+            "/api/admin/dashboard",
+            Some(admin_token),
+            &cart_session,
+            None,
+        )
+        .await,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        dashboard_after_currency_fixture["order_count"].as_i64(),
+        Some(dashboard_before_order["order_count"].as_i64().expect("baseline order count") + 2)
+    );
+    let (before_usd_orders, before_usd_sales, _) =
+        dashboard_currency_metrics(&dashboard_after_order, "USD");
+    let (after_usd_orders, after_usd_sales, after_usd_average) =
+        dashboard_currency_metrics(&dashboard_after_currency_fixture, "USD");
+    assert_eq!(after_usd_orders, before_usd_orders + 1);
+    assert_eq!(after_usd_sales, before_usd_sales + 1234);
+    assert_eq!(
+        after_usd_average,
+        (before_usd_sales + 1234) / (before_usd_orders + 1)
+    );
+    assert_eq!(
+        dashboard_currency_metrics(&dashboard_after_currency_fixture, currency).1,
+        after_currency_sales,
+        "USD sales must not be added to the original currency"
+    );
+
+    let other_customer = json_response(
+        call(
+            &app,
+            Method::POST,
+            "/api/auth/register",
+            None,
+            &cart_session,
+            Some(json!({
+                "email": format!("other-{nonce}@example.invalid"),
+                "password": "acceptance-password-2026",
+                "first_name": "Other",
+                "last_name": "Customer"
+            })),
+        )
+        .await,
+        StatusCode::CREATED,
+    )
+    .await;
+    let other_customer_token = other_customer["access_token"]
+        .as_str()
+        .expect("second customer access token");
+    let foreign_document = call(
+        &app,
+        Method::GET,
+        &format!("/api/customer/orders/{order_number}/documents/confirmation"),
+        Some(other_customer_token),
+        &cart_session,
+        None,
+    )
+    .await;
+    assert_eq!(foreign_document.status(), StatusCode::NOT_FOUND);
+    let confirmation_pdf = pdf_response(
+        call(
+            &app,
+            Method::GET,
+            &format!("/api/customer/orders/{order_number}/documents/confirmation"),
+            Some(customer_token),
+            &cart_session,
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert!(!confirmation_pdf.is_empty());
     let reserved: i32 = sqlx::query_scalar(
         "SELECT quantity_reserved FROM stock_levels WHERE product_id = $1",
     )
@@ -514,22 +723,6 @@ async fn catalog_to_mock_refund_acceptance_flow() {
     .expect("read reserved stock");
     assert!(reserved > 0, "checkout must reserve inventory");
 
-    let admin = json_response(
-        call(
-            &app,
-            Method::POST,
-            "/api/admin/login",
-            None,
-            &cart_session,
-            Some(json!({"email": admin_email, "password": admin_password})),
-        )
-        .await,
-        StatusCode::OK,
-    )
-    .await;
-    let admin_token = admin["access_token"]
-        .as_str()
-        .expect("administrator access token");
     for status in ["ready", "shipped", "delivered"] {
         json_response(
             call(
@@ -545,6 +738,19 @@ async fn catalog_to_mock_refund_acceptance_flow() {
         )
         .await;
     }
+    let delivery_pdf = pdf_response(
+        call(
+            &app,
+            Method::GET,
+            &format!("/api/admin/orders/{order_number}/documents/delivery"),
+            Some(admin_token),
+            &cart_session,
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert!(!delivery_pdf.is_empty());
     assert_eq!(stock_quantity(&pool, product_id).await, initial_stock - 1);
     let return_request = json_response(
         call(
@@ -586,6 +792,189 @@ async fn catalog_to_mock_refund_acceptance_flow() {
     .await
     .expect("verify mock refund");
     assert_eq!(refund_count, 1, "return processing must record one mock refund");
+
+    let order_refunded_amount: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(-SUM(amount), 0)::BIGINT
+         FROM payment_transactions
+         WHERE order_id = (SELECT id FROM orders WHERE order_number = $1)
+           AND operation = 'refund' AND status = 'done'",
+    )
+    .bind(order_number)
+    .fetch_one(&pool)
+    .await
+    .expect("read order refund total");
+    let dashboard_after_refund = json_response(
+        call(
+            &app,
+            Method::GET,
+            "/api/admin/dashboard",
+            Some(admin_token),
+            &cart_session,
+            None,
+        )
+        .await,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        dashboard_after_refund["closed_return_count"].as_i64(),
+        Some(dashboard_after_currency_fixture["closed_return_count"].as_i64().expect("baseline closed returns") + 1)
+    );
+    assert_eq!(
+        dashboard_after_refund["successful_refund_count"].as_i64(),
+        Some(dashboard_after_currency_fixture["successful_refund_count"].as_i64().expect("baseline refund count") + 1)
+    );
+    assert_eq!(
+        dashboard_refunded_amount(&dashboard_after_refund, currency),
+        dashboard_refunded_amount(&dashboard_after_currency_fixture, currency) + order_refunded_amount
+    );
+
+    let refund_pdf = pdf_response(
+        call(
+            &app,
+            Method::GET,
+            &format!("/api/customer/returns/{return_id}/documents/refund"),
+            Some(customer_token),
+            &cart_session,
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert!(!refund_pdf.is_empty());
+    let foreign_return_document = call(
+        &app,
+        Method::GET,
+        &format!("/api/customer/returns/{return_id}/documents/refund"),
+        Some(other_customer_token),
+        &cart_session,
+        None,
+    )
+    .await;
+    assert_eq!(foreign_return_document.status(), StatusCode::NOT_FOUND);
+
+    let page_slug = format!("acceptance-{nonce}");
+    let page_payload = json!({
+        "slug": page_slug,
+        "title": {"fr": "Page d'acceptation"},
+        "body": {"fr": "Contenu de test"},
+        "status": "published",
+        "publish_at": null,
+        "is_indexable": false
+    });
+    let page = json_response(
+        call(
+            &app,
+            Method::POST,
+            "/api/admin/content/pages",
+            Some(admin_token),
+            &cart_session,
+            Some(page_payload),
+        )
+        .await,
+        StatusCode::CREATED,
+    )
+    .await;
+    let page_id = page["id"].as_i64().expect("created content page id");
+    let published_page = json_response(
+        call(
+            &app,
+            Method::GET,
+            &format!("/api/content/pages/{page_slug}"),
+            None,
+            &cart_session,
+            None,
+        )
+        .await,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(published_page["body"]["fr"], "Contenu de test");
+    let duplicate_page = json_response(
+        call(
+            &app,
+            Method::POST,
+            &format!("/api/admin/content/pages/{page_id}/duplicate"),
+            Some(admin_token),
+            &cart_session,
+            None,
+        )
+        .await,
+        StatusCode::CREATED,
+    )
+    .await;
+    assert_eq!(duplicate_page["status"], "draft");
+    for id in [
+        page_id,
+        duplicate_page["id"].as_i64().expect("duplicated page id"),
+    ] {
+        let response = call(
+            &app,
+            Method::DELETE,
+            &format!("/api/admin/content/pages/{id}"),
+            Some(admin_token),
+            &cart_session,
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    let abandoned_cart_id: i64 = sqlx::query_scalar(
+        "INSERT INTO carts (customer_id, status, currency, updated_at)
+         VALUES ($1, 'open', $2, CURRENT_TIMESTAMP - INTERVAL '11 hours')
+         RETURNING id",
+    )
+    .bind(customer_id)
+    .bind(currency)
+    .fetch_one(&pool)
+    .await
+    .expect("create abandoned cart fixture");
+    let cart_line = sqlx::query(
+        "INSERT INTO cart_lines (cart_id, product_id, quantity, unit_price, currency, tax_rate_bp)
+         SELECT $1, p.id, 1, p.price_catalog, p.currency, t.rate_bp
+         FROM products p JOIN tax_rates t ON t.id = p.tax_rate_id
+         WHERE p.id = $2",
+    )
+    .bind(abandoned_cart_id)
+    .bind(product_id)
+    .execute(&pool)
+    .await
+    .expect("add abandoned cart fixture line");
+    assert_eq!(cart_line.rows_affected(), 1);
+    let queued = json_response(
+        call(
+            &app,
+            Method::POST,
+            &format!("/api/admin/carts/{abandoned_cart_id}/recovery"),
+            Some(admin_token),
+            &cart_session,
+            None,
+        )
+        .await,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(queued["status"], "queued");
+    let duplicate_queue = call(
+        &app,
+        Method::POST,
+        &format!("/api/admin/carts/{abandoned_cart_id}/recovery"),
+        Some(admin_token),
+        &cart_session,
+        None,
+    )
+    .await;
+    assert_eq!(duplicate_queue.status(), StatusCode::CONFLICT);
+    let notification_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM notifications
+         WHERE cart_id = $1 AND template_key = 'cart_recovery' AND status = 'pending'",
+    )
+    .bind(abandoned_cart_id)
+    .fetch_one(&pool)
+    .await
+    .expect("verify queued notification");
+    assert_eq!(notification_count, 1, "cart recovery queue is idempotent");
     pool.close().await;
 }
 `,
@@ -943,7 +1332,7 @@ pub async fn queue_abandoned_cart_notifications(
              FROM carts c
              JOIN customers cu ON cu.id = c.customer_id AND cu.is_active = true
              WHERE c.status = 'open'
-               AND c.recovery_email_sent = false
+               AND c.recovery_notification_queued = false
                AND c.updated_at <= CURRENT_TIMESTAMP - ($1 * INTERVAL '1 hour')
                AND EXISTS (SELECT 1 FROM cart_lines cl WHERE cl.cart_id = c.id)
                AND EXISTS (
@@ -957,15 +1346,18 @@ pub async fn queue_abandoned_cart_notifications(
              FOR UPDATE OF c SKIP LOCKED
          ),
          queued AS (
-             INSERT INTO notifications (template_key, recipient_email, channel, status)
-             SELECT 'cart_recovery', email, 'email', 'pending'
+             INSERT INTO notifications (cart_id, template_key, recipient_email, channel, status)
+             SELECT id, 'cart_recovery', email, 'email', 'pending'
              FROM eligible
-             RETURNING id
+             ON CONFLICT (cart_id, template_key)
+                 WHERE cart_id IS NOT NULL AND template_key = 'cart_recovery'
+             DO NOTHING
+             RETURNING cart_id
          )
          UPDATE carts c
-         SET recovery_email_sent = true, updated_at = CURRENT_TIMESTAMP
-         FROM eligible e
-         WHERE c.id = e.id",
+         SET recovery_notification_queued = true, updated_at = CURRENT_TIMESTAMP
+         FROM queued q
+         WHERE c.id = q.cart_id",
     )
     .bind(delay_hours)
     .bind(CART_RECOVERY_BATCH_LIMIT)
@@ -1156,6 +1548,10 @@ Le générateur SpecForge ne démarre aucun service et ne crée aucune base de d
 
 Pour le développement séparé, démarrez PostgreSQL selon votre environnement, lancez le backend Rust avec \`cargo run\`, puis le frontend avec \`cd frontend && npm install && npm run dev\`.
 
+## Interface
+
+Le storefront, l’espace client et l’administration reprennent les principes UI/UX du prototype R&D : identité crème et vert sauge, navigation éditoriale, footer structuré, navigation mobile fixe et navigation latérale pour l’administration sur grand écran. Le prototype statique sert de référence visuelle uniquement ; ses données fictives ne sont pas utilisées par l’application générée. Les écrans métier consomment les API du projet et présentent leurs états de chargement, d’erreur et d’absence de données.
+
 ## Paiements et périmètre
 
 La migration fournit un produit de démonstration en stock, un mode de livraison standard, un paiement mock et le code promotionnel \`DEMO10\`. Le parcours de démonstration est : créer un compte, ajouter le produit au panier, sélectionner la livraison, valider la commande avec ou sans \`DEMO10\`, puis se connecter à l’administration avec un compte gestionnaire configuré.
@@ -1166,7 +1562,7 @@ Le compte client permet également de créer, lister, modifier et supprimer des 
 
 ## Test d’acceptation PostgreSQL
 
-Le test \`catalog_to_mock_refund_acceptance_flow\` couvre catalogue, inscription, carnet d’adresses, panier, paiement mock, réservation et décrément du stock, retour, réintégration et remboursement. Il est ignoré par défaut. Pour l’exécuter, préparez une base PostgreSQL **jetable** dont le nom se termine par \`_test\`, configurez \`JWT_SECRET\`, \`ECOM_ADMIN_EMAIL\`, \`ECOM_ADMIN_PASSWORD\`, \`ECOMMERCE_TEST_DATABASE_URL\` et définissez \`ECOMMERCE_ACCEPTANCE_TESTS=1\`, puis lancez :
+Le test \`catalog_to_mock_refund_acceptance_flow\` couvre catalogue, inscription, adresses, commande et paiement mock, stock, retour/remboursement, variation des indicateurs par devise, génération PDF et isolation d’accès, publication/duplication/suppression de contenu et mise en file idempotente d’une relance. Il est ignoré par défaut. Pour l’exécuter, préparez une base PostgreSQL **jetable** dont le nom se termine par \`_test\`, configurez \`JWT_SECRET\`, \`ECOM_ADMIN_EMAIL\`, \`ECOM_ADMIN_PASSWORD\`, \`ECOMMERCE_TEST_DATABASE_URL\` et définissez \`ECOMMERCE_ACCEPTANCE_TESTS=1\`, puis lancez :
 
 \`\`\`sh
 cargo test -- --ignored catalog_to_mock_refund_acceptance_flow
@@ -1174,7 +1570,7 @@ cargo test -- --ignored catalog_to_mock_refund_acceptance_flow
 
 Le test applique les migrations et écrit des données dans cette base ; ne pointez jamais \`ECOMMERCE_TEST_DATABASE_URL\` vers une base partagée ou de production. Il n’installe ni ne démarre PostgreSQL ou Docker.
 
-Le paiement est un mock local déterministe : aucun appel PSP et aucune donnée de carte ne sont collectés. Les notifications créent des intentions en attente dans PostgreSQL ; aucun service d’e-mail externe n’est configuré en v1. Pages CMS, statistiques, documents comptables et PSP/transporteurs réels restent hors périmètre v1.
+Le paiement est un mock local déterministe : aucun appel PSP et aucune donnée de carte ne sont collectés. Les pages de contenu et menus sont éditables par le gestionnaire et l’éditeur; le dashboard de gestion est réservé au gestionnaire et ne convertit pas les montants entre devises. Les documents téléchargeables sont des PDF opérationnels basés sur les snapshots de commande, pas des factures fiscales ou des avoirs. Les notifications de relance sont mises en attente dans PostgreSQL ; aucun service d’e-mail externe n’est configuré.
 
 Après initialisation de PostgreSQL, le backend démarre une tâche de relance des paniers abandonnés. Elle s’exécute selon \`tasks.cart_recovery_interval_minutes\` (60 minutes par défaut), traite au plus 100 paniers par lot et utilise \`shop.cart_abandon_delay_hours\` (10 heures par défaut). Elle place uniquement des notifications en attente ; aucun courriel n’est envoyé sans transport configuré.
 `,

@@ -147,6 +147,7 @@ dotenvy = "0.15"${spec.template === 'ecommerce' ? `
 argon2 = "0.5"
 jsonwebtoken = "9"
 rand_core = { version = "0.6", features = ["getrandom"] }
+printpdf = "0.7"
 ` : ''}
 ${spec.template === 'ecommerce' ? `
 [dev-dependencies]

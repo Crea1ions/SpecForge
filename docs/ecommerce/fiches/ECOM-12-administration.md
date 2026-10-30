@@ -150,3 +150,10 @@ Licences : `website_sale` et `sale` en LGPL-3 (vérifié pour `website_sale`) ; 
 - Contenu de `action_orders_ecommerce`.
 - Licence de `sale` et `sales_team`.
 - Rôle exact du designer de site sur les produits.
+
+## 13. Extension V2 — vues client et relance de panier
+
+- Les vues clients, commandes impayées et paniers abandonnés sont réservées au gestionnaire et à l’opérateur; elles ne créent pas de nouveaux états métier.
+- Les paniers affichés sont ouverts, identifiés par un client actif, non vides et au-delà du délai configuré. Les commandes impayées sont filtrées par leurs états actuels.
+- La relance manuelle crée une notification interne en attente une seule fois; elle ne transmet aucun courriel. L’interface le précise.
+- Les routes d’API contrôlent le rôle côté serveur et n’exposent que les champs clients nécessaires aux opérations.

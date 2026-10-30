@@ -174,6 +174,30 @@ SpecForge génère les fichiers du projet, notamment les migrations PostgreSQL v
 
 ---
 
+## ADR-07 — Périmètre et contrats V2
+
+### Contexte
+
+La V1 du preset est validée. Un prototype UI/UX statique fournit maintenant les parcours et la direction visuelle de la boutique, du compte client et de l’administration. La V2 active ECOM-13, ECOM-15 et ECOM-17, et étend certains écrans ECOM-12. Le prototype utilise des données locales et n’est pas une source métier.
+
+### Décisions
+
+1. **Pages et menus (ECOM-13)** : les pages sont stockées côté serveur avec titre, slug unique, texte/Markdown, statut de publication, date programmée et indexabilité. Les menus sont hiérarchiques, ordonnés et peuvent cibler une page ou une URL HTTP(S). Une page publique est visible seulement si elle est publiée et si sa date de publication est atteinte. La duplication crée un brouillon avec un slug disponible; elle ne duplique pas implicitement ses enfants. Le contenu ne permet pas de HTML brut et est toujours rendu comme texte échappé. Les pages légales restent des exemples à compléter et ne constituent pas des conseils ou contenus juridiques.
+2. **Statistiques (ECOM-15)** : le dashboard ne compte que les commandes confirmées, expédiées ou livrées avec `placed_at` dans l’intervalle UTC semi-ouvert `[début, fin)`. Les ventes TTC sont la somme des `orders.total` figés, agrégée par devise; le panier moyen est calculé séparément par devise avec division entière. Aucune conversion ni addition inter-devises n’est faite. Les produits principaux sont classés par quantités vendues hors lignes de livraison, avec les montants groupés par devise. Les retours clôturés sont comptés par `closed_at`; les remboursements aboutis sont agrégés séparément par devise et par `last_state_change`. Le stock est en alerte lorsque `available <= stock_levels.alert_threshold` (défaut 5). Seul le gestionnaire consulte ces agrégats.
+3. **Administration complémentaire (ECOM-12/16)** : le gestionnaire et l’opérateur peuvent consulter clients, commandes impayées et paniers abandonnés; l’éditeur ne peut pas les consulter. Ces écrans sont des vues dérivées, sans nouveaux états d’ordre. Un panier abandonné est un panier ouvert, identifié par un client actif, non vide et plus ancien que le délai configuré. Le geste manuel de relance crée atomiquement une notification `pending` et marque la mise en file une seule fois; il n’envoie aucun courriel. La tâche automatique et le geste manuel partagent la même règle d’éligibilité et d’idempotence.
+4. **Documents (ECOM-17)** : la V2 génère localement en PDF un récapitulatif de commande, un document de livraison et un justificatif de retour/remboursement à partir des snapshots de commande et des états métier. La référence est déterministe par type et dérivée de la commande ou du retour; aucune séquence de facture n’est créée. Le client ne télécharge que ses documents; l’administration doit être autorisée côté serveur. Les factures, proformas et avoirs sont explicitement indisponibles et ne sont ni stockés ni présentés comme documents émis.
+5. **Architecture des briques** : les migrations métier V2 sont ajoutées par `postgres-storage`; les routes s’intègrent à l’API générée de `ecom-cart-orders`, avec leurs responsabilités documentées. `ecom-admin` fournit les permissions et la documentation de la console. L’ordre et les sorties des autres presets restent inchangés.
+
+### Conséquences
+
+- Le prototype `docs/ecommerce/UI-UX_template_e-commerce/` est une référence visuelle; il n’est ni copié dans les projets générés ni inclus comme jeu de données fonctionnel.
+- Les données du dashboard et des clients viennent exclusivement des tables métier générées.
+- Le champ historique `carts.recovery_email_sent` ne doit plus être interprété comme une preuve d’envoi; une migration V2 distingue explicitement la mise en file de la livraison réelle.
+- Un PDF opérationnel n’est ni une facture ni un avoir fiscal. Aucun fournisseur externe n’est nécessaire.
+- Des tests sur base de données contrôlée valident les règles temporelles, les calculs, l’idempotence des relances et l’isolation des documents.
+
+---
+
 ## 7. Règles de non-régression
 
 1. **Sorties déterministes** : même spécification ⇒ mêmes fichiers, même hash ; le mock de paiement et les seeds ne introduisent aucun aléa.

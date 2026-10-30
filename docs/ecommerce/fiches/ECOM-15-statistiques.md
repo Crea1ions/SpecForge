@@ -139,3 +139,14 @@ Licences : `sale`, `website_sale`, `website` en LGPL-3 (vérifié pour `website_
 - Remboursements et retours dans le rapport.
 - Mesures de `website.track` au-delà des champs lus.
 - Licence de `digest`.
+
+## 13. Décisions d’implémentation V2
+
+- Le tableau de bord est réservé au gestionnaire et reste une lecture seule des données générées.
+- Les commandes confirmées regroupent les états `confirmed`, `shipped` et `delivered`, par `placed_at` UTC dans `[début, fin)`.
+- Ventes TTC = somme de `orders.total` groupée par devise; panier moyen = ventes TTC / commandes comptées pour chaque devise, avec division entière et résultat nul si le dénominateur est nul. Aucune conversion ni addition inter-devises n’est faite.
+- Les produits principaux sont classés par quantités vendues, en excluant les lignes de livraison; leurs montants sont présentés par devise.
+- Les retours clôturés sont comptés par `closed_at`; les remboursements aboutis sont présentés séparément par devise selon `last_state_change`.
+- Le seuil d’alerte est configurable par produit dans `stock_levels.alert_threshold` (défaut 5); une alerte est émise si le disponible est inférieur ou égal au seuil.
+- Les tests vérifient les bornes temporelles, états inclus/exclus, retours/remboursements et seuils sur des données contrôlées.
+- Les regroupements analytiques avancés (date/produit/catégorie/pays) ne sont pas inclus dans le dashboard V2.
