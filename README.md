@@ -62,7 +62,7 @@ SpecForge est conçu pour supporter plusieurs profils :
 * TypeScript
 * Go
 
-**Actuellement, seul le profil Rust est complet** (six templates). Le profil TypeScript n'a qu'un template (Web Frontend, avec React). Python et Go font partie du modèle cible, mais ne sont pas encore développés.
+**Actuellement, seul le profil Rust est complet** (sept templates). Le profil TypeScript n'a qu'un template (Web Frontend, avec React). Python et Go font partie du modèle cible, mais ne sont pas encore développés.
 
 ---
 
@@ -78,6 +78,7 @@ Chaque profil peut proposer ses propres templates pour les mêmes grandes catég
 | **API Service**  | Service backend sans interface web |
 | **Desktop**      | Application bureau native          |
 | **Mobile**       | Application mobile                 |
+| **E-commerce**   | Squelette métier spécialisé pour une boutique |
 
 Tous les types sont visibles dans l'interface. Un type peut simplement être indisponible lorsqu'aucun template n'est encore défini pour le profil sélectionné.
 
@@ -107,8 +108,15 @@ Templates Rust actuellement disponibles :
 * Rust Backend Only → API Service
 * Rust + Tauri + React → Desktop
 * Rust + Dioxus → Mobile
+* Rust + Axum + React + PostgreSQL → E-commerce (`rust-ecommerce`)
 
-Les six types d'applications sont couverts par un template Rust.
+Les types d'applications génériques sont couverts par un template Rust ; le preset e-commerce est une spécialisation métier distincte.
+
+### Rust E-commerce V2
+
+Le preset `rust-ecommerce` génère un squelette React/Vite, Axum et PostgreSQL/SQLx couvrant notamment le catalogue, les commandes, les comptes, les retours, les pages de contenu, les indicateurs d'administration et les documents opérationnels PDF.
+
+Son interface reprend les principes visuels et les parcours du [prototype UI/UX R&D](docs/ecommerce/UI-UX_template_e-commerce/README.md). Ce prototype reste une référence de conception : ses données fictives ne sont pas reprises comme source fonctionnelle. Les écrans générés consomment les API du projet. Le résultat reste un squelette à adapter et configurer, pas une boutique prête à exploiter.
 
 ---
 
@@ -313,6 +321,9 @@ La documentation du projet est volontairement séparée par responsabilité.
 * **[INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md)** — architecture technique.
 * **[MAINTENANCE-EVOLUTION.md](docs/MAINTENANCE-EVOLUTION.md)** — règles de maintenance et d'évolution.
 * **[SpecForge-Templates-référence-V1.md](docs/SpecForge-Templates-référence-V1.md)** — templates et architectures de référence.
+* **[ADR e-commerce](docs/ecommerce/ADR-TEMPLATE-ECOMMERCE.md)** — décisions d'architecture, de périmètre et d'intégration.
+* **[Modèle de domaine e-commerce V2](docs/ecommerce/MODELE-DOMAINE-V2.md)** — contrats des contenus, métriques, permissions et documents.
+* **[Prototype UI/UX R&D](docs/ecommerce/UI-UX_template_e-commerce/README.md)** — périmètre et décisions du prototype statique.
 
 ---
 
@@ -329,18 +340,18 @@ Le socle suivant est en place :
 * Registry de briques ;
 * système de profils techniques ;
 * système de templates par profil et type d'application ;
-* six templates Rust (Web App, Web Platform, Web Frontend, API Service, Desktop, Mobile) ;
+* sept presets Rust : Web App, Web Platform, Web Frontend, API Service, Desktop, Mobile et E-commerce V2 ;
 * génération Desktop (Tauri) et Mobile (Dioxus) ;
 * interface de vérification et d'audit ;
 * assistance IA séparée du Core.
 
-Le développement actuel porte principalement sur la **consolidation du Core et de ses capacités techniques** avant l'ajout des couches de configuration complémentaires.
+Le preset e-commerce illustre une spécialisation métier complète au-dessus des briques du Core. La configuration globale d'interface et de thème, partagée entre tous les templates, reste une évolution distincte.
 
 ---
 
 ## Direction future
 
-Une configuration complémentaire permettra progressivement de préciser certains aspects du projet, notamment :
+Une configuration complémentaire, indépendante des choix propres aux presets spécialisés, permettra progressivement de préciser certains aspects globaux du projet, notamment :
 
 ```text
 Projet

@@ -2,6 +2,12 @@
 
 Prototype statique HTML/CSS/JavaScript, sans API, backend, dépendance distante ni service externe. Les données et les actions restent locales au navigateur et servent uniquement à valider les écrans et parcours.
 
+## Rôle de référence UI/UX
+
+Ce prototype a servi de référence visuelle et de parcours pour l'interface générée du preset `rust-ecommerce` : boutique, espace client, administration, navigation responsive, thème et organisation des contenus. L'application générée conserve ses propres composants et branchements métier ; elle ne reprend pas les données fictives ni les interactions simulées de ce prototype.
+
+Pour les décisions d'architecture et le contrat métier, consulter [l'ADR e-commerce](../ADR-TEMPLATE-ECOMMERCE.md) et le [modèle de domaine V2](../MODELE-DOMAINE-V2.md). La source du frontend généré se trouve dans [`ecommerce-frontend.ts`](../../../src/core/bricks/ecommerce-frontend.ts).
+
 ## Démarrage
 
 1. Ouvrir `index.html` dans un navigateur récent (Chrome, Firefox ou Edge), ou servir le dossier avec un serveur HTTP statique.
