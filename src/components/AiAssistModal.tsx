@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Sparkles, X, ArrowRight, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { ProjectSpecification, ResolvedArchitecture } from '../types/spec';
 
@@ -24,6 +24,52 @@ export const AiAssistModal: React.FC<AiAssistModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [analysisText, setAnalysisText] = useState<string | null>(null);
   const [mode, setMode] = useState<'intent' | 'audit'>('intent');
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const getFocusableElements = () =>
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not(:disabled), textarea:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      );
+
+    getFocusableElements()?.[0]?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (!focusableElements?.length) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+
+      const first = focusableElements[0];
+      const last = focusableElements[focusableElements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -143,7 +189,14 @@ export const AiAssistModal: React.FC<AiAssistModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-0">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="assist-dialog-title"
+        tabIndex={-1}
+        className="bg-neutral-950 border border-neutral-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl space-y-0"
+      >
         {/* Modal Header */}
         <div className="p-5 bg-neutral-900/80 border-b border-neutral-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -151,14 +204,18 @@ export const AiAssistModal: React.FC<AiAssistModalProps> = ({
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">Assistant IA &amp; Conseil Architectural</h3>
+              <h3 id="assist-dialog-title" className="text-sm font-bold text-white">
+                Assistant IA &amp; Conseil Architectural
+              </h3>
               <p className="text-xs text-neutral-400">
                 IA = Assistant • Moteur = Autorité technique • Utilisateur = Validation finale (Section 14)
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Fermer l’assistant"
             className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
           >
             <X className="w-4 h-4" />
@@ -168,7 +225,9 @@ export const AiAssistModal: React.FC<AiAssistModalProps> = ({
         {/* Modal Tabs */}
         <div className="flex border-b border-neutral-800 bg-neutral-950 px-5 pt-3 gap-3 text-xs">
           <button
+            type="button"
             onClick={() => setMode('intent')}
+            aria-pressed={mode === 'intent'}
             className={`pb-3 font-medium transition border-b-2 ${
               mode === 'intent'
                 ? 'border-indigo-500 text-white'
@@ -178,10 +237,12 @@ export const AiAssistModal: React.FC<AiAssistModalProps> = ({
             Description en Langage Naturel
           </button>
           <button
+            type="button"
             onClick={() => {
               setMode('audit');
               if (!analysisText) handleAuditArchitecture();
             }}
+            aria-pressed={mode === 'audit'}
             className={`pb-3 font-medium transition border-b-2 ${
               mode === 'audit'
                 ? 'border-indigo-500 text-white'
@@ -193,18 +254,22 @@ export const AiAssistModal: React.FC<AiAssistModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto text-xs">
+        <div
+          aria-busy={loading}
+          className="p-6 space-y-4 max-h-[70vh] overflow-y-auto text-xs"
+        >
           {mode === 'intent' ? (
             <>
               <div>
-                <label className="block font-medium text-neutral-300 mb-2">
+                <label htmlFor="ai-intent-prompt" className="block font-medium text-neutral-300 mb-2">
                   Décrivez ce que vous souhaitez construire :
                 </label>
                 <textarea
+                  id="ai-intent-prompt"
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="Ex : Je veux créer un logiciel de bureau pour synchroniser des fichiers chiffrés avec une base SQLite et des performances Rust maximales..."
-                  className="w-full h-24 p-3 bg-neutral-900 border border-neutral-800 rounded-xl text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-indigo-500 resize-none text-xs"
+                  className="ov-field w-full h-24 resize-none rounded-xl p-3 text-xs text-neutral-100"
                 />
               </div>
 
@@ -228,7 +293,7 @@ export const AiAssistModal: React.FC<AiAssistModalProps> = ({
               </div>
 
               {error && (
-                <div className="p-3 bg-red-950/40 border border-red-800/80 rounded-lg text-red-300 flex items-center gap-2">
+                <div role="alert" className="p-3 bg-red-950/40 border border-red-800/80 rounded-lg text-red-300 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
                   <span>{error}</span>
                 </div>
@@ -299,7 +364,11 @@ export const AiAssistModal: React.FC<AiAssistModalProps> = ({
               </div>
 
               {loading ? (
-                <div className="p-8 text-center text-neutral-400 flex flex-col items-center gap-2">
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="p-8 text-center text-neutral-400 flex flex-col items-center gap-2"
+                >
                   <RefreshCw className="w-5 h-5 animate-spin text-indigo-400" />
                   <span>Analyse architecturale en cours...</span>
                 </div>
@@ -313,17 +382,19 @@ export const AiAssistModal: React.FC<AiAssistModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 bg-neutral-900/80 border-t border-neutral-800 flex items-center justify-between">
+        <div className="flex flex-col gap-3 border-t border-neutral-800 bg-neutral-900/80 p-4 sm:flex-row sm:items-center sm:justify-between">
           <button
+            type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-medium transition"
+            className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-medium text-neutral-300 transition hover:bg-neutral-800"
           >
             Fermer
           </button>
 
           {mode === 'intent' && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <button
+                type="button"
                 onClick={() => handleGenerateFromIntent()}
                 disabled={loading || !prompt.trim()}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-white text-xs font-medium transition"
@@ -334,8 +405,9 @@ export const AiAssistModal: React.FC<AiAssistModalProps> = ({
 
               {proposedSpec && (
                 <button
+                  type="button"
                   onClick={handleApply}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm shadow-indigo-600/30 transition"
+                  className="flex items-center gap-1.5 rounded-lg border border-orange-400 bg-orange-500 px-4 py-2 text-xs font-bold text-neutral-950 shadow-sm transition hover:bg-orange-400"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>Valider &amp; Appliquer</span>

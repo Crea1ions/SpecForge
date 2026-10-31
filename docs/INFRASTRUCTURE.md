@@ -28,6 +28,23 @@ L'interface React permet à l'utilisateur de :
 
 L'interface ne doit pas devenir l'autorité de décision technique.
 
+### Parcours et structure du frontend
+
+L'accueil propose un flux progressif sur une seule page : choix du profil, choix du template, nom du projet, puis génération et téléchargement du ZIP. Les vues techniques restent accessibles depuis le menu **Explorer**.
+
+Les composants principaux sont :
+
+* `src/App.tsx` — shell partagé, navigation entre les vues, calcul de l'architecture et gestion du fond global ;
+* `src/components/ProjectWizard.tsx` — Hero d’accueil et création rapide progressive ;
+* `src/components/DropdownSelect.tsx` — sélecteurs personnalisés accessibles au clavier ;
+* `src/components/PageHero.tsx` et `src/components/AnimatedHeading.tsx` — titres et effets partagés entre les vues ;
+* `src/components/Header.tsx` — wordmark et navigation principale ;
+* `src/index.css` — tokens visuels, surfaces, contrôles, focus et animations.
+
+L’interface utilise l’identité Obsidian Volcanic. `assets/hero.png` sert de fond desktop et `assets/hero-mobile.png` de variante mobile ; la parallaxe est limitée aux écrans non mobiles et respecte `prefers-reduced-motion`. Les sélecteurs personnalisés exposent les rôles ARIA de combobox/listbox et gèrent les commandes clavier.
+
+Cette présentation ne modifie pas les règles métier : les états affichés proviennent de la spécification et du Core, qui restent la source de vérité technique.
+
 ### Application / Bridge
 
 `server.ts` fournit le pont entre l'application web et les services externes nécessaires.

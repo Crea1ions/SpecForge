@@ -1,212 +1,212 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
-  Boxes,
+  BookOpen,
+  CheckCircle2,
+  ChevronDown,
   Code2,
   FileCode,
   GitGraph,
+  Home,
   Library,
-  Download,
   Sparkles,
-  Layers,
-  AlertTriangle,
-  CheckCircle2,
 } from 'lucide-react';
-import { TechnicalProfile } from '../types/spec';
-import { ProjectSpecification, ResolvedArchitecture } from '../types/spec';
+
+type AppTab = 'wizard' | 'about' | 'spec' | 'architecture' | 'files' | 'bricks' | 'audit';
+const logo = new URL('../../assets/logo.png', import.meta.url).href;
 
 interface HeaderProps {
-  currentTab: 'wizard' | 'spec' | 'architecture' | 'files' | 'bricks' | 'audit';
-  setCurrentTab: (tab: 'wizard' | 'spec' | 'architecture' | 'files' | 'bricks' | 'audit') => void;
-  spec: ProjectSpecification;
-  onSelectProfile: (profile: TechnicalProfile) => void;
-  architecture: ResolvedArchitecture;
+  currentTab: AppTab;
+  setCurrentTab: (tab: AppTab) => void;
   onOpenAiAssist: () => void;
-  onDownloadZip: () => void;
-  isDownloading: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({
-  currentTab,
-  setCurrentTab,
-  spec,
-  onSelectProfile,
-  architecture,
-  onOpenAiAssist,
-  onDownloadZip,
-  isDownloading,
-}) => {
+const navigationItems: {
+  id: Exclude<AppTab, 'wizard'>;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}[] = [
+  {
+    id: 'about',
+    label: 'Comprendre SpecForge',
+    description: 'Le flux et le moteur, simplement',
+    icon: BookOpen,
+  },
+  {
+    id: 'spec',
+    label: 'Spécification',
+    description: 'Configurer les options détaillées',
+    icon: Code2,
+  },
+  {
+    id: 'architecture',
+    label: 'Architecture',
+    description: 'Comprendre les choix et compatibilités',
+    icon: GitGraph,
+  },
+  {
+    id: 'files',
+    label: 'Fichiers générés',
+    description: 'Inspecter le projet avant export',
+    icon: FileCode,
+  },
+  {
+    id: 'bricks',
+    label: 'Bibliothèque de briques',
+    description: 'Explorer les composants techniques',
+    icon: Library,
+  },
+  {
+    id: 'audit',
+    label: 'Audit du moteur',
+    description: 'Vérifier les garanties de génération',
+    icon: CheckCircle2,
+  },
+];
+
+export const Header: React.FC<HeaderProps> = ({ currentTab, setCurrentTab, onOpenAiAssist }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const activePage = navigationItems.find((item) => item.id === currentTab);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [menuOpen]);
+
+  const openPage = (tab: AppTab) => {
+    setCurrentTab(tab);
+    setMenuOpen(false);
+    if (tab !== 'wizard') menuButtonRef.current?.focus();
+  };
+
   return (
-    <header className="sticky top-0 z-40 bg-neutral-950/90 backdrop-blur-md border-b border-neutral-800">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-4">
-          {/* Logo */}
-          <div className="flex items-center shrink-0">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-md shadow-indigo-500/20 text-white font-bold">
-              <Boxes className="w-5 h-5" />
-            </div>
-          </div>
+    <header className="sticky top-0 z-40 border-b border-neutral-800 bg-neutral-950">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-shell">
+        <button
+          type="button"
+          onClick={() => openPage('wizard')}
+          aria-label="SpecForge — accueil"
+          aria-current={currentTab === 'wizard' ? 'page' : undefined}
+          className="flex shrink-0 items-center gap-2 rounded-lg text-left"
+        >
+          <img
+            src={logo}
+            alt=""
+            width="36"
+            height="42"
+            decoding="async"
+            className="h-10 w-9 object-contain"
+          />
+          <span className="text-sm font-bold tracking-tight text-neutral-100 sm:text-base">
+            <span className="brand-spec">Spec</span>
+            <span className="brand-forge">Forge</span>
+          </span>
+        </button>
 
-          {/* Action Bar */}
-          <div className="flex items-center gap-2.5">
-            {/* Technical Profile Select */}
-            <div className="relative shrink-0">
-              <select
-                value={spec.profile}
-                onChange={(e) => onSelectProfile(e.target.value as TechnicalProfile)}
-                className="bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-neutral-700 cursor-pointer"
-                title="Profil technique"
-              >
-                <option value="rust">Profil : Rust</option>
-                <option value="python">Profil : Python</option>
-                <option value="typescript">Profil : TypeScript</option>
-                <option value="go">Profil : Go</option>
-              </select>
-            </div>
+        <nav aria-label="Navigation principale" className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => openPage('wizard')}
+            aria-current={currentTab === 'wizard' ? 'page' : undefined}
+            className={`ov-button-translucent-action hidden h-11 items-center gap-2 px-3 text-xs sm:flex ${
+              currentTab === 'wizard' ? 'ov-button-navigation-active' : ''
+            }`}
+          >
+            <Home className="h-4 w-4" aria-hidden="true" />
+            <span>Accueil</span>
+          </button>
 
-            {/* AI Assistant Button */}
+          <div
+            ref={menuRef}
+            className="relative"
+            onBlur={(event) => {
+              const nextTarget = event.relatedTarget;
+              if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+                setMenuOpen(false);
+              }
+            }}
+          >
             <button
-              onClick={onOpenAiAssist}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-950/70 border border-indigo-700/60 text-indigo-200 hover:bg-indigo-900/80 transition"
-              title="Générer une spécification depuis une intention en langage naturel"
+              ref={menuButtonRef}
+              type="button"
+              onClick={() => setMenuOpen((open) => !open)}
+              aria-expanded={menuOpen}
+              aria-controls="explore-navigation"
+              className={`ov-button-translucent-action flex h-11 items-center gap-2 px-3 text-xs ${
+                activePage ? 'ov-button-navigation-active' : ''
+              }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden md:inline">Assistant IA</span>
+              <span>Explorer</span>
+              {activePage && <span className="sr-only">Page active : {activePage.label}</span>}
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${menuOpen ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              />
             </button>
 
-            {/* Status Health Indicator */}
             <div
-              onClick={() => setCurrentTab('architecture')}
-              className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer border ${
-                architecture.isValid
-                  ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50'
-                  : 'bg-amber-950/40 text-amber-300 border-amber-800/50'
+              id="explore-navigation"
+              className={`ov-panel absolute right-0 top-full mt-3 w-80 max-w-[90vw] overflow-hidden p-2 ${
+                menuOpen ? 'block' : 'hidden'
               }`}
             >
-              {architecture.isValid ? (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Cohérent ({architecture.activeBricks.length} briques)</span>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+              <nav aria-label="Explorer SpecForge">
+                <ul className="space-y-1">
+                  {navigationItems.map(({ id, label, description, icon: Icon }) => (
+                    <li key={id}>
+                      <button
+                        type="button"
+                        onClick={() => openPage(id)}
+                        aria-current={currentTab === id ? 'page' : undefined}
+                        className={`flex min-h-14 w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition ${
+                          currentTab === id
+                            ? 'bg-indigo-950/60 text-neutral-100'
+                            : 'text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4 shrink-0 text-indigo-300" aria-hidden="true" />
+                        <span className="min-w-0">
+                          <span className="block text-xs font-semibold">{label}</span>
+                          <span className="mt-0.5 block text-[11px] text-neutral-400">
+                            {description}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+
+              <div className="mt-2 border-t border-neutral-800 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenAiAssist();
+                  }}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-xs font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-neutral-100"
+                >
+                  <Sparkles className="h-4 w-4 text-indigo-300" aria-hidden="true" />
                   <span>
-                    {architecture.issues.filter((i) => i.severity === 'error').length} conflit(s)
+                    Assistant IA <span className="text-neutral-400">· proposition à confirmer</span>
                   </span>
-                </>
-              )}
+                </button>
+              </div>
             </div>
-
-            {/* Download Zip CTA */}
-            <button
-              onClick={onDownloadZip}
-              disabled={isDownloading || !architecture.isValid}
-              className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:pointer-events-none text-white shadow-sm shadow-indigo-600/30 transition"
-            >
-              <Download className={`w-3.5 h-3.5 ${isDownloading ? 'animate-bounce' : ''}`} />
-              <span className="hidden sm:inline whitespace-nowrap">
-                {isDownloading ? 'Génération...' : 'Télécharger (.ZIP)'}
-              </span>
-            </button>
           </div>
-        </div>
-
-        <div className="hidden md:flex justify-center py-2 border-t border-neutral-900">
-          {/* Navigation Tabs */}
-          <nav className="hidden md:flex items-center gap-1 bg-neutral-900/80 p-1 rounded-lg border border-neutral-800 text-xs font-medium">
-            <button
-              onClick={() => setCurrentTab('wizard')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition ${
-                currentTab === 'wizard'
-                  ? 'bg-neutral-800 text-white shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              Concepteur
-            </button>
-
-            <button
-              onClick={() => setCurrentTab('spec')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition ${
-                currentTab === 'spec'
-                  ? 'bg-neutral-800 text-white shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'
-              }`}
-            >
-              <Code2 className="w-3.5 h-3.5" />
-              Spécification
-            </button>
-
-            <button
-              onClick={() => setCurrentTab('architecture')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition ${
-                currentTab === 'architecture'
-                  ? 'bg-neutral-800 text-white shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'
-              }`}
-            >
-              <GitGraph className="w-3.5 h-3.5" />
-              Architecture
-            </button>
-
-            <button
-              onClick={() => setCurrentTab('files')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition relative ${
-                currentTab === 'files'
-                  ? 'bg-neutral-800 text-white shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'
-              }`}
-            >
-              <FileCode className="w-3.5 h-3.5" />
-              Génération
-              <span className="ml-1 px-1.5 py-0.2 bg-neutral-700 text-neutral-300 rounded-full text-[10px]">
-                {architecture.stats.totalFiles}
-              </span>
-            </button>
-
-            <button
-              onClick={() => setCurrentTab('bricks')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition ${
-                currentTab === 'bricks'
-                  ? 'bg-neutral-800 text-white shadow-sm'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'
-              }`}
-            >
-              <Library className="w-3.5 h-3.5" />
-              Briques
-            </button>
-
-            <button
-              onClick={() => setCurrentTab('audit')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition ${
-                currentTab === 'audit'
-                  ? 'bg-neutral-800 text-emerald-400 shadow-sm border border-emerald-800/40'
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'
-              }`}
-            >
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              Audit (12 Tests)
-            </button>
-          </nav>
-        </div>
-
-        {/* Mobile Navigation */}
-        <div className="flex md:hidden overflow-x-auto py-2 border-t border-neutral-900 gap-2">
-          {(['wizard', 'spec', 'architecture', 'files', 'bricks', 'audit'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setCurrentTab(tab)}
-              className={`px-3 py-1 rounded-md text-xs whitespace-nowrap capitalize font-medium ${
-                currentTab === tab
-                  ? 'bg-neutral-800 text-white'
-                  : 'text-neutral-400 hover:text-neutral-200'
-              }`}
-            >
-              {tab === 'wizard' ? 'Concepteur' : tab === 'files' ? 'Génération' : tab}
-            </button>
-          ))}
-        </div>
+        </nav>
       </div>
     </header>
   );

@@ -17,7 +17,7 @@
 | **Autorité technique**             | Core déterministe                                |
 | **Source de vérité**               | ProjectSpecification                             |
 | **IA**                             | Assistance à la formalisation et à l'explication |
-| **Profil actuellement implémenté** | Rust                                             |
+| **Profils actuellement disponibles** | Rust (complet), TypeScript (partiel)             |
 
 ---
 
@@ -186,9 +186,9 @@ Les profils prévus par le modèle sont :
 
 ### État actuel
 
-Seul **Rust** est actuellement implémenté.
+Le profil **Rust** dispose de sept templates. **TypeScript** est disponible pour un template Web Frontend avec React.
 
-Les autres profils font partie de l'architecture cible, mais ne constituent pas le périmètre de développement actuel.
+Python et Go font partie de l'architecture cible, mais ne sont pas encore implémentés.
 
 ---
 
@@ -203,6 +203,7 @@ Web Platform
 API Service
 Desktop
 Mobile
+E-commerce
 ```
 
 Un même type d'application peut être implémenté différemment selon le profil technique sélectionné.
@@ -243,36 +244,42 @@ pour sélectionner le template correspondant.
 
 ### Templates Rust actuellement disponibles
 
-* Rust + React + SQLite — Web App
+* Rust + Askama + SQLite — Web App
 * Rust + React + PostgreSQL — Web Platform
-* Rust + Tauri + React — Desktop
+* Rust + Askama — Web Frontend
 * Rust Backend Only — API Service
+* Rust + Tauri + React — Desktop
+* Rust + Dioxus — Mobile
+* Rust + Axum + React + PostgreSQL — E-commerce
 
-Certains types d'application Rust restent volontairement indisponibles tant que leur template n'est pas réellement implémenté.
+Le profil TypeScript propose également un template React pour Web Frontend. Certains types d'application restent indisponibles tant qu'un template compatible n'est pas réellement implémenté.
 
 L'interface ne doit pas simuler une disponibilité qui n'existe pas dans le Core.
 
 ---
 
-# 9. Interface de configuration actuelle
+# 9. Parcours utilisateur et interface actuels
 
-La première version de SpecForge conserve une configuration volontairement simple.
+L’accueil de SpecForge concentre le parcours courant dans un module de création rapide qui se dévoile progressivement :
 
 L'utilisateur choisit :
 
-1. son profil technique ;
-2. son type d'application ;
-3. les paramètres nécessaires au projet.
+1. un profil technique ;
+2. un template compatible avec ce profil ;
+3. un nom de projet ;
+4. la génération et le téléchargement du squelette en ZIP.
 
-Le système actuel permet déjà de sélectionner les différentes familles d'applications et d'utiliser les templates disponibles pour le profil Rust.
+Les vues d’exploration technique restent disponibles séparément depuis le menu **Explorer** : spécification, architecture, fichiers générés, bibliothèque de briques et audit du moteur. Une page de présentation explique également le rôle de SpecForge.
 
-Cette approche doit rester la base du produit.
+L’interface présente les étapes du système sans remplacer leur logique : la `ProjectSpecification` reste la source de vérité et le Core conserve l’autorité de validation, de résolution et de génération.
 
 ---
 
-# 10. Évolution prévue : configuration complémentaire
+# 10. Évolution prévue : configuration complémentaire du projet généré
 
-Une évolution future permettra d'ajouter une **configuration complémentaire**, sans remettre en cause le fonctionnement actuel du Core.
+La création rapide actuelle couvre les choix nécessaires au démarrage. Une évolution future pourra ajouter une **configuration complémentaire du projet généré**, sans remettre en cause le fonctionnement actuel du Core.
+
+Cette configuration concerne l’interface produite dans le squelette, et non l’apparence de SpecForge lui-même.
 
 Cette configuration sera adaptée au :
 
@@ -325,9 +332,11 @@ Elles ne cherchent pas à définir à l'avance toute la logique fonctionnelle de
 
 ---
 
-# 11. Thème
+# 11. Identité visuelle de SpecForge et thème du projet généré
 
-La configuration complémentaire pourra également définir quelques grandes orientations visuelles.
+L’interface actuelle de SpecForge suit l’identité **Obsidian Volcanic** : fonds obsidienne, surfaces translucides, accents violet bleuté et rouge incandescent. Les tokens visuels sont centralisés dans `src/index.css`. Les assets desktop et mobile du fond sont `assets/hero.png` et `assets/hero-mobile.png`; le logo et l’icône existants sont conservés sans altération.
+
+La configuration complémentaire du **projet généré** pourra, elle, définir quelques grandes orientations visuelles :
 
 Le formulaire restera volontairement simple :
 
@@ -600,9 +609,9 @@ Le périmètre actuel porte principalement sur :
 * la vérification de la génération ;
 * la documentation et la maintenance du projet.
 
-Les futurs profils Python, TypeScript et Go ne sont pas encore implémentés.
+Le profil Rust et un template TypeScript Web Frontend sont actuellement disponibles ; Python et Go ne sont pas encore implémentés.
 
-La configuration avancée UI/UX et thème constitue une évolution future et ne doit pas ralentir la stabilisation du socle actuel.
+Le design system de l’interface SpecForge est en place. La configuration avancée de l’UI/UX et du thème appliquée aux projets générés reste une évolution future et ne doit pas ralentir la stabilisation du socle actuel.
 
 ---
 

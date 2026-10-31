@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   FileCode,
   Folder,
@@ -15,6 +15,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { GeneratedFile, ResolvedArchitecture } from '../types/spec';
+import { PageHero } from './PageHero';
 
 interface FileTreeViewerProps {
   files: GeneratedFile[];
@@ -33,6 +34,10 @@ export const FileTreeViewer: React.FC<FileTreeViewerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [copied, setCopied] = useState(false);
   const [copiedTree, setCopiedTree] = useState(false);
+
+  useEffect(() => {
+    setSelectedFile((current) => files.find((file) => file.path === current?.path) || files[0] || null);
+  }, [files]);
 
   // Filter files by search
   const filteredFiles = files.filter(
@@ -80,30 +85,19 @@ export const FileTreeViewer: React.FC<FileTreeViewerProps> = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-16">
-      {/* Top Banner with Stats and Download ZIP */}
-      <div className="bg-neutral-900/60 border border-neutral-800 rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/50">
-              Génération Déterministe Complète
-            </span>
-            <span className="text-xs text-neutral-400 font-mono">
-              {files.length} fichiers prêts à l'emploi
-            </span>
-          </div>
-          <h2 className="text-xl font-bold text-white tracking-tight">
-            Arborescence &amp; Inspection des Fichiers
-          </h2>
-          <p className="text-xs text-neutral-400 mt-0.5">
-            Inspectez chaque fichier généré, son code source complet et la justification de son existence (Traçabilité Section 9).
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
+    <div className="mx-auto max-w-7xl space-y-8 pb-16">
+      <PageHero
+        eyebrow="GÉNÉRATION DÉTERMINISTE"
+        tone="copper"
+        title="Arborescence"
+        accent="& inspection"
+        description="Inspectez le code de chaque fichier généré et remontez à la justification de son existence (traçabilité, section 9)."
+        meta={<span className="font-mono text-neutral-400">{files.length} fichiers prêts à l’emploi</span>}
+        actions={
+          <>
           <button
             onClick={handleCopyAsciiTree}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-medium text-neutral-300 transition"
+            className="ov-button-secondary flex w-full items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium sm:w-auto"
           >
             {copiedTree ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copiedTree ? 'Arborescence copiée !' : "Copier l'arborescence"}</span>
@@ -111,14 +105,21 @@ export const FileTreeViewer: React.FC<FileTreeViewerProps> = ({
 
           <button
             onClick={onDownloadZip}
-            disabled={isDownloading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm shadow-indigo-600/30 transition"
+            disabled={isDownloading || !architecture.isValid}
+            aria-busy={isDownloading}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-orange-400 bg-orange-500 px-4 py-2 text-xs font-bold text-neutral-950 shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            title={
+              architecture.isValid
+                ? 'Télécharger le projet au format ZIP'
+                : 'Résolvez les conflits de compatibilité avant le téléchargement'
+            }
           >
             <Download className={`w-3.5 h-3.5 ${isDownloading ? 'animate-bounce' : ''}`} />
             <span>{isDownloading ? 'Création de l\'archive...' : 'Télécharger le Projet (.ZIP)'}</span>
           </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Main Split Explorer */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -133,7 +134,8 @@ export const FileTreeViewer: React.FC<FileTreeViewerProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Filtrer les fichiers ou briques..."
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
+                aria-label="Filtrer les fichiers générés"
+                className="ov-field w-full rounded-lg py-1.5 pl-8 pr-3 text-xs text-neutral-200"
               />
             </div>
           </div>
@@ -243,7 +245,7 @@ export const FileTreeViewer: React.FC<FileTreeViewerProps> = ({
               <div className="max-h-[520px] overflow-auto p-4 font-mono text-xs text-neutral-200 leading-relaxed">
                 <pre className="flex">
                   {/* Line numbers */}
-                  <div className="select-none text-neutral-600 text-right pr-4 border-r border-neutral-800/80 space-y-0.5 shrink-0">
+                  <div className="select-none text-neutral-500 text-right pr-4 border-r border-neutral-800/80 space-y-0.5 shrink-0">
                     {selectedFile.content.split('\n').map((_, idx) => (
                       <div key={idx}>{idx + 1}</div>
                     ))}

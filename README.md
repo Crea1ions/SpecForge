@@ -6,6 +6,8 @@ SpecForge est un outil de conception et de génération de squelettes de projets
 
 Son objectif est de transformer une intention structurée en une **architecture cohérente** et en un **squelette de projet exploitable**, sans chercher à générer un produit fini ni à remplacer le développeur.
 
+![Aperçu de la page d’accueil SpecForge](assets/screenshots-accueil.png)
+
 ---
 
 ## Principe
@@ -50,6 +52,23 @@ SpecForge repose sur quelques principes simples :
 * **Développeur libre** — le projet généré reste indépendant de SpecForge.
 
 > SpecForge génère une base saine. Le développeur construit le produit.
+
+---
+
+## Interface utilisateur
+
+L’accueil propose un parcours de création progressif, sur une seule page :
+
+1. choisir un profil technique ;
+2. choisir un template compatible ;
+3. nommer le projet ;
+4. générer et télécharger le squelette en ZIP.
+
+Les étapes se dévoilent au fil des choix. Les vues destinées à l’exploration technique — spécification, architecture, fichiers, briques et audit — restent accessibles depuis le menu **Explorer**.
+
+L’interface adopte l’identité **Obsidian Volcanic** : fonds sombres, surfaces translucides, accents violets et touches de rouge incandescent. Les tokens visuels et états interactifs sont définis dans `src/index.css`. Les assets `hero.png` et `hero-mobile.png` adaptent le fond aux écrans desktop et mobiles ; le mouvement de parallaxe est désactivé sur mobile et lorsque la réduction des animations est demandée.
+
+Les sélecteurs personnalisés prennent en charge la navigation au clavier et les titres partagés utilisent une animation de vague avec halo, respectueuse de `prefers-reduced-motion`.
 
 ---
 

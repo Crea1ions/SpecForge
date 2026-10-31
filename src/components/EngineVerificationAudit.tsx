@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ProjectSpecification, ResolvedArchitecture, BrickDefinition, SpecForge, validateSpecification } from '../core';
 import YAML from 'yaml';
+import { PageHero } from './PageHero';
 
 interface EngineVerificationAuditProps {
   spec: ProjectSpecification;
@@ -503,35 +504,26 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
   const failedCount = tests.filter((t) => t.status === 'failed').length;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-16">
-      {/* Top Banner */}
-      <div className="bg-neutral-900/60 border border-neutral-800 rounded-xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/50">
-              Banc d'Épreuve &amp; Audit Technique
-            </span>
-            <span className="text-xs text-neutral-400 font-mono">12 Vérifications Réelles</span>
-          </div>
-          <h2 className="text-xl font-bold text-white tracking-tight">
-            Vérificateur Formel : Vrai Moteur vs Simulation
-          </h2>
-          <p className="text-xs text-neutral-400 mt-1 max-w-2xl">
-            Ce tableau de bord exécute en direct la suite de tests automatisés validant les 12 exigences fondamentales de la fiche produit.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
+    <div className="mx-auto max-w-6xl space-y-8 pb-16">
+      <PageHero
+        eyebrow="BANC D’ÉPREUVE // AUDIT TECHNIQUE"
+        tone="amber"
+        title="Vérificateur formel"
+        accent="du moteur"
+        description="Exécutez les tests qui vérifient les garanties déterministes, la validation et la génération du Core."
+        meta={<span className="font-mono text-neutral-400">12 vérifications réelles</span>}
+        actions={
           <button
             onClick={runAllVerificationTests}
             disabled={isRunningAll}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold shadow-sm shadow-emerald-600/30 transition"
+            aria-busy={isRunningAll}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-orange-400 bg-orange-500 px-4 py-2 text-xs font-bold text-neutral-950 shadow-sm shadow-orange-500/30 transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             <Play className={`w-3.5 h-3.5 ${isRunningAll ? 'animate-spin' : ''}`} />
             <span>{isRunningAll ? 'Tests en cours...' : 'Exécuter les 12 Tests du Moteur'}</span>
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Summary Scorecard */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
@@ -642,11 +634,13 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
             value={customBrickName}
             onChange={(e) => setCustomBrickName(e.target.value)}
             placeholder="Nom de la brique (ex: Redis Cache)"
+            aria-label="Nom de la brique personnalisée"
             className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 w-full sm:w-64"
           />
 
           <button
             onClick={handleRegisterLiveCustomBrick}
+            aria-pressed={isCustomBrickRegistered}
             className={`px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-2 ${
               isCustomBrickRegistered
                 ? 'bg-red-900/60 hover:bg-red-800 text-red-200 border border-red-700'
