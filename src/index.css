@@ -131,7 +131,8 @@
   background: var(--surface-translucent);
 }
 
-.brand-spec,
+.brand-cool-gradient,
+.brand-eyebrow,
 .brand-forge {
   color: transparent;
   background-clip: text;
@@ -139,8 +140,19 @@
   -webkit-text-fill-color: transparent;
 }
 
-.brand-spec {
+.brand-cool-gradient {
   background-image: linear-gradient(100deg, #b7b2c2 0%, #c9b8e4 50%, #8275cb 100%);
+}
+
+.brand-eyebrow {
+  background-image: linear-gradient(100deg, #a56bff 0%, #b990f0 48%, #8978d8 100%);
+}
+
+.brand-eyebrow-rule {
+  width: 2rem;
+  height: 1px;
+  flex: none;
+  background: linear-gradient(90deg, #8978d8, transparent);
 }
 
 .brand-forge {

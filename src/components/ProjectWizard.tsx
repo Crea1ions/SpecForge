@@ -145,14 +145,18 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
         className="relative isolate flex min-h-[calc(100svh-4rem)] overflow-hidden"
       >
         <div className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center gap-20 px-shell py-12 sm:gap-24 sm:py-16 lg:gap-32">
-          <div className="max-w-xl">
+          <div className="max-w-2xl -translate-y-2">
+            <p className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] sm:text-xs">
+              <span className="brand-eyebrow">GÉNÉRATION DE PROJETS</span>
+              <span className="brand-eyebrow-rule" aria-hidden="true" />
+            </p>
             <AnimatedHeading
               as="h1"
               id="home-title"
               tone="brand"
-              className="w-fit max-w-full text-[clamp(2.125rem,4.2vw,3.125rem)] font-bold leading-tight tracking-tight text-neutral-100"
+              className="w-fit max-w-full text-[clamp(2.375rem,4.5vw,3.5rem)] font-bold leading-tight tracking-tight text-neutral-100"
               lines={[
-                { text: "D'une idée à une" },
+                { text: "De l'idée à une" },
                 {
                   text: 'base de code structurée.',
                   className: 'mt-1',
@@ -169,7 +173,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
               reverseGradient
               lines={[
                 {
-                  text: 'Prêt à développer.',
+                  text: 'Prêt à coder.',
                   accent: true,
                 },
               ]}

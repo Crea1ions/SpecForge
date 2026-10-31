@@ -110,7 +110,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setCurrentTab, onOpe
             className="h-10 w-9 object-contain"
           />
           <span className="text-sm font-bold tracking-tight text-neutral-100 sm:text-base">
-            <span className="brand-spec">Spec</span>
+            <span className="brand-cool-gradient">Spec</span>
             <span className="brand-forge">Forge</span>
           </span>
         </button>

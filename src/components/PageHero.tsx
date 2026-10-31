@@ -24,10 +24,10 @@ export const PageHero: React.FC<PageHeroProps> = ({
     <div className="flex flex-col justify-end gap-8 sm:gap-10 md:flex-row md:items-end md:justify-between">
       <div className="max-w-3xl">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="h-1 w-6 rounded-full bg-indigo-400" aria-hidden="true" />
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-300 sm:text-xs">
-            {eyebrow}
-          </span>
+          <div className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] sm:text-xs">
+            <span className="brand-eyebrow">{eyebrow}</span>
+            <span className="brand-eyebrow-rule" aria-hidden="true" />
+          </div>
           {meta && <span className="text-xs text-neutral-400">{meta}</span>}
         </div>
 
