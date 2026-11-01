@@ -15,6 +15,10 @@ import { BrickRegistry, defaultRegistry } from './registry';
 import { resolveArchitecture } from './resolver';
 import { getContentByteLength } from './utils';
 import { generateStaticWebSite } from './static-web/render';
+import {
+  resolveUiUxOutputDirectory,
+  resolveUiUxPresentationTemplate,
+} from './static-web/config';
 import YAML from 'yaml';
 
 function renderMarkdown(value: unknown, level = 1): string {
@@ -185,6 +189,16 @@ ${renderMarkdown(spec, 2)}
         console.error(`Erreur dans le générateur de la brique ${brick.id}:`, err);
       }
     }
+  }
+
+  if (spec.uiUx) {
+    files.push(
+      ...generateStaticWebSite(spec, {
+        config: spec.uiUx,
+        template: resolveUiUxPresentationTemplate(spec),
+        outputDirectory: resolveUiUxOutputDirectory(spec),
+      }),
+    );
   }
 
   return files;

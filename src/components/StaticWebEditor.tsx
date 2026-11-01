@@ -11,12 +11,17 @@ import {
 import { findPreset, PRESETS } from '../engine/presets';
 import {
   createStaticWebBlock,
+  getProjectUiUxConfig,
   isUnmodifiedStarterPage,
   mergeImportedMarkdownPages,
   parseMarkdownFile,
   renderStaticWebPreview,
   STATIC_WEB_BRICKS,
 } from '../core';
+import {
+  resolveUiUxOutputDirectory,
+  resolveUiUxPresentationTemplate,
+} from '../core/static-web/config';
 
 interface StaticWebEditorProps {
   spec: ProjectSpecification;
@@ -37,8 +42,7 @@ type MobilePanel = 'configuration' | 'preview';
 
 const staticWebSteps: StaticWebStep[] = ['type', 'content', 'structure', 'appearance', 'generation'];
 const staticWebStarterPages = PRESETS
-  .filter((preset) => preset.spec.profile === 'static-web')
-  .flatMap((preset) => preset.spec.staticWeb?.pages ?? []);
+  .flatMap((preset) => preset.spec.staticWeb?.pages ?? preset.spec.uiUx?.pages ?? []);
 const MAX_UPLOAD_FILES = 500;
 const MAX_MARKDOWN_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_MARKDOWN_TOTAL_SIZE = 20 * 1024 * 1024;
@@ -167,7 +171,8 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
   onDownloadHtml,
   onOpenArchitecture,
 }) => {
-  const config = spec.staticWeb;
+  const isStaticWeb = spec.profile === 'static-web';
+  const config = getProjectUiUxConfig(spec);
   const [selectedPageId, setSelectedPageId] = useState(config?.pages?.[0]?.id ?? '');
   const [selectedBrick, setSelectedBrick] = useState(STATIC_WEB_BRICKS[0]?.id ?? '');
   const [previewWidth, setPreviewWidth] = useState<PreviewWidth>('desktop');
@@ -193,7 +198,7 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
         html: renderStaticWebPreview(
           { ...config, displayMode: previewTheme },
           currentPage?.slug,
-          spec.template,
+          resolveUiUxPresentationTemplate(spec),
           spec.project.name,
         ),
         error: null,
@@ -204,12 +209,12 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
         error: error instanceof Error ? error.message : 'Le moteur de prévisualisation a échoué.',
       };
     }
-  }, [config, currentPage?.slug, previewTheme, spec.template, spec.project.name]);
+  }, [config, currentPage?.slug, previewTheme, spec, spec.project.name]);
 
   if (!config || !Array.isArray(config.pages) || !Array.isArray(config.assets) || !config.theme) {
     return (
       <p role="alert" className="mt-4 rounded-lg border border-red-500/30 bg-red-950/30 p-3 text-xs text-red-200">
-        La configuration Static Web est absente de la spécification.
+        La configuration d’interface et de contenu est absente de la spécification.
       </p>
     );
   }
@@ -225,7 +230,9 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
 
   const updateConfig = (update: (current: StaticWebConfig) => StaticWebConfig, area?: EditorArea) => {
     if (area) markStepInProgress(area);
-    onChange({ ...spec, staticWeb: update(config) });
+    onChange(isStaticWeb
+      ? { ...spec, staticWeb: update(config) }
+      : { ...spec, uiUx: update(config) });
   };
 
   const updatePage = (
@@ -456,7 +463,9 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
   const isStepReady = (step: StaticWebStep): boolean => {
     switch (step) {
       case 'type':
-        return templateOptions.some((option) => option.value === spec.template);
+        return isStaticWeb
+          ? templateOptions.some((option) => option.value === spec.template)
+          : Boolean(findPreset(spec.profile, spec.template));
       case 'content':
         return config.pages.length > 0;
       case 'structure':
@@ -565,7 +574,9 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
     );
   };
 
-  const selectedTemplate = templateOptions.find((option) => option.value === spec.template);
+  const selectedTemplate = isStaticWeb
+    ? templateOptions.find((option) => option.value === spec.template)?.label
+    : findPreset(spec.profile, spec.template)?.name ?? spec.template;
   const organizationLabel = organizationOptions.find((option) => option.value === config.organization)?.label ?? 'À choisir';
   const navigationLabel = navigationOptions.find((option) => option.value === config.navigation)?.label ?? 'Ancien réglage';
   const displayModeLabel = displayModeOptions.find((option) => option.value === config.displayMode)?.label ?? 'À choisir';
@@ -578,6 +589,22 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
       <p className="text-xs leading-relaxed text-neutral-400">
         Importez vos documents Markdown ou rédigez vos pages directement. Seuls les fichiers .md sont lus. Chaque import est limité à 500 fichiers et 20 Mo.
       </p>
+      <label className="block text-xs text-neutral-300">
+        Consigne interne sur l’usage des pages
+        <textarea
+          value={config.contentInstruction ?? ''}
+          maxLength={2000}
+          rows={3}
+          onChange={(event) =>
+            updateConfig((current) => ({ ...current, contentInstruction: event.target.value }), 'content')
+          }
+          className="ov-field mt-1 w-full rounded-lg px-3 py-2"
+          placeholder="Ex. : Les pages importées constituent le guide interne destiné aux équipes produit."
+        />
+        <span className="mt-1 block text-[11px] text-neutral-500">
+          Cette consigne reste interne à la spécification et n’est pas publiée dans les pages du site.
+        </span>
+      </label>
       <div className="flex flex-wrap gap-2">
         <label className="ov-button-secondary cursor-pointer px-3 py-2 text-xs">
           Importer des fichiers Markdown
@@ -943,8 +970,13 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
   const generationStep = (
     <div className="space-y-4">
       <p className="text-xs leading-relaxed text-neutral-400">
-        Vérifiez le nom du projet, choisissez le format et générez votre site prêt à être téléchargé.
+        Vérifiez le nom du projet, choisissez le format et générez le rendu configuré prêt à être téléchargé.
       </p>
+      {!isStaticWeb && (
+        <p className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-3 text-xs leading-relaxed text-neutral-300">
+          Les fichiers de présentation seront générés dans <code>{resolveUiUxOutputDirectory(spec)}/</code>, séparément du moteur applicatif du template.
+        </p>
+      )}
       <label className="block text-xs text-neutral-300">
         Nom du projet
         <input
@@ -1237,9 +1269,11 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
     <section className="mt-5 border-t border-neutral-700 pt-5" aria-labelledby="static-web-config-heading">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-300">Static Web</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-300">
+            {isStaticWeb ? 'Static Web' : 'Personnalisation UI/UX'}
+          </p>
           <h3 id="static-web-config-heading" className="mt-1 text-base font-semibold text-neutral-100">
-            Créez votre site en cinq étapes
+            {isStaticWeb ? 'Créez votre site en cinq étapes' : 'Personnalisez le rendu et le contenu du template'}
           </h3>
           <p className="mt-1 text-xs text-neutral-400">{configuredCount} étape(s) configurée(s) sur 5</p>
         </div>
@@ -1248,7 +1282,7 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
       <div
         className="sticky top-16 z-30 mb-4 flex w-fit max-w-full gap-1 rounded-lg border border-neutral-700 bg-neutral-900/95 p-1 shadow-xl backdrop-blur xl:hidden"
         role="tablist"
-        aria-label="Panneau Static Web"
+        aria-label="Panneau de configuration et d’aperçu"
       >
         {(['configuration', 'preview'] as const).map((panel) => (
           <button
@@ -1279,33 +1313,39 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
             {renderStep(
               'type',
               '01',
-              selectedTemplate?.label ?? 'Choisissez un modèle de départ',
-              <div className="space-y-3">
-                <p className="text-xs leading-relaxed text-neutral-400">
-                  Choisissez le point de départ qui correspond le mieux à votre site. Vous pourrez modifier son contenu ensuite.
-                </p>
-                <div className="grid gap-2">
-                  {templateOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      aria-pressed={spec.template === option.value}
-                      onClick={() => handleTemplateSelect(option.value)}
-                      className={`rounded-lg border p-3 text-left transition ${
-                        spec.template === option.value
-                          ? 'border-indigo-400/60 bg-indigo-500/10'
-                          : 'border-neutral-700 hover:bg-neutral-800/60'
-                      }`}
-                    >
-                      <span className="flex items-center justify-between gap-2 text-xs font-semibold text-neutral-100">
-                        {option.label}
-                        {spec.template === option.value && <CheckCircle2 className="h-4 w-4 text-emerald-300" />}
-                      </span>
-                      <span className="mt-1 block text-[11px] text-neutral-400">{option.description}</span>
-                    </button>
-                  ))}
+              selectedTemplate ?? 'Choisissez un modèle de départ',
+              isStaticWeb ? (
+                <div className="space-y-3">
+                  <p className="text-xs leading-relaxed text-neutral-400">
+                    Choisissez le point de départ qui correspond le mieux à votre site. Vous pourrez modifier son contenu ensuite.
+                  </p>
+                  <div className="grid gap-2">
+                    {templateOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={spec.template === option.value}
+                        onClick={() => handleTemplateSelect(option.value)}
+                        className={`rounded-lg border p-3 text-left transition ${
+                          spec.template === option.value
+                            ? 'border-indigo-400/60 bg-indigo-500/10'
+                            : 'border-neutral-700 hover:bg-neutral-800/60'
+                        }`}
+                      >
+                        <span className="flex items-center justify-between gap-2 text-xs font-semibold text-neutral-100">
+                          {option.label}
+                          {spec.template === option.value && <CheckCircle2 className="h-4 w-4 text-emerald-300" />}
+                        </span>
+                        <span className="mt-1 block text-[11px] text-neutral-400">{option.description}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>,
+              ) : (
+                <p className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-3 text-xs leading-relaxed text-neutral-300">
+                  Le modèle du projet est conservé. Les contrôles et la prévisualisation s’appliquent à son rendu UI/UX, sans modifier ses réglages techniques.
+                </p>
+              ),
             )}
             {renderStep(
               'content',
@@ -1362,7 +1402,7 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
           ) : (
             <div className="min-w-0 overflow-auto rounded-xl border border-neutral-700 bg-neutral-950 p-2">
               <iframe
-                title="Aperçu du site Static Web"
+                title={`Aperçu du rendu ${isStaticWeb ? 'Static Web' : 'UI/UX'}`}
                 sandbox="allow-scripts"
                 srcDoc={preview.html}
                 style={{

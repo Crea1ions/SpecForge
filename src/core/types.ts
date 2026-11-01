@@ -139,6 +139,7 @@ export interface StaticWebConfig {
   navigation: StaticWebNavigation;
   displayMode: StaticWebDisplayMode;
   exportMode: StaticWebExportMode;
+  contentInstruction?: string;
   theme: {
     preset: 'paper' | 'ocean' | 'obsidian' | 'custom';
     primary: string;
@@ -151,6 +152,8 @@ export interface StaticWebConfig {
   pages: StaticWebPage[];
   assets: StaticWebAsset[];
 }
+
+export type ProjectUiUxConfig = StaticWebConfig;
 
 export type StaticWebBrickPropertyType =
   | 'text'
@@ -196,6 +199,7 @@ export interface ProjectSpecification {
   quality: QualityConfig;
   documentation: DocsConfig;
   staticWeb?: StaticWebConfig;
+  uiUx?: ProjectUiUxConfig;
 }
 
 export type BrickCategory =

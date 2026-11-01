@@ -1,11 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  AlertCircle,
   ArrowRight,
   CheckCircle2,
   ChevronUp,
-  Download,
-  Loader2,
 } from 'lucide-react';
 import { DropdownSelect } from './DropdownSelect';
 import { ProjectSpecification, ResolvedArchitecture, TechnicalProfile } from '../types/spec';
@@ -65,8 +62,6 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
   const selectedTemplate =
     templateOptions.find((preset) => preset.spec.template === spec.template)?.name ??
     spec.template;
-  const errors = architecture.issues.filter((issue) => issue.severity === 'error');
-
   useEffect(() => {
     if (!isQuickCreateOpen || !quickCreateRef.current) return;
 
@@ -139,7 +134,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
   const continueToGeneration = () => {
     if (!canContinue) return;
     setOnboardingStage(3);
-    focusAfterUpdate('onboarding-generate-heading');
+    focusAfterUpdate('static-web-generation-toggle');
   };
 
   return (
@@ -204,7 +199,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
         tabIndex={-1}
         hidden={!isQuickCreateOpen}
         className={`quick-create-reveal mx-auto w-full scroll-mt-24 px-shell pb-12 ${
-          spec.profile === 'static-web' ? 'max-w-[96rem]' : 'max-w-2xl'
+          spec.profile === 'static-web' || onboardingStage >= 1 ? 'max-w-[96rem]' : 'max-w-2xl'
         }`}
       >
         <div className="ov-panel ov-panel-translucent p-4 sm:p-6">
@@ -219,8 +214,8 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-neutral-400">
-                  {spec.profile === 'static-web' && onboardingStage >= 1
-                    ? 'Configuration Static Web · 5 étapes'
+                  {onboardingStage >= 1
+                    ? 'Configuration UI/UX · 5 étapes'
                     : `Étape ${stepCount} sur 4`}
                 </span>
                 <button
@@ -422,7 +417,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
                 </li>
               )}
 
-              {spec.profile === 'static-web' && onboardingStage >= 1 && (
+              {onboardingStage >= 1 && (
                 <li className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-3 sm:p-4">
                   <StaticWebEditor
                     spec={spec}
@@ -438,60 +433,6 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
                 </li>
               )}
 
-              {onboardingStage >= 3 && spec.profile !== 'static-web' && (
-                <li className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-3 sm:p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-start gap-3">
-                      <span className="pt-0.5 font-mono text-xs text-neutral-400">04</span>
-                      <div>
-                        <h3
-                          id="onboarding-generate-heading"
-                          tabIndex={-1}
-                          className="text-sm font-semibold text-neutral-100"
-                        >
-                          Générer le projet
-                        </h3>
-                        {architecture.isValid ? (
-                          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-emerald-200">
-                            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                            Configuration vérifiée
-                            <span className="text-neutral-400">
-                              {architecture.stats.totalFiles} fichiers prêts
-                            </span>
-                          </p>
-                        ) : (
-                          <div role="alert" className="mt-1 space-y-1 text-xs text-red-200">
-                            <p>
-                              {errors.length} problème(s) bloquent la génération.
-                            </p>
-                            <button
-                              type="button"
-                              onClick={onOpenArchitecture}
-                              className="font-semibold underline underline-offset-2"
-                            >
-                              Voir le détail technique
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={onDownloadZip}
-                      disabled={!architecture.isValid || isDownloading || !canContinue}
-                      aria-busy={isDownloading}
-                      className="ov-button-primary inline-flex w-full shrink-0 items-center justify-center gap-2 px-5 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-                    >
-                      {isDownloading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                      ) : (
-                        <Download className="h-4 w-4" aria-hidden="true" />
-                      )}
-                      {isDownloading ? 'Génération...' : 'Générer et télécharger le ZIP'}
-                    </button>
-                  </div>
-                </li>
-              )}
             </ol>
         </div>
       </section>

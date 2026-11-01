@@ -756,7 +756,7 @@ Developer  → construit le produit
 
 ## 16. Profil Static Web et bricks de composition
 
-Le profil `static-web` ajoute une configuration métier `staticWeb` à la
+Le profil `static-web` ajoute une configuration de contenu et de présentation `staticWeb` à la
 `ProjectSpecification`. Le Core conserve le pipeline existant :
 
 ```text
@@ -802,7 +802,38 @@ CSS, son JavaScript et ses assets. La recherche est générée à partir d'un in
 local intégré au HTML ; aucun chargement réseau, import dynamique, CDN ou
 backend n'est requis pour ouvrir le résultat via `file://`.
 
-Les tests ciblés du Core Static Web sont lancés avec `npm test`. Toute
-extension des bricks vers d'autres profils doit ajouter une implémentation et
-déclarer explicitement sa compatibilité, sans généraliser la génération
-existante sans cas d'usage concret.
+## 17. Module UI/UX partagé par les modèles
+
+Les modèles actuellement proposés hors Static Web portent une configuration
+`uiUx` dans `ProjectSpecification`. Elle réutilise le contrat de contenu et de
+présentation de `StaticWebConfig`, sans activer de réglages métier ou
+techniques et sans remplacer les générateurs applicatifs existants.
+
+Le module partage le parcours de configuration, l’import de fichiers ou de
+dossiers Markdown, l’organisation des pages, les blocs visuels, leurs
+propriétés, les thèmes, la navigation, l’aperçu responsive et l’export HTML.
+L’import ignore les fichiers qui ne sont pas `.md` et conserve les limites de
+taille et de nombre de fichiers. `contentInstruction` est un contexte interne
+stocké dans la spécification; le renderer ne l’insère pas dans les pages.
+
+La génération conserve les sorties applicatives existantes et ajoute les
+pages dans le répertoire statique adapté au modèle : `frontend/public/ui-site/`
+pour React, `static/ui-site/` pour Askama et `assets/ui-site/` pour Dioxus.
+Le modèle `api-service`, qui n’a pas d’interface applicative, produit un site
+de documentation autonome sous `docs-site/`. Les templates Static Web
+continuent de générer leurs fichiers à la racine comme auparavant. Les
+prévisualisations et les exports réutilisent le renderer Static Web existant,
+avec un mode Documentation pour `api-service` et Website pour les autres
+modèles.
+
+Les `StaticWebBrickDefinition` déclarent les profils et templates compatibles;
+le Core valide la configuration de la même façon, puis le générateur fournit
+un répertoire de sortie adapté. Les briques techniques historiques restent
+distinctes de ces blocs visuels. L’ajout d’un profil ou d’un template doit
+conserver cette séparation et fournir ses propres adaptations lorsque ses
+capacités de rendu diffèrent.
+
+Les tests ciblés du Core UI/UX sont lancés avec `npm test`. Ils vérifient la
+conservation des sorties Static Web, la présence de la configuration sur tous
+les presets applicatifs, l’isolation de la consigne interne et la génération
+du site HTML correspondant à chaque modèle.

@@ -9,7 +9,8 @@ import {
 } from '../types';
 import { getContentByteLength } from '../utils';
 import { getStaticWebBrick } from './bricks';
-import { sortStaticWebPages } from './content';
+import { getProjectUiUxConfig } from './config';
+import { resolveStaticWebReferencePath, sortStaticWebPages } from './content';
 
 interface MarkdownRenderOptions {
   page: StaticWebPage;
@@ -56,12 +57,14 @@ function cleanAssetPath(value: string): string {
 }
 
 function findAssetPath(source: string, page: StaticWebPage, config: StaticWebConfig): string | undefined {
-  const sourcePath = page.sourcePath?.replace(/\\/g, '/');
-  const sourceDirectory = sourcePath?.includes('/') ? sourcePath.slice(0, sourcePath.lastIndexOf('/') + 1) : '';
+  const resolved = resolveStaticWebReferencePath(source, page.sourcePath);
   const direct = cleanAssetPath(source);
-  const relative = cleanAssetPath(`${sourceDirectory}${source}`);
   const asset = config.assets.find(
-    (candidate) => candidate.path === direct || candidate.path === relative || candidate.path.endsWith(`/${direct}`),
+    (candidate) =>
+      (resolved !== undefined && resolved !== '' &&
+        (candidate.path === resolved || candidate.path.endsWith(`/${resolved}`))) ||
+      candidate.path === direct ||
+      candidate.path.endsWith(`/${direct}`),
   );
   return asset?.path;
 }
@@ -73,16 +76,24 @@ function resolveMarkdownLink(url: string, options: MarkdownRenderOptions): strin
     if (!options.singlePage || url === '#top' || url === '#content') return url;
     return `#${page.slug}-${url.slice(1)}`;
   }
-  const markdownTarget = url.match(/^(?:\.\/)?([^?#]+)\.(?:md|html)([?#].*)?$/i);
+  const markdownTarget = url.match(/^(?:\.\/)?([^?#]+)\.(md|html)([?#].*)?$/i);
   if (!markdownTarget) return url;
 
-  const targetPath = cleanAssetPath(markdownTarget[1]);
-  const pageSlug = targetPath.split('/').pop() ?? targetPath;
+  const targetPath = resolveStaticWebReferencePath(
+    `${markdownTarget[1]}.${markdownTarget[2]}`,
+    page.sourcePath,
+  );
+  if (!targetPath) return url;
+  const markdownSourcePath = targetPath.replace(/\.html$/i, '.md');
+  const pageSlug = markdownSourcePath.replace(/\.md$/i, '').split('/').pop() ?? '';
   const targetPage = config.pages.find(
-    (candidate) => candidate.slug === pageSlug || candidate.sourcePath === `${targetPath}.md`,
+    (candidate) =>
+      candidate.slug === pageSlug ||
+      candidate.sourcePath === markdownSourcePath ||
+      candidate.sourcePath === targetPath,
   );
   if (!targetPage) return url;
-  const suffix = markdownTarget[2] ?? '';
+  const suffix = markdownTarget[3] ?? '';
   if (options.singlePage) {
     const fragment = suffix.match(/#([^?]+)/)?.[1];
     return `#${targetPage.slug}${fragment ? `-${fragment}` : ''}`;
@@ -790,9 +801,9 @@ function asGeneratedFile(
   };
 }
 
-function generateAssetFiles(config: StaticWebConfig): GeneratedFile[] {
+function generateAssetFiles(config: StaticWebConfig, outputDirectory = ''): GeneratedFile[] {
   return config.assets.map((asset) => ({
-    path: `assets/${asset.path}`,
+    path: `${outputDirectory ? `${outputDirectory}/` : ''}assets/${asset.path}`,
     content: asset.content,
     encoding: 'base64',
     language: 'binary',
@@ -824,9 +835,21 @@ export function renderStaticWebPreview(
   });
 }
 
-export function generateStaticWebSite(spec: ProjectSpecification): GeneratedFile[] {
-  const config = spec.staticWeb;
+export interface StaticWebGenerationOptions {
+  config?: StaticWebConfig;
+  template?: ApplicationTemplate;
+  outputDirectory?: string;
+}
+
+export function generateStaticWebSite(
+  spec: ProjectSpecification,
+  options: StaticWebGenerationOptions = {},
+): GeneratedFile[] {
+  const config = options.config ?? getProjectUiUxConfig(spec);
   if (!config) return [];
+  const template = options.template ?? spec.template;
+  const outputDirectory = options.outputDirectory?.replace(/^\/+|\/+$/g, '') ?? '';
+  const outputPath = (path: string) => `${outputDirectory ? `${outputDirectory}/` : ''}${path}`;
   const pages = sortStaticWebPages(config.pages);
   const files: GeneratedFile[] = [];
 
@@ -836,14 +859,14 @@ export function generateStaticWebSite(spec: ProjectSpecification): GeneratedFile
       singlePage: true,
       inlineAssets: true,
       pageContents: renderedPages,
-      template: spec.template,
+      template,
       siteName: spec.project.name,
     });
-    return [asGeneratedFile('index.html', html, 'html', 'Standalone HTML with inlined styles, scripts, content, and imported assets.')];
+    return [asGeneratedFile(outputPath('index.html'), html, 'html', 'Standalone HTML with inlined styles, scripts, content, and imported assets.')];
   }
 
-  files.push(asGeneratedFile('static-web.css', `${STATIC_WEB_CSS}${STATIC_WEB_TEMPLATE_CSS}${STATIC_WEB_NAVIGATION_CSS}`, 'css', 'Local responsive template, theme, and component styles.'));
-  files.push(asGeneratedFile('static-web.js', STATIC_WEB_JS, 'javascript', 'Local theme toggle and full-text page search.'));
+  files.push(asGeneratedFile(outputPath('static-web.css'), `${STATIC_WEB_CSS}${STATIC_WEB_TEMPLATE_CSS}${STATIC_WEB_NAVIGATION_CSS}`, 'css', 'Local responsive template, theme, and component styles.'));
+  files.push(asGeneratedFile(outputPath('static-web.js'), STATIC_WEB_JS, 'javascript', 'Local theme toggle and full-text page search.'));
 
   if (config.organization === 'single-page') {
     const renderedPages = new Map(pages.map((page) => [page.slug, renderPageContent(page, config, false, true).html]));
@@ -851,11 +874,11 @@ export function generateStaticWebSite(spec: ProjectSpecification): GeneratedFile
       singlePage: true,
       inlineAssets: false,
       pageContents: renderedPages,
-      template: spec.template,
+      template,
       siteName: spec.project.name,
     });
-    files.push(asGeneratedFile('index.html', html, 'html', 'Single-page site with locally linked styles, script, and imported assets.'));
-    files.push(...generateAssetFiles(config));
+    files.push(asGeneratedFile(outputPath('index.html'), html, 'html', 'Single-page site with locally linked styles, script, and imported assets.'));
+    files.push(...generateAssetFiles(config, outputDirectory));
     return files;
   }
 
@@ -864,21 +887,21 @@ export function generateStaticWebSite(spec: ProjectSpecification): GeneratedFile
     const html = renderDocument(config, pages, page, {
       singlePage: false,
       inlineAssets: false,
-      template: spec.template,
+      template,
       siteName: spec.project.name,
     });
-    files.push(asGeneratedFile(`${page.slug}.html`, html, 'html', `Static page '${page.title}'.`));
+    files.push(asGeneratedFile(outputPath(`${page.slug}.html`), html, 'html', `Static page '${page.title}'.`));
   }
   if (firstPage) {
     const indexPage = renderDocument(config, pages, firstPage, {
       singlePage: false,
       inlineAssets: false,
-      template: spec.template,
+      template,
       siteName: spec.project.name,
     });
-    files.push(asGeneratedFile('index.html', indexPage, 'html', 'Site entry point.'));
+    files.push(asGeneratedFile(outputPath('index.html'), indexPage, 'html', 'Site entry point.'));
   }
 
-  files.push(...generateAssetFiles(config));
+  files.push(...generateAssetFiles(config, outputDirectory));
   return files;
 }

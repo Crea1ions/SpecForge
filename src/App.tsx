@@ -171,7 +171,9 @@ export default function App() {
       return;
     }
 
-    const htmlFile = generatedFiles.find((file) => file.path === 'index.html' && file.language === 'html');
+    const htmlFile =
+      generatedFiles.find((file) => file.path.endsWith('/index.html') && file.language === 'html') ??
+      generatedFiles.find((file) => file.path === 'index.html' && file.language === 'html');
     if (!htmlFile) {
       showToast('Aucun fichier HTML autonome n’a été généré.', 'error');
       return;

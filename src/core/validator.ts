@@ -19,7 +19,8 @@ export function validateSpecification(
   registry: BrickRegistry
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  issues.push(...validateStaticWebConfig(spec.profile, spec.template, spec.staticWeb));
+  const uiUxConfig = spec.profile === 'static-web' ? spec.staticWeb : spec.uiUx;
+  issues.push(...validateStaticWebConfig(spec.profile, spec.template, uiUxConfig));
 
   if (spec.profile === 'static-web') {
     if (spec.project.type !== 'static-site') {

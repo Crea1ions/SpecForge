@@ -26,6 +26,33 @@ export function slugifyStaticWebValue(value: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+export function resolveStaticWebReferencePath(value: string, sourcePath?: string): string | undefined {
+  if (value.startsWith('#') || /^[a-z][a-z\d+.-]*:/i.test(value)) return undefined;
+  if (value.startsWith('//') || value.includes('\\') || /[\u0000-\u001f]/.test(value)) return '';
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(value.split(/[?#]/)[0]);
+  } catch {
+    return '';
+  }
+
+  const sourceDirectory = sourcePath?.includes('/')
+    ? sourcePath.slice(0, sourcePath.lastIndexOf('/') + 1)
+    : '';
+  const segments = value.startsWith('/') ? [] : sourceDirectory.split('/').filter(Boolean);
+  for (const segment of decoded.replace(/^\/+/, '').split('/')) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      if (segments.length === 0) return '';
+      segments.pop();
+    } else {
+      segments.push(segment);
+    }
+  }
+  return segments.join('/');
+}
+
 function basename(path: string): string {
   const name = path.replace(/\\/g, '/').split('/').pop() ?? '';
   return name.replace(/\.md$/i, '') || 'page';

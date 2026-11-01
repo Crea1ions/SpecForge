@@ -49,7 +49,7 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
       question: 'project.yaml source de vérité',
       claim: 'Peut-on modifier le YAML et reconstruire intégralement le projet ?',
       status: 'pending',
-      details: 'Vérifie que la mutation du YAML recompile instantanément l\'arbre des fichiers et l\'architecture via SpecForge Core.',
+      details: 'Modifie la spécification, la sérialise en YAML puis vérifie que le Core la résout et répercute les valeurs dans ses sorties.',
     },
     {
       id: 'test-deterministic',
@@ -110,9 +110,9 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
     {
       id: 'test-zip-usability',
       question: 'Complétude du projet généré',
-      claim: 'Les fichiers d\'entrée racine sont-ils présents ?',
+      claim: 'Les fichiers d\'entrée requis par le profil sont-ils présents ?',
       status: 'pending',
-      details: 'Vérifie la présence des fichiers racines indispensables (Cargo.toml, main.rs, README.md).',
+      details: 'Vérifie les entrées attendues selon le runtime sélectionné (Cargo, React/Vite, application native ou site statique).',
     },
     {
       id: 'test-ai-role',
@@ -147,25 +147,45 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
 
       const modifiedSpec: ProjectSpecification = JSON.parse(JSON.stringify(spec));
       modifiedSpec.project.name = 'Projet_Test_Vérification';
-      modifiedSpec.backend.port = 9876;
+      if (modifiedSpec.backend.enabled) modifiedSpec.backend.port = 9876;
 
       const yaml = YAML.stringify(modifiedSpec);
       const parsedSpec = YAML.parse(yaml) as ProjectSpecification;
       const resArch = SpecForge.resolve(parsedSpec);
       const files = SpecForge.generate(parsedSpec, resArch);
 
-      const mainRs = files.find((f) => f.path === 'src/main.rs');
-      const hasUpdatedPort = mainRs?.content.includes('9876');
+      const sourceOfTruth = files.find((file) => file.path === 'project.yaml');
+      const generatedFiles = files.filter(
+        (file) => file.path !== 'project.yaml' && file.path !== 'project.md',
+      );
+      const hasUpdatedPort = !modifiedSpec.backend.enabled ||
+        generatedFiles.some((file) => file.content.includes('9876'));
+      const generationAllowed = resArch.isValid &&
+        !files.some((file) => file.path === 'ERROR_GENERATION_BLOCKED.md');
 
-      if (parsedSpec.backend.port === 9876 && hasUpdatedPort) {
+      if (
+        parsedSpec.project.name === 'Projet_Test_Vérification' &&
+        parsedSpec.backend.port === (modifiedSpec.backend.enabled ? 9876 : spec.backend.port) &&
+        sourceOfTruth?.content.includes('Projet_Test_Vérification') &&
+        hasUpdatedPort &&
+        generationAllowed
+      ) {
         updateTestStatus(
           'test-source-of-truth',
           'passed',
-          'SUCCÈS : La mutation du YAML a reconstruit l\'intégralité des fichiers avec le port 9876 et le nouveau nom.',
+          'SUCCÈS : Le YAML modifié a été résolu; le nom est présent dans la source de vérité et les paramètres applicatifs ont été régénérés.',
           Math.round(performance.now() - t0)
         );
       } else {
-        updateTestStatus('test-source-of-truth', 'failed', 'ÉCHEC : Le fichier n\'a pas reflété la modification du YAML.');
+        const blockers = resArch.issues
+          .filter((issue) => issue.severity === 'error')
+          .map((issue) => issue.message)
+          .join(' ');
+        updateTestStatus(
+          'test-source-of-truth',
+          'failed',
+          `ÉCHEC : Le Core n’a pas répercuté la spécification YAML.${blockers ? ` Blocages : ${blockers}` : ''}`,
+        );
       }
     }
 
@@ -334,29 +354,47 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
       await new Promise((r) => setTimeout(r, 90));
 
       const files = SpecForge.generate(spec, architecture);
-      const pkgFile = files.find((f) => f.path.endsWith('package.json'));
-      const tomlFile = files.find((f) => f.path === 'Cargo.toml');
+      const packageFiles = files.filter((file) => file.path.endsWith('package.json'));
+      const jsonFiles = files.filter((file) => file.path.endsWith('.json'));
+      const tomlFiles = files.filter((file) => file.path.endsWith('.toml'));
+      const requiresRustManifest = spec.profile === 'rust';
+      const requiresReactManifest = spec.frontend.enabled && spec.frontend.framework === 'react';
 
       let jsonValid = true;
-      if (pkgFile) {
+      for (const jsonFile of jsonFiles) {
         try {
-          JSON.parse(pkgFile.content);
+          JSON.parse(jsonFile.content);
         } catch {
           jsonValid = false;
+          break;
         }
       }
 
-      const tomlValid = Boolean(tomlFile && tomlFile.content.includes('[package]') && tomlFile.content.includes('[dependencies]'));
+      const tomlValid = tomlFiles.every((file) =>
+        /^\s*\[package\]\s*$/m.test(file.content) &&
+        /^\s*\[dependencies\]\s*$/m.test(file.content),
+      );
+      const manifestsPresent =
+        (!requiresRustManifest || tomlFiles.some((file) => file.path === 'Cargo.toml' || file.path === 'src-tauri/Cargo.toml')) &&
+        (!requiresReactManifest || packageFiles.length > 0);
 
-      if (jsonValid && tomlValid) {
+      if (jsonValid && tomlValid && manifestsPresent) {
         updateTestStatus(
           'test-compilation-syntax',
           'passed',
-          'VALIDATION SYNTAXIQUE : Manifestes Cargo.toml et package.json conformes. (Compilateur réel cargo/tsc non exécuté dans ce mode).',
+          'VALIDATION SYNTAXIQUE : Les manifestes JSON et TOML applicables au profil sont structurés. (Les compilateurs cargo/tsc ne sont pas exécutés dans ce mode).',
           Math.round(performance.now() - t0)
         );
       } else {
-        updateTestStatus('test-compilation-syntax', 'failed', 'ÉCHEC : Erreur de syntaxe dans les manifestes générés.');
+        updateTestStatus(
+          'test-compilation-syntax',
+          'failed',
+          `ÉCHEC : Manifeste manquant ou invalide (${[
+            !jsonValid ? 'JSON' : '',
+            !tomlValid ? 'TOML' : '',
+            !manifestsPresent ? 'manifeste requis absent' : '',
+          ].filter(Boolean).join(', ')}).`,
+        );
       }
     }
 
@@ -392,19 +430,35 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
       await new Promise((r) => setTimeout(r, 70));
 
       const files = SpecForge.generate(spec, architecture);
-      const hasMain = files.some((f) => f.path === 'src/main.rs');
-      const hasCargo = files.some((f) => f.path === 'Cargo.toml');
-      const hasReadme = files.some((f) => f.path === 'README.md');
+      const filePaths = new Set(files.map((file) => file.path));
+      const requiredPaths = spec.profile === 'static-web'
+        ? ['index.html']
+        : [
+            ...(spec.profile === 'rust'
+              ? spec.template === 'desktop'
+                ? ['src-tauri/Cargo.toml', 'src-tauri/src/main.rs']
+                : ['Cargo.toml', 'src/main.rs']
+              : []),
+            ...(spec.frontend.enabled && spec.frontend.framework === 'react'
+              ? ['frontend/package.json', 'frontend/index.html']
+              : []),
+            'README.md',
+          ];
+      const missingPaths = requiredPaths.filter((path) => !filePaths.has(path));
 
-      if (hasMain && hasCargo && hasReadme) {
+      if (missingPaths.length === 0) {
         updateTestStatus(
           'test-zip-usability',
           'passed',
-          'SUCCÈS : L\'arborescence contient tous les fichiers requis pour exécuter immédiatement "cargo run".',
+          'SUCCÈS : L’arborescence contient les fichiers d’entrée du profil sélectionné.',
           Math.round(performance.now() - t0)
         );
       } else {
-        updateTestStatus('test-zip-usability', 'failed', 'ÉCHEC : Fichiers racines manquants pour une exécution directe.');
+        updateTestStatus(
+          'test-zip-usability',
+          'failed',
+          `ÉCHEC : Fichiers requis absents : ${missingPaths.join(', ')}.`,
+        );
       }
     }
 

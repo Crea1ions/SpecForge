@@ -5,6 +5,7 @@
 
 import { ProjectSpecification } from '../core';
 import { createStaticWebBlock } from '../core/static-web/bricks';
+import { createDefaultProjectUiUxConfig } from '../core/static-web/config';
 
 function presetBlock(
   brickId: string,
@@ -35,7 +36,7 @@ export const findPreset = (
       preset.spec.template === template,
   );
 
-export const PRESETS: ArchitecturePreset[] = [
+const PRESET_DEFINITIONS: ArchitecturePreset[] = [
 {
   id: 'rust-web-app',
   name: 'Rust Web App',
@@ -830,3 +831,15 @@ export const PRESETS: ArchitecturePreset[] = [
     },
   },
 ];
+
+export const PRESETS: ArchitecturePreset[] = PRESET_DEFINITIONS.map((preset) =>
+  preset.spec.profile === 'static-web' || preset.spec.uiUx
+    ? preset
+    : {
+        ...preset,
+        spec: {
+          ...preset.spec,
+          uiUx: createDefaultProjectUiUxConfig(preset.spec),
+        },
+      },
+);

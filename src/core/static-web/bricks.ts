@@ -6,11 +6,24 @@ import {
   TechnicalProfile,
   ValidationIssue,
 } from '../types';
+import { resolveStaticWebReferencePath } from './content';
 
 const staticTemplates: ApplicationTemplate[] = [
   'static-documentation',
   'static-website',
   'static-landing-page',
+];
+
+const compatibleProfiles: TechnicalProfile[] = ['rust', 'python', 'typescript', 'go', 'static-web'];
+const compatibleTemplates: ApplicationTemplate[] = [
+  'web-frontend',
+  'web-app',
+  'web-platform',
+  'ecommerce',
+  'api-service',
+  'desktop',
+  'mobile',
+  ...staticTemplates,
 ];
 
 export const STATIC_WEB_BRICKS: StaticWebBrickDefinition[] = [
@@ -19,8 +32,8 @@ export const STATIC_WEB_BRICKS: StaticWebBrickDefinition[] = [
     name: 'Hero',
     description: 'Introductory page header with a title, message, and optional action.',
     category: 'structure',
-    compatibleProfiles: ['static-web'],
-    compatibleTemplates: staticTemplates,
+    compatibleProfiles,
+    compatibleTemplates,
     properties: [
       { key: 'title', label: 'Title', type: 'text', defaultValue: 'A new beginning', required: true },
       { key: 'subtitle', label: 'Subtitle', type: 'text', defaultValue: 'Tell visitors what matters.' },
@@ -33,8 +46,8 @@ export const STATIC_WEB_BRICKS: StaticWebBrickDefinition[] = [
     name: 'Text / Content',
     description: 'A Markdown content section.',
     category: 'content',
-    compatibleProfiles: ['static-web'],
-    compatibleTemplates: staticTemplates,
+    compatibleProfiles,
+    compatibleTemplates,
     properties: [
       { key: 'heading', label: 'Heading', type: 'text', defaultValue: 'About' },
       { key: 'markdown', label: 'Content', type: 'markdown', defaultValue: 'Write your content here.' },
@@ -45,8 +58,8 @@ export const STATIC_WEB_BRICKS: StaticWebBrickDefinition[] = [
     name: 'Features / Cards',
     description: 'A responsive collection of feature cards.',
     category: 'content',
-    compatibleProfiles: ['static-web'],
-    compatibleTemplates: staticTemplates,
+    compatibleProfiles,
+    compatibleTemplates,
     properties: [
       { key: 'heading', label: 'Heading', type: 'text', defaultValue: 'What you get' },
       { key: 'items', label: 'Cards', type: 'list', defaultValue: ['First feature', 'Second feature', 'Third feature'] },
@@ -57,8 +70,8 @@ export const STATIC_WEB_BRICKS: StaticWebBrickDefinition[] = [
     name: 'Gallery',
     description: 'A collection of locally managed image assets.',
     category: 'content',
-    compatibleProfiles: ['static-web'],
-    compatibleTemplates: staticTemplates,
+    compatibleProfiles,
+    compatibleTemplates,
     properties: [
       { key: 'heading', label: 'Heading', type: 'text', defaultValue: 'Gallery' },
       { key: 'images', label: 'Image paths', type: 'list', defaultValue: [] },
@@ -69,8 +82,8 @@ export const STATIC_WEB_BRICKS: StaticWebBrickDefinition[] = [
     name: 'Testimonials',
     description: 'A quote with an attribution.',
     category: 'marketing',
-    compatibleProfiles: ['static-web'],
-    compatibleTemplates: staticTemplates,
+    compatibleProfiles,
+    compatibleTemplates,
     properties: [
       { key: 'quote', label: 'Quote', type: 'text', defaultValue: 'A thoughtful testimonial.' },
       { key: 'author', label: 'Author', type: 'text', defaultValue: 'A happy customer' },
@@ -82,8 +95,8 @@ export const STATIC_WEB_BRICKS: StaticWebBrickDefinition[] = [
     name: 'Call To Action',
     description: 'A focused closing section with an optional link.',
     category: 'marketing',
-    compatibleProfiles: ['static-web'],
-    compatibleTemplates: staticTemplates,
+    compatibleProfiles,
+    compatibleTemplates,
     properties: [
       { key: 'title', label: 'Title', type: 'text', defaultValue: 'Ready to begin?' },
       { key: 'text', label: 'Message', type: 'text', defaultValue: '' },
@@ -154,29 +167,18 @@ function makeIssue(id: string, message: string): ValidationIssue {
   };
 }
 
-function resolveLocalPath(value: string, page: StaticWebPage): string | undefined {
-  if (value.startsWith('#') || /^[a-z][a-z\d+.-]*:/i.test(value)) return undefined;
-  if (value.startsWith('//') || value.includes('\\') || /[\u0000-\u001f]/.test(value)) return '';
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(value.split(/[?#]/)[0]);
-  } catch {
-    return '';
-  }
-  const sourceDirectory = page.sourcePath?.includes('/')
-    ? page.sourcePath.slice(0, page.sourcePath.lastIndexOf('/') + 1)
-    : '';
-  const segments = value.startsWith('/') ? [] : sourceDirectory.split('/').filter(Boolean);
-  for (const segment of decoded.replace(/^\/+/, '').split('/')) {
-    if (!segment || segment === '.') continue;
-    if (segment === '..') {
-      if (segments.length === 0) return '';
-      segments.pop();
-    } else {
-      segments.push(segment);
-    }
-  }
-  return segments.join('/');
+function makeReferenceIssue(
+  profile: TechnicalProfile,
+  id: string,
+  message: string,
+): ValidationIssue {
+  return {
+    id,
+    severity: profile === 'static-web' ? 'error' : 'warning',
+    title: profile === 'static-web' ? 'Configuration Static Web invalide' : 'Référence de contenu à vérifier',
+    message,
+    source: 'configuration',
+  };
 }
 
 export function validateStaticWebConfig(
@@ -184,9 +186,10 @@ export function validateStaticWebConfig(
   template: ApplicationTemplate,
   config: StaticWebConfig | undefined,
 ): ValidationIssue[] {
-  if (profile !== 'static-web') return [];
   if (!config) {
-    return [makeIssue('static-web-config-missing', 'La configuration Static Web est obligatoire pour ce profil.')];
+    return profile === 'static-web'
+      ? [makeIssue('static-web-config-missing', 'La configuration Static Web est obligatoire pour ce profil.')]
+      : [];
   }
 
   const issues: ValidationIssue[] = [];
@@ -207,7 +210,7 @@ export function validateStaticWebConfig(
       .map((asset) => asset.path.replace(/^\/+/, '')),
   );
 
-  if (!staticTemplates.includes(template)) {
+  if (profile === 'static-web' && !staticTemplates.includes(template)) {
     issues.push(makeIssue('static-web-template-invalid', 'Le profil Static Web exige un template Documentation, Website ou Landing Page.'));
   }
   if (!['content-driven', 'layout-driven'].includes(config.compositionMode)) {
@@ -224,6 +227,12 @@ export function validateStaticWebConfig(
   }
   if (!['single-html', 'multi-file'].includes(config.exportMode)) {
     issues.push(makeIssue('static-web-export-mode-invalid', 'Le format d’export n’est pas reconnu.'));
+  }
+  if (
+    config.contentInstruction !== undefined &&
+    (typeof config.contentInstruction !== 'string' || config.contentInstruction.length > 2000)
+  ) {
+    issues.push(makeIssue('static-web-content-instruction-invalid', 'La consigne interne ne peut pas dépasser 2 000 caractères.'));
   }
   if (!['paper', 'ocean', 'obsidian', 'custom'].includes(config.theme.preset)) {
     issues.push(makeIssue('static-web-theme-preset-invalid', 'Le preset de thème n’est pas reconnu.'));
@@ -323,7 +332,7 @@ export function validateStaticWebConfig(
           if (!isSafeUrl(value)) {
             issues.push(makeIssue(`static-web-brick-url-${block.id}-${property.key}`, `L’URL '${value}' n’est pas autorisée dans '${definition.name}'.`));
           } else if (!value.startsWith('#') && !/^[a-z][a-z\d+.-]*:/i.test(value)) {
-            const assetPath = resolveLocalPath(value, page);
+            const assetPath = resolveStaticWebReferencePath(value, page.sourcePath);
             const pageExists = config.pages.some((candidate) =>
               Boolean(candidate) && (
                 assetPath === `${candidate.slug}.html` ||
@@ -334,21 +343,21 @@ export function validateStaticWebConfig(
             const assetExists = assetPath !== undefined && assetPath !== '' &&
               (knownAssets.has(assetPath) || [...knownAssets].some((asset) => asset.endsWith(`/${assetPath}`)));
             if (!pageExists && !assetExists) {
-              issues.push(makeIssue(`static-web-block-resource-${block.id}-${property.key}`, `La référence locale '${value}' est introuvable.`));
+              issues.push(makeReferenceIssue(profile, `static-web-block-resource-${block.id}-${property.key}`, `La référence locale '${value}' est introuvable.`));
             }
           }
         }
         if (property.type === 'list' && block.brickId === 'gallery' && Array.isArray(value)) {
           value.forEach((entry, entryIndex) => {
             if (typeof entry !== 'string') return;
-            const resolvedPath = resolveLocalPath(entry, page);
+            const resolvedPath = resolveStaticWebReferencePath(entry, page.sourcePath);
             const imageAsset = config.assets.find((asset) =>
               asset && typeof asset.path === 'string' &&
               (asset.path === resolvedPath || asset.path.endsWith(`/${resolvedPath}`)),
             );
             if (resolvedPath === '' || typeof imageAsset?.mediaType !== 'string' ||
                 !imageAsset.mediaType.startsWith('image/')) {
-              issues.push(makeIssue(`static-web-gallery-asset-${block.id}-${entryIndex}`, `L’asset de galerie '${entry}' est introuvable ou son chemin n’est pas sûr.`));
+              issues.push(makeReferenceIssue(profile, `static-web-gallery-asset-${block.id}-${entryIndex}`, `L’asset de galerie '${entry}' est introuvable ou son chemin n’est pas sûr.`));
             }
           });
         }
@@ -363,7 +372,7 @@ export function validateStaticWebConfig(
       if (!isSafeUrl(url)) {
         issues.push(makeIssue(`static-web-url-${index}-${referenceIndex}`, `L’URL '${url}' n’est pas autorisée.`));
       } else if (!url.startsWith('#') && !/^[a-z][a-z\d+.-]*:/i.test(url)) {
-        const assetPath = resolveLocalPath(url, page);
+        const assetPath = resolveStaticWebReferencePath(url, page.sourcePath);
         const referencedPage = config.pages.some((candidate) =>
           Boolean(candidate) && (
             assetPath === `${candidate.slug}.md` ||
@@ -374,7 +383,7 @@ export function validateStaticWebConfig(
         const assetExists = assetPath !== undefined && assetPath !== '' &&
           (knownAssets.has(assetPath) || [...knownAssets].some((asset) => asset.endsWith(`/${assetPath}`)));
         if (!assetExists && !referencedPage) {
-          issues.push(makeIssue(`static-web-reference-missing-${index}-${referenceIndex}`, `La ressource locale '${url}' est introuvable.`));
+          issues.push(makeReferenceIssue(profile, `static-web-reference-missing-${index}-${referenceIndex}`, `La ressource locale '${url}' est introuvable.`));
         } else if (reference.startsWith('!') && assetExists) {
           const imageAsset = config.assets.find((asset) =>
             asset && typeof asset.path === 'string' &&
@@ -382,7 +391,7 @@ export function validateStaticWebConfig(
           );
           if (imageAsset && typeof imageAsset.mediaType === 'string' &&
               !imageAsset.mediaType.startsWith('image/')) {
-            issues.push(makeIssue(`static-web-reference-not-image-${index}-${referenceIndex}`, `La ressource '${url}' n’est pas une image.`));
+            issues.push(makeReferenceIssue(profile, `static-web-reference-not-image-${index}-${referenceIndex}`, `La ressource '${url}' n’est pas une image.`));
           }
         }
       }
