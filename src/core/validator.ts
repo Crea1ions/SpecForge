@@ -11,6 +11,7 @@
 
 import { ProjectSpecification, BrickDefinition, ValidationIssue } from './types';
 import { BrickRegistry } from './registry';
+import { validateStaticWebConfig } from './static-web/bricks';
 
 export function validateSpecification(
   spec: ProjectSpecification,
@@ -18,6 +19,46 @@ export function validateSpecification(
   registry: BrickRegistry
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
+  issues.push(...validateStaticWebConfig(spec.profile, spec.template, spec.staticWeb));
+
+  if (spec.profile === 'static-web') {
+    if (spec.project.type !== 'static-site') {
+      issues.push({
+        id: 'static-web-project-type-invalid',
+        severity: 'error',
+        title: 'Type de projet Static Web invalide',
+        message: "Le profil Static Web exige le type de projet 'static-site'.",
+        source: 'configuration',
+      });
+    }
+    if (
+      spec.backend.enabled ||
+      spec.database.enabled ||
+      spec.api.style !== 'none' ||
+      spec.authentication.enabled
+    ) {
+      issues.push({
+        id: 'static-web-server-feature-enabled',
+        severity: 'error',
+        title: 'Le profil Static Web doit rester autonome',
+        message: 'Désactivez le backend, la base de données, l’API et l’authentification pour générer un site statique sans serveur.',
+        source: 'compatibility',
+      });
+    }
+    if (
+      !spec.frontend.enabled ||
+      spec.frontend.framework !== 'static-html' ||
+      spec.frontend.bundler !== 'none'
+    ) {
+      issues.push({
+        id: 'static-web-frontend-invalid',
+        severity: 'error',
+        title: 'Configuration frontend Static Web invalide',
+        message: 'Le profil Static Web utilise du HTML/CSS/JavaScript sans framework ni bundler.',
+        source: 'configuration',
+      });
+    }
+  }
 
   if (spec.template === 'ecommerce') {
     const requiredConfiguration =

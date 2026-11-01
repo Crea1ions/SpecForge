@@ -14,6 +14,7 @@ import { ProjectSpecification, GeneratedFile, ResolvedArchitecture, GenerationCo
 import { BrickRegistry, defaultRegistry } from './registry';
 import { resolveArchitecture } from './resolver';
 import { getContentByteLength } from './utils';
+import { generateStaticWebSite } from './static-web/render';
 import YAML from 'yaml';
 
 function renderMarkdown(value: unknown, level = 1): string {
@@ -168,6 +169,11 @@ ${renderMarkdown(spec, 2)}
     activeBricks: resolved.activeBricks,
     decisions: resolved.decisions,
   };
+
+  if (spec.profile === 'static-web') {
+    files.push(...generateStaticWebSite(spec));
+    return files;
+  }
 
   // 3. Invoke each autonomous brick plugin
   for (const brick of resolved.activeBricks) {

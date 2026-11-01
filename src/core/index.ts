@@ -18,6 +18,9 @@ export * from './validator';
 export * from './resolver';
 export * from './generator';
 export * from './utils';
+export * from './static-web/content';
+export * from './static-web/bricks';
+export * from './static-web/render';
 
 /**
  * Unified Core Facade

@@ -751,3 +751,58 @@ Template   → possède une architecture applicative cohérente
 Generator  → matérialise le résultat
 Developer  → construit le produit
 ```
+
+---
+
+## 16. Profil Static Web et bricks de composition
+
+Le profil `static-web` ajoute une configuration métier `staticWeb` à la
+`ProjectSpecification`. Le Core conserve le pipeline existant :
+
+```text
+ProjectSpecification.staticWeb
+        ↓
+validateStaticWebConfig
+        ↓
+Static Web renderer
+        ↓
+GeneratedFile[]
+```
+
+Le modèle comprend séparément le mode de composition
+(`content-driven` / `layout-driven`), l'organisation des pages
+(`single-page` / `multi-page` / `documentation`) et le mode de navigation.
+La configuration propose un menu latéral repliable ou un menu burger
+déroulant ; les anciennes valeurs `topbar` et `combined` restent interprétées
+pour préserver les projets existants. Les templates `static-documentation`,
+`static-website` et `static-landing-page` sont des points de départ, pas des
+catégories fermées.
+
+Les contrats de composition sont déclarés dans
+`src/core/static-web/bricks.ts` et exposés par `StaticWebBrickRegistry`.
+Chaque `StaticWebBrickDefinition` décrit son identité, sa catégorie, ses
+propriétés, ses valeurs par défaut et ses profils/templates compatibles. Les
+six bricks initiales sont Hero, Text / Content, Features / Cards, Gallery,
+Testimonials et Call To Action. L'interface édite les propriétés déclarées ;
+le moteur dans `render.ts` possède les implémentations de rendu. Cette
+séparation est additive : elle ne transforme pas les `BrickDefinition`
+existantes et ne suppose pas que leur code de génération soit partagé avec un
+autre profil.
+
+`content.ts` lit le frontmatter YAML et produit les pages normalisées. La
+validation du Core vérifie les slugs, les propriétés de bricks, les couleurs,
+les URL, les chemins et les ressources locales. Le moteur Markdown échappe les
+fragments HTML et n'émet pas les liens utilisant des protocoles non autorisés.
+Les prévisualisations et la génération utilisent les mêmes fonctions de
+rendu.
+
+Single HTML intègre CSS, JavaScript, contenu et assets en base64. L'export
+multi-fichiers n'utilise que des références relatives locales et comprend son
+CSS, son JavaScript et ses assets. La recherche est générée à partir d'un index
+local intégré au HTML ; aucun chargement réseau, import dynamique, CDN ou
+backend n'est requis pour ouvrir le résultat via `file://`.
+
+Les tests ciblés du Core Static Web sont lancés avec `npm test`. Toute
+extension des bricks vers d'autres profils doit ajouter une implémentation et
+déclarer explicitement sa compatibilité, sans généraliser la génération
+existante sans cas d'usage concret.

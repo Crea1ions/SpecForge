@@ -80,8 +80,9 @@ SpecForge est conçu pour supporter plusieurs profils :
 * Python
 * TypeScript
 * Go
+* Static Web
 
-**Actuellement, seul le profil Rust est complet** (sept templates). Le profil TypeScript n'a qu'un template (Web Frontend, avec React). Python et Go font partie du modèle cible, mais ne sont pas encore développés.
+Le profil **Static Web** génère des sites autonomes en HTML/CSS/JavaScript, à partir de Markdown ou de blocs configurables, sans framework ni backend. Rust dispose de ses templates applicatifs; TypeScript propose Web Frontend avec React. Python et Go font partie du modèle cible, mais ne sont pas encore développés.
 
 ---
 
@@ -131,6 +132,16 @@ Templates Rust actuellement disponibles :
 
 Les types d'applications génériques sont couverts par un template Rust ; le preset e-commerce est une spécialisation métier distincte.
 
+Le profil Static Web propose trois templates de départ configurables :
+
+* **Documentation** — pages Markdown hiérarchiques avec navigation latérale ;
+* **Website** — site généraliste multi-pages composé de contenus et de blocs ;
+* **Landing Page** — page de présentation composée de sections.
+
+Le résultat peut être exporté en HTML autonome ou en projet multi-fichiers ZIP. Le moteur de rendu assainit le contenu Markdown et les fichiers générés ne dépendent pas de SpecForge, d’un backend ou d’un CDN.
+
+L’éditeur Static Web suit cinq modules repliables — Type de site, Contenu, Structure, Apparence et Génération — avec leur état et un résumé des choix. La composition par blocs est facultative et se trouve dans la personnalisation avancée. Sur grand écran, l’aperçu Desktop est affiché à côté de la configuration; les formats Tablette et Mobile ainsi que les thèmes Clair et Sombre sont accessibles depuis les contrôles de l’aperçu. Sur petit écran, un onglet permet de basculer entre configuration et aperçu.
+
 ### Rust E-commerce V2
 
 Le preset `rust-ecommerce` génère un squelette React/Vite, Axum et PostgreSQL/SQLx couvrant notamment le catalogue, les commandes, les comptes, les retours, les pages de contenu, les indicateurs d'administration et les documents opérationnels PDF.
@@ -152,6 +163,10 @@ src/core/
 ├── resolver.ts
 ├── generator.ts
 ├── index.ts
+├── static-web/
+│   ├── bricks.ts
+│   ├── content.ts
+│   └── render.ts
 └── bricks/
     └── default-bricks.ts
 ```

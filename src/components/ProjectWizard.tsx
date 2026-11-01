@@ -11,6 +11,7 @@ import { DropdownSelect } from './DropdownSelect';
 import { ProjectSpecification, ResolvedArchitecture, TechnicalProfile } from '../types/spec';
 import { findPreset, PRESETS } from '../engine/presets';
 import { AnimatedHeading } from './AnimatedHeading';
+import { StaticWebEditor } from './StaticWebEditor';
 
 export type OnboardingStage = -1 | 0 | 1 | 2 | 3;
 
@@ -22,6 +23,7 @@ interface ProjectWizardProps {
   onboardingStage: OnboardingStage;
   setOnboardingStage: (stage: OnboardingStage) => void;
   onDownloadZip: () => void;
+  onDownloadHtml: () => void;
   onOpenArchitecture: () => void;
   isDownloading: boolean;
 }
@@ -31,6 +33,7 @@ const profileLabels: Record<TechnicalProfile, string> = {
   python: 'Python',
   typescript: 'TypeScript',
   go: 'Go',
+  'static-web': 'Static Web',
 };
 
 export const ProjectWizard: React.FC<ProjectWizardProps> = ({
@@ -41,6 +44,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
   onboardingStage,
   setOnboardingStage,
   onDownloadZip,
+  onDownloadHtml,
   onOpenArchitecture,
   isDownloading,
 }) => {
@@ -199,7 +203,9 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
         aria-labelledby="configuration-title"
         tabIndex={-1}
         hidden={!isQuickCreateOpen}
-        className="quick-create-reveal mx-auto w-full max-w-2xl scroll-mt-24 px-shell pb-12"
+        className={`quick-create-reveal mx-auto w-full scroll-mt-24 px-shell pb-12 ${
+          spec.profile === 'static-web' ? 'max-w-[96rem]' : 'max-w-2xl'
+        }`}
       >
         <div className="ov-panel ov-panel-translucent p-4 sm:p-6">
             <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
@@ -212,7 +218,11 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
                 </h2>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-neutral-400">Étape {stepCount} sur 4</span>
+                <span className="text-xs text-neutral-400">
+                  {spec.profile === 'static-web' && onboardingStage >= 1
+                    ? 'Configuration Static Web · 5 étapes'
+                    : `Étape ${stepCount} sur 4`}
+                </span>
                 <button
                   type="button"
                   onClick={closeQuickCreate}
@@ -277,7 +287,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
                 )}
               </li>
 
-              {onboardingStage >= 1 && (
+              {spec.profile !== 'static-web' && onboardingStage >= 1 && (
                 <li className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-3 sm:p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
@@ -342,7 +352,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
                 </li>
               )}
 
-              {onboardingStage >= 2 && (
+              {spec.profile !== 'static-web' && onboardingStage >= 2 && (
                 <li className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-3 sm:p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
@@ -412,7 +422,23 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
                 </li>
               )}
 
-              {onboardingStage >= 3 && (
+              {spec.profile === 'static-web' && onboardingStage >= 1 && (
+                <li className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-3 sm:p-4">
+                  <StaticWebEditor
+                    spec={spec}
+                    onChange={onChange}
+                    architecture={architecture}
+                    canGenerate={canContinue}
+                    isDownloading={isDownloading}
+                    onProjectNameChange={handleProjectNameChange}
+                    onDownloadZip={onDownloadZip}
+                    onDownloadHtml={onDownloadHtml}
+                    onOpenArchitecture={onOpenArchitecture}
+                  />
+                </li>
+              )}
+
+              {onboardingStage >= 3 && spec.profile !== 'static-web' && (
                 <li className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-3 sm:p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-start gap-3">

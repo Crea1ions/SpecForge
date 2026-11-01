@@ -165,6 +165,30 @@ export default function App() {
     }
   };
 
+  const handleDownloadHtml = () => {
+    if (!architecture.isValid) {
+      showToast('Impossible d\'exporter : résolvez d\'abord les erreurs de configuration.', 'error');
+      return;
+    }
+
+    const htmlFile = generatedFiles.find((file) => file.path === 'index.html' && file.language === 'html');
+    if (!htmlFile) {
+      showToast('Aucun fichier HTML autonome n’a été généré.', 'error');
+      return;
+    }
+
+    const blob = new Blob([htmlFile.content], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${spec.project.slug || 'site'}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast(`Fichier ${link.download} téléchargé avec succès.`);
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-neutral-950 font-sans text-neutral-100">
       <AppBackground />
@@ -198,6 +222,7 @@ export default function App() {
             onboardingStage={onboardingStage}
             setOnboardingStage={setOnboardingStage}
             onDownloadZip={handleDownloadZip}
+            onDownloadHtml={handleDownloadHtml}
             onOpenArchitecture={() => setCurrentTab('architecture')}
             isDownloading={isDownloading}
           />

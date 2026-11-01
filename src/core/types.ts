@@ -5,13 +5,21 @@
  * Independent of React, DOM, UI components, or any specific presentation framework.
  */
 
-export type ProjectType = 'fullstack' | 'desktop' | 'backend-only' | 'frontend-only' | 'cli' | 'mobile';
+export type ProjectType =
+  | 'fullstack'
+  | 'desktop'
+  | 'backend-only'
+  | 'frontend-only'
+  | 'cli'
+  | 'mobile'
+  | 'static-site';
 
 export type TechnicalProfile =
   | 'rust'
   | 'python'
   | 'typescript'
-  | 'go';
+  | 'go'
+  | 'static-web';
 
 export type ApplicationTemplate =
   | 'web-frontend'
@@ -20,7 +28,10 @@ export type ApplicationTemplate =
   | 'ecommerce'
   | 'api-service'
   | 'desktop'
-  | 'mobile';
+  | 'mobile'
+  | 'static-documentation'
+  | 'static-website'
+  | 'static-landing-page';
 
 export interface ProjectInfo {
   name: string;
@@ -44,7 +55,7 @@ export interface BackendConfig {
 
 export interface FrontendConfig {
   enabled: boolean;
-  framework: 'react' | 'vue' | 'askama' | 'dioxus' | 'none';
+  framework: 'react' | 'vue' | 'askama' | 'dioxus' | 'static-html' | 'none';
   bundler: 'vite' | 'none';
   language: 'typescript' | 'javascript' | 'rust';
   styling: 'tailwind' | 'css';
@@ -89,6 +100,88 @@ export interface DocsConfig {
   workStructure: boolean;
 }
 
+export type StaticWebCompositionMode = 'content-driven' | 'layout-driven';
+export type StaticWebOrganization = 'single-page' | 'multi-page' | 'documentation';
+export type StaticWebNavigation = 'sidebar' | 'topbar' | 'combined' | 'burger';
+export type StaticWebDisplayMode = 'light' | 'dark' | 'system' | 'toggle';
+export type StaticWebExportMode = 'single-html' | 'multi-file';
+
+export interface StaticWebPage {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  order: number;
+  category: string;
+  tags: string[];
+  template?: string;
+  sourcePath?: string;
+  markdown: string;
+  blocks: StaticWebBlock[];
+}
+
+export interface StaticWebBlock {
+  id: string;
+  brickId: string;
+  properties: Record<string, string | number | boolean | string[]>;
+}
+
+export interface StaticWebAsset {
+  path: string;
+  mediaType: string;
+  content: string;
+  encoding: 'base64';
+}
+
+export interface StaticWebConfig {
+  compositionMode: StaticWebCompositionMode;
+  organization: StaticWebOrganization;
+  navigation: StaticWebNavigation;
+  displayMode: StaticWebDisplayMode;
+  exportMode: StaticWebExportMode;
+  theme: {
+    preset: 'paper' | 'ocean' | 'obsidian' | 'custom';
+    primary: string;
+    accent: string;
+    background: string;
+    text: string;
+    darkBackground: string;
+    darkText: string;
+  };
+  pages: StaticWebPage[];
+  assets: StaticWebAsset[];
+}
+
+export type StaticWebBrickPropertyType =
+  | 'text'
+  | 'markdown'
+  | 'url'
+  | 'number'
+  | 'boolean'
+  | 'select'
+  | 'color'
+  | 'list';
+
+export interface StaticWebBrickPropertyDefinition {
+  key: string;
+  label: string;
+  type: StaticWebBrickPropertyType;
+  defaultValue: string | number | boolean | string[];
+  required?: boolean;
+  options?: string[];
+  description?: string;
+}
+
+export interface StaticWebBrickDefinition {
+  id: string;
+  name: string;
+  description: string;
+  category: 'structure' | 'content' | 'marketing';
+  compatibleProfiles: TechnicalProfile[];
+  compatibleTemplates?: ApplicationTemplate[];
+  properties: StaticWebBrickPropertyDefinition[];
+}
+
 export interface ProjectSpecification {
   specVersion: string;
   profile: TechnicalProfile;
@@ -102,6 +195,7 @@ export interface ProjectSpecification {
   infrastructure: InfraConfig;
   quality: QualityConfig;
   documentation: DocsConfig;
+  staticWeb?: StaticWebConfig;
 }
 
 export type BrickCategory =
