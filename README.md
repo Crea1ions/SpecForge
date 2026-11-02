@@ -138,7 +138,20 @@ Premiers modèles des autres profils techniques :
 * **Python + API Service** — FastAPI, REST, OpenAPI et tests ;
 * **Go + API Service** — serveur standard `net/http`, REST, OpenAPI et tests.
 
-Les modèles Python et Go génèrent aussi un site documentaire UI/UX autonome dans `docs-site/`. Leur API de démonstration conserve les éléments en mémoire; aucune persistance, authentification ou conteneurisation n’est déclarée disponible pour ces profils.
+Leur API de démonstration conserve les éléments en mémoire; aucune persistance, authentification ou conteneurisation n’est déclarée disponible pour ces profils. Les templates API-only (Python, Go, Rust Backend Only) peuvent produire un site documentaire autonome dans `docs-site/`, uniquement sur activation explicite dans l’éditeur (désactivé par défaut).
+
+### Bricks UI/UX natives par template
+
+Les modèles applicatifs hors Static Web portent une configuration `uiUx` dans la `ProjectSpecification` : pages et contenu Markdown (import de fichiers ou de dossiers `.md`), blocs composés, navigation, thème et assets. Cette configuration alimente **l’interface native du template** — aucun site HTML parallèle n’est généré :
+
+* **Askama** (Web App, Web Frontend) — pages rendues dans les templates Askama, routes et handlers natifs, thème injecté dans les tokens CSS ;
+* **React/Vite** (Web Platform, Web Frontend TypeScript, Desktop Tauri) — composant racine alimenté, navigation par état, thème dans `index.css` ;
+* **Dioxus** (Mobile) — pages servies par le tiroir de navigation natif, thème dans `assets/main.css` ;
+* **E-commerce** — vitrine pilotée par les données métier : seul le thème visuel est appliqué.
+
+Les interfaces générées embarquent par défaut un **interrupteur clair/sombre** fonctionnel (préférence système au premier lancement, choix persisté), avec des palettes dérivées garantissant le contraste dans les deux modes. Les routes, handlers et flux métier des templates sont préservés.
+
+Le système repose sur des contrats séparés dans `src/core/ui-ux/` : définitions de bricks centralisées, implémentations natives par cible, intégrations par template, validation et preview dédiés. Le système Static Web reste entièrement séparé.
 
 Le profil Static Web propose trois templates de départ configurables :
 
@@ -173,11 +186,25 @@ src/core/
 ├── index.ts
 ├── static-web/
 │   ├── bricks.ts
+│   ├── config.ts
 │   ├── content.ts
 │   └── render.ts
+├── ui-ux/
+│   ├── bricks.ts
+│   ├── config.ts
+│   ├── registry.ts
+│   ├── theme.ts
+│   ├── preview.ts
+│   └── implementations/
+│       ├── askama.ts
+│       ├── react.ts
+│       ├── dioxus.ts
+│       └── html-blocks.ts
 └── bricks/
     └── default-bricks.ts
 ```
+
+Le module `ui-ux/` porte les bricks UI/UX des templates applicatifs : configuration commune, définitions, implémentations natives par cible (Askama, React, Dioxus) et aperçus fidèles à chaque moteur. Le module `static-web/` reste le pipeline autonome du profil Static Web, réutilisé tel quel pour le site documentaire optionnel des templates API-only.
 
 ### Validator
 
@@ -311,6 +338,8 @@ SpecForge/
 ├── src/
 │   ├── core/
 │   │   ├── bricks/
+│   │   ├── static-web/
+│   │   ├── ui-ux/
 │   │   ├── generator.ts
 │   │   ├── index.ts
 │   │   ├── registry.ts
@@ -384,18 +413,20 @@ Le socle suivant est en place :
 * système de templates par profil et type d'application ;
 * sept presets Rust : Web App, Web Platform, Web Frontend, API Service, Desktop, Mobile et E-commerce V2 ;
 * premiers templates TypeScript Web Frontend, Python API Service et Go API Service ;
-* éditeur UI/UX partagé et site documentaire autonome pour les templates sans interface métier ;
+* bricks UI/UX natives par template : la configuration partagée (pages, blocs, navigation, thème, assets) alimente l’interface native de chaque template, sans site parallèle ;
+* interrupteur clair/sombre fonctionnel par défaut dans toutes les interfaces générées ;
+* site documentaire `docs-site/` optionnel pour les templates API-only (désactivé par défaut) ;
 * génération Desktop (Tauri) et Mobile (Dioxus) ;
 * interface de vérification et d'audit ;
 * assistance IA séparée du Core.
 
-Le preset e-commerce illustre une spécialisation métier complète au-dessus des briques du Core. L'éditeur UI/UX configure pages, blocs, navigation, apparence et génération pour les presets non Static Web; les templates backend-only exportent leur présentation dans `docs-site/`.
+Le preset e-commerce illustre une spécialisation métier complète au-dessus des briques du Core. L'éditeur UI/UX configure pages, blocs, navigation et apparence pour les presets non Static Web; l’aperçu utilise le moteur de la cible (Askama, React, Dioxus) avec pages empilées cliquables et menu burger responsive.
 
 ---
 
 ## Direction future
 
-Les prochaines évolutions pourront enrichir cette configuration UI/UX partagée, indépendante des choix propres aux presets spécialisés, notamment :
+La configuration UI/UX partagée alimente désormais l’interface native de chaque template (pages, blocs, navigation, thème avec interrupteur clair/sombre). Les prochaines évolutions pourront l’enrichir, indépendamment des choix propres aux presets spécialisés, notamment :
 
 ```text
 Projet
@@ -406,7 +437,6 @@ Interface
   └── Sous-hubs
   ↓
 Thème
-  ├── Mode
   ├── Style
   ├── Couleur principale
   └── Couleur accent
@@ -414,7 +444,7 @@ Thème
 
 Cette configuration restera volontairement simple.
 
-Elle servira à enrichir la **ProjectSpecification** avant son passage dans le Core.
+Elle servira à enrichir la **ProjectSpecification** avant son passage dans le Core, et chaque nouveau template déclarera son intégration UI/UX (cible de rendu native) dans le registre du Core.
 
 ---
 

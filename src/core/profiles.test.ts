@@ -3,7 +3,7 @@ import test from 'node:test';
 import YAML from 'yaml';
 import { findPreset, PRESETS } from '../engine/presets';
 import { BrickRegistry, ProjectSpecification, SpecForge } from './index';
-import { resolveUiUxOutputDirectory } from './static-web/config';
+import { UI_UX_DOCS_SITE_DIRECTORY } from './ui-ux/config';
 import { parseMarkdownFile } from './static-web/content';
 
 function getPreset(id: string): ProjectSpecification {
@@ -29,6 +29,8 @@ function assertDeterministicGeneration(spec: ProjectSpecification): ReturnType<t
 
 test('Python API Service resolves and generates a deterministic FastAPI scaffold and docs site', () => {
   const spec = getPreset('python-api-service');
+  // Site documentaire : option explicite, désactivée par défaut.
+  spec.uiUx!.docsSite = true;
   const importedPage = parseMarkdownFile(
     'guides/api-usage.md',
     '# Python API usage\n\nCall the health endpoint before using the service.',
@@ -59,7 +61,7 @@ test('Python API Service resolves and generates a deterministic FastAPI scaffold
   assert.match(readme?.content ?? '', /python -m pip install -e/);
   assert.deepEqual(Object.keys(parsedOpenApi.paths), ['/api/health', '/api/items']);
   assert.match(
-    files.find((file) => file.path === `${resolveUiUxOutputDirectory(spec)}/index.html`)?.content ?? '',
+    files.find((file) => file.path === `${UI_UX_DOCS_SITE_DIRECTORY}/index.html`)?.content ?? '',
     /Python API usage/,
   );
 
@@ -71,6 +73,8 @@ test('Python API Service resolves and generates a deterministic FastAPI scaffold
 
 test('Go API Service resolves and generates a deterministic net/http scaffold and docs site', () => {
   const spec = getPreset('go-api-service');
+  // Site documentaire : option explicite, désactivée par défaut.
+  spec.uiUx!.docsSite = true;
   spec.uiUx!.pages.push(
     parseMarkdownFile('guides/api-usage.md', '# Go API usage\n\nStart the service with `go run .`.').page,
   );
@@ -99,7 +103,7 @@ test('Go API Service resolves and generates a deterministic net/http scaffold an
   assert.match(readme?.content ?? '', /go run \./);
   assert.deepEqual(Object.keys(openapi.paths), ['/api/health', '/api/items']);
   assert.match(
-    files.find((file) => file.path === `${resolveUiUxOutputDirectory(spec)}/index.html`)?.content ?? '',
+    files.find((file) => file.path === `${UI_UX_DOCS_SITE_DIRECTORY}/index.html`)?.content ?? '',
     /Go API usage/,
   );
 
@@ -122,6 +126,63 @@ test('TypeScript remains an active React/Vite frontend with frontend-specific CI
   assert.doesNotMatch(workflow?.content ?? '', /cargo test/);
   assert.match(readme?.content ?? '', /npm run dev/);
   assert.equal(findPreset('typescript', 'api-service'), undefined);
+});
+
+test('Rust Web App feeds its native Askama interface from the UI/UX configuration', () => {
+  const spec = getPreset('rust-web-app');
+  spec.uiUx!.pages[0].markdown = '# Configured application home\n\nThis is the UI configured in SpecForge.';
+  spec.uiUx!.pages.push({
+    id: 'page-guide',
+    title: 'Guide',
+    slug: 'guide',
+    description: 'Page additionnelle configurée.',
+    order: 1,
+    category: '',
+    tags: [],
+    markdown: '# Guide\n\nContenu de la page guide.',
+    blocks: [],
+  });
+  spec.uiUx!.theme = { ...spec.uiUx!.theme, preset: 'custom', primary: '#123abc' };
+
+  const files = assertDeterministicGeneration(spec);
+  const paths = new Set(files.map((file) => file.path));
+  const routes = files.find((file) => file.path === 'src/routes.rs')?.content ?? '';
+  const main = files.find((file) => file.path === 'src/main.rs')?.content ?? '';
+  const handlers = files.find((file) => file.path === 'src/handlers.rs')?.content ?? '';
+  const home = files.find((file) => file.path === 'templates/index.html')?.content ?? '';
+  const guide = files.find((file) => file.path === 'templates/pages/guide.html')?.content ?? '';
+  const navigation = files.find((file) => file.path === 'templates/components/navigation.html')?.content ?? '';
+  const tokens = files.find((file) => file.path === 'static/css/tokens.css')?.content ?? '';
+
+  // Aucun site UI parallèle : les sorties vivent dans l'organisation native.
+  assert.ok(![...paths].some((path) => path.includes('ui-site') || path.startsWith('docs-site')));
+  // Accueil natif alimenté par la configuration, routes et handlers métier préservés.
+  assert.match(routes, /\.route\("\/", get\(handlers::index\)\)/);
+  assert.match(routes, /\.route\("\/dashboard", get\(handlers::dashboard\)\)/);
+  assert.match(routes, /\.route\("\/guide", get\(handlers::page_guide\)\)/);
+  assert.doesNotMatch(routes, /ServeFile|get_service/);
+  assert.doesNotMatch(main, /fallback_service/);
+  assert.match(handlers, /struct IndexTemplate;/);
+  assert.match(handlers, /struct GuideTemplate;/);
+  assert.match(handlers, /struct DashboardTemplate/);
+  assert.match(home, /Configured application home/);
+  assert.match(home, /\{% extends "layout\.html" %\}/);
+  assert.match(guide, /Contenu de la page guide\./);
+  assert.match(navigation, /<a href="\/guide">Guide<\/a>/);
+  assert.match(navigation, /<a href="\/dashboard">Tableau de bord<\/a>/);
+  assert.match(tokens, /--color-accent: #123abc/);
+});
+
+test('API-only presets do not emit docs-site unless the user opts in explicitly', () => {
+  for (const presetId of ['python-api-service', 'go-api-service', 'rust-backend-only']) {
+    const spec = getPreset(presetId);
+    assert.equal(spec.uiUx?.docsSite, false, `${presetId} doit être désactivé par défaut`);
+    const files = assertDeterministicGeneration(spec);
+    assert.ok(
+      !files.some((file) => file.path.startsWith(`${UI_UX_DOCS_SITE_DIRECTORY}/`)),
+      `${presetId} ne doit pas générer docs-site/ sans option explicite`,
+    );
+  }
 });
 
 test('unsupported profile combinations and missing backend bricks fail explicitly', () => {

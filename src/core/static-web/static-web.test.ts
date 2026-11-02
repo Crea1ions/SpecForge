@@ -4,7 +4,6 @@ import { PRESETS } from '../../engine/presets';
 import { ProjectSpecification, StaticWebConfig } from '../types';
 import { SpecForge } from '../index';
 import { STATIC_WEB_BRICKS, validateStaticWebConfig } from './bricks';
-import { resolveUiUxOutputDirectory } from './config';
 import { mergeImportedMarkdownPages, parseMarkdownFile } from './content';
 import { generateStaticWebSite, renderStaticWebPreview } from './render';
 
@@ -90,29 +89,6 @@ test('resolves relative links between nested imported Markdown pages', () => {
 
   assert.equal(issues.filter((issue) => issue.id.startsWith('static-web-reference-missing-')).length, 0);
   assert.match(html, /href="#regles-metier-consultation"/);
-});
-
-test('unresolved local references warn instead of blocking non-Static-Web scaffolds', () => {
-  const preset = PRESETS.find((candidate) => candidate.spec.template === 'api-service');
-  assert.ok(preset?.spec.uiUx);
-  const spec = structuredClone(preset.spec);
-  const config = spec.uiUx!;
-  config.pages[0].sourcePath = 'docs/overview.md';
-  config.pages[0].markdown = [
-    '[Page absente](../guides/not-imported.md)',
-    '![Image absente](../assets/not-imported.jpg)',
-  ].join('\n\n');
-
-  const architecture = SpecForge.resolve(spec);
-  const unresolvedReferences = architecture.issues.filter((issue) =>
-    issue.id.startsWith('static-web-reference-missing-'),
-  );
-  const files = SpecForge.generate(spec, architecture);
-
-  assert.equal(architecture.isValid, true);
-  assert.equal(unresolvedReferences.length, 2);
-  assert.ok(unresolvedReferences.every((issue) => issue.severity === 'warning'));
-  assert.ok(files.some((file) => file.path === 'docs-site/index.html'));
 });
 
 test('renders imported content safely and includes in-page contents links', () => {
@@ -318,39 +294,6 @@ test('all starter presets resolve and generate deterministically through the Cor
     assert.ok(first.some((file) => file.path === 'index.html'));
     assert.equal(SpecForge.computeHash(first), SpecForge.computeHash(second));
   }
-});
-
-test('all non-Static-Web presets expose and generate their UI/UX pages', () => {
-  const presets = PRESETS.filter((preset) => preset.spec.profile !== 'static-web');
-  assert.equal(presets.length, 10);
-
-  for (const preset of presets) {
-    assert.ok(preset.spec.uiUx, `${preset.name} should have UI/UX configuration`);
-    const architecture = SpecForge.resolve(preset.spec);
-    assert.equal(architecture.isValid, true, `${preset.name} should remain valid`);
-    const files = SpecForge.generate(preset.spec, architecture);
-    const outputDirectory = resolveUiUxOutputDirectory(preset.spec);
-    const index = files.find((file) => file.path === `${outputDirectory}/index.html`);
-
-    assert.ok(index, `${preset.name} should generate ${outputDirectory}/index.html`);
-    assert.ok(index.content.includes(preset.spec.project.name));
-  }
-});
-
-test('internal content instructions remain in the specification and are not published', () => {
-  const preset = PRESETS.find((candidate) => candidate.spec.template === 'api-service');
-  assert.ok(preset?.spec.uiUx);
-  const spec = structuredClone(preset.spec);
-  spec.uiUx!.contentInstruction = 'INTERNAL_PAGE_PLACEMENT_NOTE';
-
-  const files = SpecForge.generate(spec);
-  const html = files.find((file) => file.path === `${resolveUiUxOutputDirectory(spec)}/index.html`);
-  const sourceOfTruth = files.find((file) => file.path === 'project.yaml');
-
-  assert.ok(html);
-  assert.ok(sourceOfTruth);
-  assert.doesNotMatch(html.content, /INTERNAL_PAGE_PLACEMENT_NOTE/);
-  assert.match(sourceOfTruth.content, /INTERNAL_PAGE_PLACEMENT_NOTE/);
 });
 
 test('Single Page organization remains one HTML page in a multi-file export', () => {

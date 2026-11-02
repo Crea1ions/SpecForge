@@ -17,6 +17,15 @@ import { TAURI_ICON_BASE64 } from '../assets/tauri-icon';
 import { FAVICON_BASE64 } from '../assets/favicon';
 import { generateEcommerceSchemaFiles } from './ecommerce-schema';
 import { ECOMMERCE_BRICKS } from './ecommerce-bricks';
+import {
+  applyUiUxThemeToTokensCss,
+  renderAskamaUiUx,
+  renderRustWebFrontendUiUx,
+  uiUxAskamaSupplementaryCss,
+  RUST_WEB_FRONTEND_THEME_TOKENS,
+} from '../ui-ux/implementations/askama';
+import { renderReactAppTsx, renderReactUiUx } from '../ui-ux/implementations/react';
+import { renderDioxusMainRs, renderDioxusUiUx } from '../ui-ux/implementations/dioxus';
 
 function makeFile(
   path: string,
@@ -621,6 +630,11 @@ const reactViteBrick: BrickDefinition = {
       spec.backend.enabled &&
       ctx.activeBricks.some((b) => b.id === 'rest-api' || b.id === 'python-backend');
 
+    // Configuration UI/UX : alimente l'interface native React (pages, blocs,
+    // thème, navigation) sans site HTML parallèle. La logique métier (appels
+    // API, cartes d'état) est préservée sur la page d'accueil.
+    const uiUx = spec.uiUx ? renderReactUiUx(spec, spec.uiUx) : undefined;
+
     const pkg = `{
   "name": "${spec.project.slug}-frontend",
   "private": true,
@@ -976,7 +990,7 @@ a:focus-visible {
   }
 }
 `;
-          const appTsx = `import { useEffect, useState, type ReactNode } from 'react';
+          const defaultAppTsx = `import { useEffect, useState, type ReactNode } from 'react';
 import {
   Database,
   LayoutDashboard,
@@ -1262,26 +1276,46 @@ function Card({
     files.push(
       makeFile(
         'frontend/src/App.tsx',
-        appTsx,
+        uiUx
+          ? renderReactAppTsx(spec, spec.uiUx!, { hasHttpBackend })
+          : defaultAppTsx,
         'typescript',
         'react-vite',
         'React 19 + Vite Frontend',
         '2.1.0',
-        'Composant racine React connecté aux routes de santé et données du backend.'
+        uiUx
+          ? 'Composant racine React alimenté par la configuration UI/UX, avec cartes d\'état métier préservées.'
+          : 'Composant racine React connecté aux routes de santé et données du backend.'
       )
     );
 
     files.push(
       makeFile(
         'frontend/src/index.css',
-        indexCss,
+        uiUx ? `${indexCss}${uiUx.supplementaryCss}` : indexCss,
         'css',
         'react-vite',
         'React 19 + Vite Frontend',
         '2.1.0',
-        'Point d\'entrée Tailwind CSS.'
+        uiUx
+          ? 'Point d\'entrée Tailwind CSS enrichi du thème et des styles UI/UX configurés.'
+          : 'Point d\'entrée Tailwind CSS.'
       )
     );
+
+    // Assets importés dans l'éditeur UI/UX : servis nativement par Vite (public/).
+    for (const asset of uiUx?.assetFiles ?? []) {
+      files.push(
+        makeBinaryFile(
+          asset.path,
+          asset.content,
+          'react-vite',
+          'React 19 + Vite Frontend',
+          '2.1.0',
+          `Ressource importée (${asset.mediaType}) utilisée par le contenu UI/UX configuré.`
+        )
+      );
+    }
 
     return files;
   },
@@ -3686,6 +3720,12 @@ generateFiles: (ctx) => {
   const brickName = 'Rust Web Frontend';
   const brickVersion = '1.1.0';
 
+  // Configuration UI/UX : alimente l'interface native Askama (pages en documents
+  // autonomes, thème, navigation) sans site HTML parallèle. Les routes métier
+  // (dashboard, workspace, profile, settings) sont préservées.
+  const uiUx = ctx.spec.uiUx ? renderRustWebFrontendUiUx(ctx.spec, ctx.spec.uiUx) : undefined;
+  const extraUiUxPages = uiUx?.pages.slice(1) ?? [];
+
   files.push(
     makeFile(
         'Cargo.toml',
@@ -3743,7 +3783,7 @@ use tower_http::{
 };
 
 #[derive(Template)]
-#[template(path = "index.html")]
+#[template(path = "${uiUx ? 'foundation.html' : 'index.html'}")]
 struct PageTemplate<'a> {
     project_name: &'a str,
     project_description: &'a str,
@@ -3752,6 +3792,21 @@ struct PageTemplate<'a> {
     page_title: &'a str,
     page_content: &'a str,
 }
+${uiUx
+  ? `
+#[derive(Template)]
+#[template(path = "index.html")]
+struct HomeTemplate;
+${extraUiUxPages
+  .map(
+    (page) => `
+#[derive(Template)]
+#[template(path = "pages/${page.slug}.html")]
+struct ${page.structName};
+`,
+  )
+  .join('')}`
+  : ''}
 
 #[tokio::main]
 async fn main() {
@@ -3765,7 +3820,9 @@ async fn main() {
         .route("/dashboard", get(dashboard))
         .route("/workspace", get(workspace))
         .route("/profile", get(profile))
-        .route("/settings", get(settings))
+        .route("/settings", get(settings))${extraUiUxPages
+          .map((page) => `\n        .route("${page.routePath}", get(${page.handlerName}))`)
+          .join('')}
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http());
 
@@ -3800,13 +3857,27 @@ fn render_page(
     Html(template.render().expect("template rendering failed"))
 }
 
-async fn home() -> Html<String> {
+${uiUx
+  ? `async fn home() -> Html<String> {
+    Html(HomeTemplate.render().expect("template rendering failed"))
+}
+${extraUiUxPages
+  .map(
+    (page) => `
+async fn ${page.handlerName}() -> Html<String> {
+    Html(${page.structName}.render().expect("template rendering failed"))
+}
+`,
+  )
+  .join('')}`
+  : `async fn home() -> Html<String> {
     render_page(
         "home",
         "Home",
         "Point d'entrée de l'application.",
     )
 }
+`}
 
 async fn dashboard() -> Html<String> {
     render_page(
@@ -3945,10 +4016,7 @@ async fn settings() -> Html<String> {
       )
     );
 
-    files.push(
-      makeFile(
-        'templates/index.html',
-        `{% extends "layout.html" %}
+    const foundationTemplate = `{% extends "layout.html" %}
 
 {% block content %}
 <section class="stack">
@@ -4003,14 +4071,52 @@ async fn settings() -> Html<String> {
 
 </section>
 {% endblock %}
-`,
+`;
+
+    // Template de fondation partagé par les routes métier (dashboard, workspace,
+    // profile, settings) lorsque l'accueil est alimenté par la config UI/UX.
+    if (uiUx) {
+      files.push(
+        makeFile(
+          'templates/foundation.html',
+          foundationTemplate,
+          'html',
+          brickId,
+          brickName,
+          brickVersion,
+          'Template de fondation des pages métier, préservé lors de l’intégration UI/UX.'
+        )
+      );
+    }
+
+    files.push(
+      makeFile(
+        'templates/index.html',
+        uiUx ? uiUx.pages[0]!.template : foundationTemplate,
         'html',
         brickId,
         brickName,
         brickVersion,
-        'Page d’accueil de démonstration de la fondation.'
+        uiUx
+          ? 'Page d’accueil server-rendered alimentée par la configuration UI/UX du projet.'
+          : 'Page d’accueil de démonstration de la fondation.'
       )
     );
+
+    // Pages UI/UX additionnelles : documents Askama natifs servis par leurs routes.
+    for (const page of extraUiUxPages) {
+      files.push(
+        makeFile(
+          page.templatePath,
+          page.template,
+          'html',
+          brickId,
+          brickName,
+          brickVersion,
+          `Page '${page.title}' générée depuis la configuration UI/UX du projet.`
+        )
+      );
+    }
 
     files.push(
       makeFile(
@@ -4280,10 +4386,7 @@ async fn settings() -> Html<String> {
       )
     );
 
-    files.push(
-      makeFile(
-        'static/css/tokens.css',
-        `:root {
+    const baseTokensCss = `:root {
     color-scheme: dark;
 
     --color-bg: #0f1115;
@@ -4346,12 +4449,27 @@ async fn settings() -> Html<String> {
     --color-border: #d7dde4;
     --color-accent: #526f8c;
 }
-`,
+`;
+
+    const tokensCss = uiUx
+      ? applyUiUxThemeToTokensCss(
+          baseTokensCss,
+          ctx.spec.uiUx!,
+          RUST_WEB_FRONTEND_THEME_TOKENS,
+        )
+      : baseTokensCss;
+
+    files.push(
+      makeFile(
+        'static/css/tokens.css',
+        tokensCss,
         'css',
         brickId,
         brickName,
         brickVersion,
-        'Tokens structurels du design system SpecForge.'
+        uiUx
+          ? 'Tokens structurels du design system, alimentés par le thème UI/UX configuré.'
+          : 'Tokens structurels du design system SpecForge.'
       )
     );
 
@@ -4366,10 +4484,7 @@ async fn settings() -> Html<String> {
       )
     );
 
-    files.push(
-      makeFile(
-        'static/css/style.css',
-        `* {
+    const baseStyleCss = `* {
     box-sizing: border-box;
 }
 
@@ -4736,12 +4851,23 @@ button {
         cursor: pointer;
     }
 }
-`,
+`;
+
+    const styleCss = uiUx
+      ? `${baseStyleCss}${uiUxAskamaSupplementaryCss(ctx.spec.uiUx!)}`
+      : baseStyleCss;
+
+    files.push(
+      makeFile(
+        'static/css/style.css',
+        styleCss,
         'css',
         brickId,
         brickName,
         brickVersion,
-        'Styles du design system responsive.'
+        uiUx
+          ? 'Styles du design system responsive enrichis des blocs UI/UX configurés.'
+          : 'Styles du design system responsive.'
       )
     );
 
@@ -4818,6 +4944,20 @@ button {
         'Interactions minimales de thème, navigation mobile et arbre de navigation.'
       )
     );
+
+    // Assets importés dans l'éditeur UI/UX : servis nativement sous /static/assets/.
+    for (const asset of uiUx?.assetFiles ?? []) {
+      files.push(
+        makeBinaryFile(
+          asset.path,
+          asset.content,
+          brickId,
+          brickName,
+          brickVersion,
+          `Ressource importée (${asset.mediaType}) utilisée par le contenu UI/UX configuré.`
+        )
+      );
+    }
 
     return files;
   },
@@ -4946,6 +5086,12 @@ const rustWebAppBrick: BrickDefinition = {
     const brickName = 'Rust Web App';
     const brickVersion = '1.0.0';
     const hasRestApi = ctx.activeBricks.some((brick) => brick.id === 'rest-api');
+    // Configuration UI/UX : alimente l'interface native Askama (pages, blocs,
+    // thème, navigation) sans site HTML parallèle. Routes, handlers, dashboard
+    // et API métier sont préservés.
+    const uiUx = ctx.spec.uiUx ? renderAskamaUiUx(ctx.spec, ctx.spec.uiUx) : undefined;
+    const hasUiUx = Boolean(uiUx);
+    const extraUiUxPages = uiUx?.pages.slice(1) ?? [];
 
     files.push(
       makeFile(
@@ -5112,7 +5258,9 @@ ${hasRestApi ? 'use crate::api;\n' : ''}
 pub fn router() -> Router<SqlitePool> {
     let router = Router::new()
         .route("/", get(handlers::index))
-        .route("/dashboard", get(handlers::dashboard));
+        .route("/dashboard", get(handlers::dashboard))${extraUiUxPages
+          .map((page) => `\n        .route("${page.routePath}", get(handlers::${page.handlerName}))`)
+          .join('')};
 
     ${hasRestApi ? 'router.merge(api::router())' : 'router'}
 }
@@ -5137,11 +5285,25 @@ use sqlx::SqlitePool;
 
 use crate::models::AppInfo;
 
+${hasUiUx
+  ? `#[derive(Template)]
+#[template(path = "index.html")]
+struct IndexTemplate;
+${extraUiUxPages
+  .map(
+    (page) => `
 #[derive(Template)]
+#[template(path = "pages/${page.slug}.html")]
+struct ${page.structName};
+`,
+  )
+  .join('')}`
+  : `#[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate<'a> {
     app_name: &'a str,
 }
+`}
 
 #[derive(Template)]
 #[template(path = "dashboard.html")]
@@ -5149,7 +5311,28 @@ struct DashboardTemplate {
     app: AppInfo,
 }
 
-pub async fn index() -> Html<String> {
+${hasUiUx
+  ? `pub async fn index() -> Html<String> {
+    Html(
+        IndexTemplate
+            .render()
+            .unwrap_or_else(|_| "Template rendering error".to_string()),
+    )
+}
+${extraUiUxPages
+  .map(
+    (page) => `
+pub async fn ${page.handlerName}() -> Html<String> {
+    Html(
+        ${page.structName}
+            .render()
+            .unwrap_or_else(|_| "Template rendering error".to_string()),
+    )
+}
+`,
+  )
+  .join('')}`
+  : `pub async fn index() -> Html<String> {
     let template = IndexTemplate {
         app_name: "Rust Web App",
     };
@@ -5160,6 +5343,7 @@ pub async fn index() -> Html<String> {
             .unwrap_or_else(|_| "Template rendering error".to_string()),
     )
 }
+`}
 
 pub async fn dashboard(
     State(_db): State<SqlitePool>,
@@ -5281,10 +5465,7 @@ pub struct AppInfo {
       )
     );
 
-    files.push(
-      makeFile(
-        'templates/index.html',
-        `{% extends "layout.html" %}
+    const defaultIndexTemplate = `{% extends "layout.html" %}
 
 {% block title %}{{ app_name }}{% endblock %}
 
@@ -5306,14 +5487,36 @@ pub struct AppInfo {
     </div>
 </section>
 {% endblock %}
-`,
+`;
+
+    files.push(
+      makeFile(
+        'templates/index.html',
+        hasUiUx ? uiUx!.pages[0]!.template : defaultIndexTemplate,
         'html',
         brickId,
         brickName,
         brickVersion,
-        'Page d’accueil server-rendered du template.'
+        hasUiUx
+          ? 'Page d’accueil server-rendered alimentée par la configuration UI/UX du projet.'
+          : 'Page d’accueil server-rendered du template.'
       )
     );
+
+    // Pages UI/UX additionnelles : templates Askama natifs servis par leurs routes.
+    for (const page of extraUiUxPages) {
+      files.push(
+        makeFile(
+          page.templatePath,
+          page.template,
+          'html',
+          brickId,
+          brickName,
+          brickVersion,
+          `Page '${page.title}' générée depuis la configuration UI/UX du projet.`
+        )
+      );
+    }
 
     files.push(
       makeFile(
@@ -5362,6 +5565,17 @@ pub struct AppInfo {
       )
     );
 
+    const themeToggleButton = `
+    <button
+        class="theme-toggle"
+        type="button"
+        data-theme-toggle
+        aria-label="Changer de thème"
+        title="Basculer entre thème clair et sombre"
+    >
+        ◐
+    </button>`;
+
     files.push(
       makeFile(
         'templates/components/header.html',
@@ -5371,6 +5585,7 @@ pub struct AppInfo {
         <span>Rust Web App</span>
     </a>
 
+    <span class="topbar-actions">${hasUiUx ? themeToggleButton : ''}
     <button
         class="menu-button"
         type="button"
@@ -5380,6 +5595,7 @@ pub struct AppInfo {
     >
         Menu
     </button>
+    </span>
 </header>
 `,
         'html',
@@ -5390,10 +5606,7 @@ pub struct AppInfo {
       )
     );
 
-    files.push(
-      makeFile(
-        'templates/components/navigation.html',
-        `<nav
+    const defaultNavigationTemplate = `<nav
     id="main-navigation"
     class="navigation"
     data-navigation
@@ -5402,7 +5615,25 @@ pub struct AppInfo {
     <a href="/">Accueil</a>
     <a href="/dashboard">Tableau de bord</a>
 </nav>
-`,
+`;
+
+    const uiUxNavigationTemplate = uiUx
+      ? `<nav
+    id="main-navigation"
+    class="navigation"
+    data-navigation
+    aria-label="Navigation principale"
+>
+${uiUx.navigationLinks.map((link) => `    <a href="${link.href}">${link.label}</a>`).join('\n')}
+    <a href="/dashboard">Tableau de bord</a>
+</nav>
+`
+      : defaultNavigationTemplate;
+
+    files.push(
+      makeFile(
+        'templates/components/navigation.html',
+        uiUxNavigationTemplate,
         'html',
         brickId,
         brickName,
@@ -5427,10 +5658,7 @@ pub struct AppInfo {
       )
     );
 
-    files.push(
-      makeFile(
-        'static/css/tokens.css',
-        `:root {
+    const baseTokensCss = `:root {
     --color-background: #f5f3f0;
     --color-surface: #ffffff;
     --color-surface-muted: #ebe7e2;
@@ -5459,12 +5687,23 @@ pub struct AppInfo {
 
     --content-width: 1200px;
 }
-`,
+`;
+
+    const tokensCss = hasUiUx
+      ? applyUiUxThemeToTokensCss(baseTokensCss, ctx.spec.uiUx!)
+      : baseTokensCss;
+
+    files.push(
+      makeFile(
+        'static/css/tokens.css',
+        tokensCss,
         'css',
         brickId,
         brickName,
         brickVersion,
-        'Tokens du design system léger et responsive.'
+        hasUiUx
+          ? 'Tokens du design system, alimentés par le thème UI/UX configuré.'
+          : 'Tokens du design system léger et responsive.'
       )
     );
 
@@ -5479,10 +5718,7 @@ pub struct AppInfo {
       )
     );
 
-    files.push(
-      makeFile(
-        'static/css/style.css',
-        `* {
+    const baseStyleCss = `* {
     box-sizing: border-box;
 }
 
@@ -5729,19 +5965,27 @@ a {
         flex-direction: column;
     }
 }
-`,
+`;
+
+    const styleCss = hasUiUx
+      ? `${baseStyleCss}${uiUxAskamaSupplementaryCss(ctx.spec.uiUx!)}`
+      : baseStyleCss;
+
+    files.push(
+      makeFile(
+        'static/css/style.css',
+        styleCss,
         'css',
         brickId,
         brickName,
         brickVersion,
-        'Design system et structure responsive desktop/mobile du template.'
+        hasUiUx
+          ? 'Design system responsive enrichi des styles des blocs UI/UX configurés.'
+          : 'Design system et structure responsive desktop/mobile du template.'
       )
     );
 
-    files.push(
-      makeFile(
-        'static/js/app.js',
-        `(() => {
+    const menuJs = `(() => {
     const menuButton = document.querySelector('[data-menu-toggle]');
     const navigation = document.querySelector('[data-navigation]');
 
@@ -5761,14 +6005,57 @@ a {
         navigation.classList.toggle('open', !expanded);
     });
 })();
-`,
+`;
+
+    // Interrupteur clair/sombre : persistance locale, palette claire par défaut.
+    const themeToggleJs = `
+(() => {
+    const themeKey = 'specforge-theme';
+    const themeToggle = document.querySelector('[data-theme-toggle]');
+
+    const storedTheme = localStorage.getItem(themeKey);
+    if (storedTheme === 'dark' || storedTheme === 'light') {
+        document.documentElement.dataset.theme = storedTheme;
+    }
+
+    themeToggle?.addEventListener('click', () => {
+        const next =
+            document.documentElement.dataset.theme === 'dark'
+                ? 'light'
+                : 'dark';
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem(themeKey, next);
+    });
+})();
+`;
+
+    files.push(
+      makeFile(
+        'static/js/app.js',
+        hasUiUx ? `${menuJs}${themeToggleJs}` : menuJs,
         'javascript',
         brickId,
         brickName,
         brickVersion,
-        'Interaction JavaScript minimale pour la navigation responsive.'
+        hasUiUx
+          ? 'Interactions de navigation responsive et interrupteur clair/sombre.'
+          : 'Interaction JavaScript minimale pour la navigation responsive.'
       )
     );
+
+    // Assets importés dans l'éditeur UI/UX : servis nativement sous /static/assets/.
+    for (const asset of uiUx?.assetFiles ?? []) {
+      files.push(
+        makeBinaryFile(
+          asset.path,
+          asset.content,
+          brickId,
+          brickName,
+          brickVersion,
+          `Ressource importée (${asset.mediaType}) utilisée par le contenu UI/UX configuré.`
+        )
+      );
+    }
 
     return files;
   },
@@ -5832,6 +6119,11 @@ const rustDioxusMobileBrick: BrickDefinition = {
       sanitizeText(project.identifier) || mobileFallbackIdentifier(project.slug);
     const publisher = sanitizeText(project.author) || sanitizeText(project.name);
 
+    // Configuration UI/UX : alimente l'interface native Dioxus (pages, thème,
+    // navigation du tiroir) sans site HTML parallèle. La carte compteur métier
+    // est préservée.
+    const uiUx = ctx.spec.uiUx ? renderDioxusUiUx(ctx.spec, ctx.spec.uiUx) : undefined;
+
     files.push(
       makeFile(
         'Cargo.toml',
@@ -5874,10 +6166,7 @@ publisher = ${tomlString(publisher)}
       )
     );
 
-    files.push(
-      makeFile(
-        'src/main.rs',
-        `use dioxus::prelude::*;
+    const defaultMainRs = `use dioxus::prelude::*;
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 
@@ -6018,19 +6307,23 @@ fn App() -> Element {
         }
     }
 }
-`,
+`;
+
+    files.push(
+      makeFile(
+        'src/main.rs',
+        uiUx ? renderDioxusMainRs(ctx.spec, ctx.spec.uiUx!) : defaultMainRs,
         'rust',
         brickId,
         brickName,
         brickVersion,
-        'Point d\'entrée Dioxus : composant racine avec menu burger et cartes UI.'
+        uiUx
+          ? 'Point d\'entrée Dioxus alimenté par la configuration UI/UX, avec carte compteur métier préservée.'
+          : 'Point d\'entrée Dioxus : composant racine avec menu burger et cartes UI.'
       )
     );
 
-    files.push(
-      makeFile(
-        'assets/main.css',
-        `:root {
+    const baseMobileCss = `:root {
   color-scheme: dark;
 
   --background: #0d1117;
@@ -6311,12 +6604,19 @@ body {
   color: var(--text-primary);
   background: var(--surface-hover);
 }
-`,
+`;
+
+    files.push(
+      makeFile(
+        'assets/main.css',
+        uiUx ? `${baseMobileCss}${uiUx.supplementaryCss}` : baseMobileCss,
         'css',
         brickId,
         brickName,
         brickVersion,
-        'Feuille de style thème Dark moderne pour application mobile Specforge.'
+        uiUx
+          ? 'Feuille de style mobile enrichie du thème et des styles UI/UX configurés.'
+          : 'Feuille de style thème Dark moderne pour application mobile Specforge.'
       )
     );
 

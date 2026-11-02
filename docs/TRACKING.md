@@ -99,10 +99,26 @@
 - [ ] Thème
 - [ ] Adaptation profil × template
 
+## Bricks UI/UX natives par template (module `core/ui-ux/`)
+- [x] Configuration UI/UX autonome (`ProjectUiUxConfig`, fin de l'alias vers `StaticWebConfig`)
+- [x] Contrats Definition / Implementation / Integration et registre dédié
+- [x] Validateur UI/UX dédié (compatibilités, implémentations manquantes, option `docsSite`)
+- [x] Implémentation Askama — `rust-web-app` (accueil natif, pages/routes natives, thème tokens, retrait du montage `ServeFile`/fallback)
+- [x] Implémentation Askama — `rust-web-frontend` (documents autonomes, fondation métier préservée)
+- [x] Implémentation React — `web-platform`, `frontend-only`, `desktop/Tauri` (App.tsx alimenté, cartes métier préservées)
+- [x] Implémentation Dioxus — `mobile` (tiroir piloté par les pages, `dangerous_inner_html`)
+- [x] E-commerce — thème seul appliqué à la vitrine (pilotée par les données métier)
+- [x] API-only — site documentaire `docs-site/` sur option explicite, désactivé par défaut
+- [x] Éditeur partagé alimenté par les bricks compatibles, preview par cible
+- [x] Aperçu : pages empilées cliquables, burger responsive, panneau déroulant standard (300px), thèmes Paper/Ocean/Obsidian distincts, palettes dérivées contrastées
+- [x] Interrupteur clair/sombre fonctionnel par défaut dans toutes les interfaces générées (sélecteur `displayMode` retiré de l'éditeur applicatif)
+- [x] Aucun site HTML parallèle (`ui-site/` supprimé) ; Static Web inchangé
+- [x] Vérifications : `npm test`, `npm run lint`, `npm run build`, cargo check des scaffolds Rust, build Vite du scaffold React, smoke test HTTP de `rust-web-app`
+
 ## Profils techniques et premiers templates
 - [x] TypeScript — Web Frontend React/Vite existant, vérifié et documenté
-- [x] Python — API Service FastAPI, REST, OpenAPI, tests et site UI/UX autonome
-- [x] Go — API Service `net/http`, REST, OpenAPI, tests et site UI/UX autonome
+- [x] Python — API Service FastAPI, REST, OpenAPI, tests ; site documentaire `docs-site/` sur option explicite
+- [x] Go — API Service `net/http`, REST, OpenAPI, tests ; site documentaire `docs-site/` sur option explicite
 - [ ] Ajouter progressivement d’autres templates compatibles Python et Go
 - [x] Afficher explicitement dans le Wizard les types d’application encore indisponibles
 

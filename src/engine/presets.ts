@@ -5,7 +5,7 @@
 
 import { ProjectSpecification } from '../core';
 import { createStaticWebBlock } from '../core/static-web/bricks';
-import { createDefaultProjectUiUxConfig } from '../core/static-web/config';
+import { createDefaultProjectUiUxConfig } from '../core/ui-ux/config';
 
 function presetBlock(
   brickId: string,
@@ -787,7 +787,7 @@ const PRESET_DEFINITIONS: ArchitecturePreset[] = [
         navigation: 'sidebar',
         displayMode: 'system',
         exportMode: 'multi-file',
-        theme: { preset: 'paper', primary: '#2563eb', accent: '#0f766e', background: '#ffffff', text: '#1f2937', darkBackground: '#111827', darkText: '#f3f4f6' },
+        theme: { preset: 'paper', primary: '#b45309', accent: '#4d7c0f', background: '#f7f2e8', text: '#2b2622', darkBackground: '#1c1917', darkText: '#f3ece1' },
         pages: [
           {
             id: 'page-getting-started',
@@ -850,7 +850,7 @@ const PRESET_DEFINITIONS: ArchitecturePreset[] = [
         navigation: 'burger',
         displayMode: 'toggle',
         exportMode: 'multi-file',
-        theme: { preset: 'ocean', primary: '#2563eb', accent: '#14b8a6', background: '#f8fafc', text: '#172033', darkBackground: '#0b1020', darkText: '#e5e7eb' },
+        theme: { preset: 'ocean', primary: '#0369a1', accent: '#0d9488', background: '#eef7fb', text: '#0b3a53', darkBackground: '#082c44', darkText: '#dff1fb' },
         pages: [
           {
             id: 'page-home',
@@ -930,7 +930,7 @@ const PRESET_DEFINITIONS: ArchitecturePreset[] = [
         navigation: 'burger',
         displayMode: 'system',
         exportMode: 'single-html',
-        theme: { preset: 'obsidian', primary: '#7c3aed', accent: '#f59e0b', background: '#f9fafb', text: '#1f2937', darkBackground: '#111827', darkText: '#f3f4f6' },
+        theme: { preset: 'obsidian', primary: '#6d28d9', accent: '#d97706', background: '#f2f1f5', text: '#1b1826', darkBackground: '#110f18', darkText: '#e7e5f0' },
         pages: [
           {
             id: 'page-home',

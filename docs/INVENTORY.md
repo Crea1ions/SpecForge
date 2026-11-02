@@ -5,6 +5,8 @@
 **Branche :** `feat/static-web-profile`
 
 > **État au 2026-11-01.** Ce document conserve un plan de conception historique (composition de briques). L'état réel des profils, des 18 briques de base et des templates est tenu à jour dans ce document et dans `docs/ARCHITECTURE-CORE-BRICKS-TEMPLATES.md`.
+>
+> **2026-11-02 — Bricks UI/UX natives par template.** La configuration `uiUx` des modèles applicatifs alimente désormais l'interface native de chaque template (module `core/ui-ux/`, contrats Definition/Implementation/Integration, cibles Askama/React/Dioxus) ; aucun site HTML parallèle n'est généré. Static Web conserve son système séparé. Les templates API-only ne produisent `docs-site/` que sur option explicite (`docsSite`, désactivé par défaut). Voir la section 17 de `docs/ARCHITECTURE-CORE-BRICKS-TEMPLATES.md`.
 
 ---
 

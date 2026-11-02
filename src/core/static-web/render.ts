@@ -9,10 +9,11 @@ import {
 } from '../types';
 import { getContentByteLength } from '../utils';
 import { getStaticWebBrick } from './bricks';
-import { getProjectUiUxConfig } from './config';
+import { getStaticWebConfig } from './config';
 import { resolveStaticWebReferencePath, sortStaticWebPages } from './content';
 
-interface MarkdownRenderOptions {
+/** Primitives partagées : également consommées par le module UI/UX applicatif (core/ui-ux). */
+export interface MarkdownRenderOptions {
   page: StaticWebPage;
   config: StaticWebConfig;
   inlineAssets: boolean;
@@ -26,12 +27,12 @@ function pageSearchText(page: StaticWebPage): string {
     .toLocaleLowerCase();
 }
 
-interface MarkdownRenderResult {
+export interface MarkdownRenderResult {
   html: string;
   headings: Array<{ id: string; title: string; level: number }>;
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -56,7 +57,7 @@ function cleanAssetPath(value: string): string {
     .join('/');
 }
 
-function findAssetPath(source: string, page: StaticWebPage, config: StaticWebConfig): string | undefined {
+export function findAssetPath(source: string, page: StaticWebPage, config: StaticWebConfig): string | undefined {
   const resolved = resolveStaticWebReferencePath(source, page.sourcePath);
   const direct = cleanAssetPath(source);
   const asset = config.assets.find(
@@ -69,7 +70,7 @@ function findAssetPath(source: string, page: StaticWebPage, config: StaticWebCon
   return asset?.path;
 }
 
-function resolveMarkdownLink(url: string, options: MarkdownRenderOptions): string {
+export function resolveMarkdownLink(url: string, options: MarkdownRenderOptions): string {
   const { page, config } = options;
   if (!safeUrl(url)) return '';
   if (url.startsWith('#')) {
@@ -278,7 +279,7 @@ function headingId(value: string, used: Set<string>): string {
   return id;
 }
 
-function renderMarkdown(markdown: string, options: MarkdownRenderOptions): MarkdownRenderResult {
+export function renderMarkdown(markdown: string, options: MarkdownRenderOptions): MarkdownRenderResult {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
   const output: string[] = [];
   const headings: MarkdownRenderResult['headings'] = [];
@@ -845,7 +846,7 @@ export function generateStaticWebSite(
   spec: ProjectSpecification,
   options: StaticWebGenerationOptions = {},
 ): GeneratedFile[] {
-  const config = options.config ?? getProjectUiUxConfig(spec);
+  const config = options.config ?? getStaticWebConfig(spec);
   if (!config) return [];
   const template = options.template ?? spec.template;
   const outputDirectory = options.outputDirectory?.replace(/^\/+|\/+$/g, '') ?? '';

@@ -12,6 +12,7 @@
 import { ProjectSpecification, BrickDefinition, ValidationIssue } from './types';
 import { BrickRegistry } from './registry';
 import { validateStaticWebConfig } from './static-web/bricks';
+import { validateProjectUiUxConfig } from './ui-ux/bricks';
 
 export function validateSpecification(
   spec: ProjectSpecification,
@@ -19,8 +20,11 @@ export function validateSpecification(
   registry: BrickRegistry
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const uiUxConfig = spec.profile === 'static-web' ? spec.staticWeb : spec.uiUx;
-  issues.push(...validateStaticWebConfig(spec.profile, spec.template, uiUxConfig));
+  if (spec.profile === 'static-web') {
+    issues.push(...validateStaticWebConfig(spec.profile, spec.template, spec.staticWeb));
+  } else {
+    issues.push(...validateProjectUiUxConfig(spec, spec.uiUx));
+  }
 
   const supportedTemplates: Record<ProjectSpecification['profile'], ProjectSpecification['template'][]> = {
     rust: ['web-frontend', 'web-app', 'web-platform', 'ecommerce', 'api-service', 'desktop', 'mobile'],

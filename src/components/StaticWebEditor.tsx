@@ -3,6 +3,7 @@ import { CheckCircle2, ChevronDown, Download, Loader2 } from 'lucide-react';
 import {
   ApplicationTemplate,
   ProjectSpecification,
+  ProjectUiUxConfig,
   ResolvedArchitecture,
   StaticWebBrickPropertyDefinition,
   StaticWebConfig,
@@ -10,18 +11,19 @@ import {
 } from '../core';
 import { findPreset, PRESETS } from '../engine/presets';
 import {
+  createProjectUiUxBlock,
   createStaticWebBlock,
-  getProjectUiUxConfig,
+  getEditableUiUxConfig,
+  getProjectUiUxBricksForSpec,
+  isApiOnlyUiUxTemplate,
   isUnmodifiedStarterPage,
   mergeImportedMarkdownPages,
   parseMarkdownFile,
+  renderProjectUiUxPreview,
   renderStaticWebPreview,
   STATIC_WEB_BRICKS,
+  UI_UX_DOCS_SITE_DIRECTORY,
 } from '../core';
-import {
-  resolveUiUxOutputDirectory,
-  resolveUiUxPresentationTemplate,
-} from '../core/static-web/config';
 
 interface StaticWebEditorProps {
   spec: ProjectSpecification;
@@ -98,29 +100,30 @@ const themePresets: Record<
   Exclude<StaticWebConfig['theme']['preset'], 'custom'>,
   Omit<StaticWebConfig['theme'], 'preset'>
 > = {
+  // Chaque preset est une palette identifiable, fidèle à son nom.
   paper: {
-    primary: '#2563eb',
-    accent: '#0f766e',
-    background: '#ffffff',
-    text: '#1f2937',
-    darkBackground: '#111827',
-    darkText: '#f3f4f6',
+    primary: '#b45309',
+    accent: '#4d7c0f',
+    background: '#f7f2e8',
+    text: '#2b2622',
+    darkBackground: '#1c1917',
+    darkText: '#f3ece1',
   },
   ocean: {
-    primary: '#2563eb',
-    accent: '#14b8a6',
-    background: '#f8fafc',
-    text: '#172033',
-    darkBackground: '#0b1020',
-    darkText: '#e5e7eb',
+    primary: '#0369a1',
+    accent: '#0d9488',
+    background: '#eef7fb',
+    text: '#0b3a53',
+    darkBackground: '#082c44',
+    darkText: '#dff1fb',
   },
   obsidian: {
-    primary: '#7c3aed',
-    accent: '#f59e0b',
-    background: '#f9fafb',
-    text: '#1f2937',
-    darkBackground: '#111827',
-    darkText: '#f3f4f6',
+    primary: '#6d28d9',
+    accent: '#d97706',
+    background: '#f2f1f5',
+    text: '#1b1826',
+    darkBackground: '#110f18',
+    darkText: '#e7e5f0',
   },
 };
 
@@ -172,9 +175,12 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
   onOpenArchitecture,
 }) => {
   const isStaticWeb = spec.profile === 'static-web';
-  const config = getProjectUiUxConfig(spec);
+  const isApiOnly = !isStaticWeb && isApiOnlyUiUxTemplate(spec);
+  const config = getEditableUiUxConfig(spec);
+  // Bricks réellement compatibles avec le template (registre UI/UX dédié hors Static Web).
+  const availableBricks = isStaticWeb ? STATIC_WEB_BRICKS : getProjectUiUxBricksForSpec(spec);
   const [selectedPageId, setSelectedPageId] = useState(config?.pages?.[0]?.id ?? '');
-  const [selectedBrick, setSelectedBrick] = useState(STATIC_WEB_BRICKS[0]?.id ?? '');
+  const [selectedBrick, setSelectedBrick] = useState(availableBricks[0]?.id ?? '');
   const [previewWidth, setPreviewWidth] = useState<PreviewWidth>('desktop');
   const [previewTheme, setPreviewTheme] = useState<'light' | 'dark'>('light');
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>('configuration');
@@ -194,22 +200,30 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
   const preview = useMemo(() => {
     if (!config) return { html: '', error: 'La configuration Static Web est absente.' };
     try {
-      return {
-        html: renderStaticWebPreview(
-          { ...config, displayMode: previewTheme },
-          currentPage?.slug,
-          resolveUiUxPresentationTemplate(spec),
-          spec.project.name,
-        ),
-        error: null,
-      };
+      // L'aperçu délègue au moteur de la cible : renderer Static Web pour le
+      // profil Static Web, implémentation native du template sinon (le site
+      // documentaire API-only conserve le renderer Static Web).
+      const html = isStaticWeb
+        ? renderStaticWebPreview(
+            { ...(config as StaticWebConfig), displayMode: previewTheme },
+            currentPage?.slug,
+            spec.template,
+            spec.project.name,
+          )
+        : renderProjectUiUxPreview(
+            spec,
+            { ...(config as ProjectUiUxConfig), displayMode: previewTheme },
+            currentPage?.slug,
+            previewTheme,
+          );
+      return { html, error: null };
     } catch (error) {
       return {
         html: '',
         error: error instanceof Error ? error.message : 'Le moteur de prévisualisation a échoué.',
       };
     }
-  }, [config, currentPage?.slug, previewTheme, spec, spec.project.name]);
+  }, [config, currentPage?.slug, previewTheme, spec, isStaticWeb]);
 
   if (!config || !Array.isArray(config.pages) || !Array.isArray(config.assets) || !config.theme) {
     return (
@@ -231,8 +245,8 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
   const updateConfig = (update: (current: StaticWebConfig) => StaticWebConfig, area?: EditorArea) => {
     if (area) markStepInProgress(area);
     onChange(isStaticWeb
-      ? { ...spec, staticWeb: update(config) }
-      : { ...spec, uiUx: update(config) });
+      ? { ...spec, staticWeb: update(config as StaticWebConfig) }
+      : { ...spec, uiUx: update(config as StaticWebConfig) as unknown as ProjectUiUxConfig });
   };
 
   const updatePage = (
@@ -374,7 +388,9 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
 
   const addBlock = () => {
     if (!currentPage || !selectedBrick) return;
-    const nextBlock = createStaticWebBlock(selectedBrick, currentPage.blocks.length);
+    const nextBlock = isStaticWeb
+      ? createStaticWebBlock(selectedBrick, currentPage.blocks.length)
+      : createProjectUiUxBlock(selectedBrick, currentPage.blocks.length);
     let suffix = currentPage.blocks.length + 1;
     while (currentPage.blocks.some((block) => block.id === nextBlock.id)) {
       suffix++;
@@ -473,7 +489,7 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
       case 'appearance':
         return Boolean(config.theme.preset) &&
           navigationOptions.some((option) => option.value === config.navigation) &&
-          displayModeOptions.some((option) => option.value === config.displayMode);
+          (!isStaticWeb || displayModeOptions.some((option) => option.value === config.displayMode));
       case 'generation':
         return architecture.isValid && canGenerate;
     }
@@ -911,26 +927,33 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
           ))}
         </div>
       </fieldset>
-      <label className="block text-xs text-neutral-300">
-        Affichage proposé aux visiteurs
-        <select
-          value={config.displayMode}
-          onChange={(event) =>
-            updateConfig(
-              (current) => ({
-                ...current,
-                displayMode: event.target.value as StaticWebConfig['displayMode'],
-              }),
-              'appearance',
-            )
-          }
-          className="ov-field mt-1 w-full rounded-lg px-3 py-2"
-        >
-          {displayModeOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-      </label>
+      {isStaticWeb && (
+        <label className="block text-xs text-neutral-300">
+          Affichage proposé aux visiteurs
+          <select
+            value={config.displayMode}
+            onChange={(event) =>
+              updateConfig(
+                (current) => ({
+                  ...current,
+                  displayMode: event.target.value as StaticWebConfig['displayMode'],
+                }),
+                'appearance',
+              )
+            }
+            className="ov-field mt-1 w-full rounded-lg px-3 py-2"
+          >
+            {displayModeOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {!isStaticWeb && (
+        <p className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-3 text-xs leading-relaxed text-neutral-300">
+          L’interface générée embarque par défaut un interrupteur clair/sombre fonctionnel, avec la préférence système au premier lancement.
+        </p>
+      )}
       <details className="rounded-lg border border-neutral-800 p-2">
         <summary className="cursor-pointer text-xs font-medium text-neutral-300">Personnaliser les couleurs</summary>
         <fieldset className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -967,15 +990,39 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
     </div>
   );
 
+  const standaloneSiteSelected = isStaticWeb ||
+    (isApiOnly && Boolean((config as ProjectUiUxConfig).docsSite));
+
   const generationStep = (
     <div className="space-y-4">
       <p className="text-xs leading-relaxed text-neutral-400">
         Vérifiez le nom du projet, choisissez le format et générez le rendu configuré prêt à être téléchargé.
       </p>
-      {!isStaticWeb && (
+      {!isStaticWeb && !isApiOnly && (
         <p className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-3 text-xs leading-relaxed text-neutral-300">
-          Les fichiers de présentation seront générés dans <code>{resolveUiUxOutputDirectory(spec)}/</code>, séparément du moteur applicatif du template.
+          Cette configuration alimente directement l’interface native du template (pages, blocs, thème, navigation) — aucun site parallèle n’est généré. Les routes, le tableau de bord et la logique métier du template sont préservés.
         </p>
+      )}
+      {isApiOnly && (
+        <div className="space-y-2 rounded-lg border border-neutral-700 bg-neutral-900/50 p-3">
+          <p className="text-xs leading-relaxed text-neutral-300">
+            Ce modèle n’a pas d’interface applicative. Vous pouvez publier la documentation du service comme site autonome.
+          </p>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-200">
+            <input
+              type="checkbox"
+              checked={Boolean((config as ProjectUiUxConfig).docsSite)}
+              onChange={(event) =>
+                updateConfig(
+                  (current) => ({ ...current, docsSite: event.target.checked }) as StaticWebConfig,
+                  'generation',
+                )
+              }
+              className="accent-indigo-400"
+            />
+            Générer le site documentaire (<code>{UI_UX_DOCS_SITE_DIRECTORY}/</code>)
+          </label>
+        </div>
       )}
       <label className="block text-xs text-neutral-300">
         Nom du projet
@@ -989,25 +1036,27 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
           placeholder="Ex. : Mon site"
         />
       </label>
-      <label className="block text-xs text-neutral-300">
-        Format de téléchargement
-        <select
-          value={config.exportMode}
-          onChange={(event) =>
-            updateConfig(
-              (current) => ({
-                ...current,
-                exportMode: event.target.value as StaticWebConfig['exportMode'],
-              }),
-              'generation',
-            )
-          }
-          className="ov-field mt-1 w-full rounded-lg px-3 py-2"
-        >
-          <option value="single-html">Un fichier HTML autonome</option>
-          <option value="multi-file">Un dossier de site (ZIP)</option>
-        </select>
-      </label>
+      {standaloneSiteSelected && (
+        <label className="block text-xs text-neutral-300">
+          Format de téléchargement
+          <select
+            value={config.exportMode}
+            onChange={(event) =>
+              updateConfig(
+                (current) => ({
+                  ...current,
+                  exportMode: event.target.value as StaticWebConfig['exportMode'],
+                }),
+                'generation',
+              )
+            }
+            className="ov-field mt-1 w-full rounded-lg px-3 py-2"
+          >
+            <option value="single-html">Un fichier HTML autonome</option>
+            <option value="multi-file">Un dossier de site (ZIP)</option>
+          </select>
+        </label>
+      )}
       {architecture.isValid ? (
         <p className="flex flex-wrap items-center gap-2 text-xs text-emerald-200">
           <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
@@ -1022,7 +1071,7 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
         </div>
       )}
       <div className="flex flex-wrap gap-2">
-        {config.exportMode === 'single-html' && (
+        {standaloneSiteSelected && config.exportMode === 'single-html' && (
           <button
             type="button"
             onClick={onDownloadHtml}
@@ -1103,7 +1152,7 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
                   aria-label="Choisir un bloc"
                   className="ov-field min-w-0 rounded-lg px-2 py-2 text-xs"
                 >
-                  {STATIC_WEB_BRICKS.map((brick) => (
+                  {availableBricks.map((brick) => (
                     <option key={brick.id} value={brick.id}>{brick.name}</option>
                   ))}
                 </select>
@@ -1120,7 +1169,7 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
             {currentPage?.blocks.length ? (
               <div className="space-y-2">
                 {currentPage.blocks.map((block, index) => {
-                  const definition = STATIC_WEB_BRICKS.find((brick) => brick.id === block.brickId);
+                  const definition = availableBricks.find((brick) => brick.id === block.brickId);
                   if (!definition) return null;
                   return (
                     <fieldset key={block.id} className="space-y-2 rounded-lg border border-neutral-700 p-2">
@@ -1365,13 +1414,15 @@ export const StaticWebEditor: React.FC<StaticWebEditorProps> = ({
             {renderStep(
               'appearance',
               '04',
-              `${themePresetLabels[config.theme.preset]} · ${navigationLabel} · ${displayModeLabel}`,
+              isStaticWeb
+                ? `${themePresetLabels[config.theme.preset]} · ${navigationLabel} · ${displayModeLabel}`
+                : `${themePresetLabels[config.theme.preset]} · ${navigationLabel} · Interrupteur clair/sombre inclus`,
               appearanceStep,
             )}
             {renderStep(
               'generation',
               '05',
-              `${spec.project.name || 'Projet sans nom'} · ${config.exportMode === 'single-html' ? 'HTML autonome' : 'Site ZIP'}`,
+              `${spec.project.name || 'Projet sans nom'} · ${!standaloneSiteSelected ? 'Application ZIP' : config.exportMode === 'single-html' ? 'HTML autonome' : 'Site ZIP'}`,
               generationStep,
             )}
           </ol>

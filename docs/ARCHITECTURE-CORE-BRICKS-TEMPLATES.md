@@ -805,38 +805,103 @@ CSS, son JavaScript et ses assets. La recherche est générée à partir d'un in
 local intégré au HTML ; aucun chargement réseau, import dynamique, CDN ou
 backend n'est requis pour ouvrir le résultat via `file://`.
 
-## 17. Module UI/UX partagé par les modèles
+## 17. Bricks UI/UX natives par template (module `core/ui-ux/`)
 
-Les modèles actuellement proposés hors Static Web portent une configuration
-`uiUx` dans `ProjectSpecification`. Elle réutilise le contrat de contenu et de
-présentation de `StaticWebConfig`, sans activer de réglages métier ou
-techniques et sans remplacer les générateurs applicatifs existants.
+Les modèles applicatifs hors Static Web portent une configuration `uiUx` dans
+`ProjectSpecification`. Cette configuration alimente **l'interface native du
+template** — templates Askama, composants React, RSX Dioxus — sans produire de
+site HTML parallèle. Le système Static Web (`core/static-web/`) reste un
+système séparé et autonome : registre, renderer, pipeline et tests inchangés.
 
-Le module partage le parcours de configuration, l’import de fichiers ou de
-dossiers Markdown, l’organisation des pages, les blocs visuels, leurs
-propriétés, les thèmes, la navigation, l’aperçu responsive et l’export HTML.
-L’import ignore les fichiers qui ne sont pas `.md` et conserve les limites de
-taille et de nombre de fichiers. `contentInstruction` est un contexte interne
-stocké dans la spécification; le renderer ne l’insère pas dans les pages.
+### 17.1 Responsabilités séparées
 
-La génération conserve les sorties applicatives existantes et ajoute les
-pages dans le répertoire statique adapté au modèle : `frontend/public/ui-site/`
-pour React, `static/ui-site/` pour Askama et `assets/ui-site/` pour Dioxus.
-Le modèle `api-service`, qui n’a pas d’interface applicative, produit un site
-de documentation autonome sous `docs-site/`. Les templates Static Web
-continuent de générer leurs fichiers à la racine comme auparavant. Les
-prévisualisations et les exports réutilisent le renderer Static Web existant,
-avec un mode Documentation pour `api-service` et Website pour les autres
-modèles.
+1. **Configuration commune** — `ProjectUiUxConfig` (type autonome, distinct de
+   `StaticWebConfig`) : pages et contenu Markdown, blocs composés, navigation,
+   thème/tokens, assets importés, et l'option `docsSite` réservée aux templates
+   API-only (désactivée par défaut).
+2. **Définition de brick** — `ProjectUiUxBrickDefinition` (`ui-ux/bricks.ts`) :
+   contrat sémantique (identifiant, catégorie, propriétés, valeurs par défaut,
+   compatibilités profil/template), sans génération liée à un langage. Socle :
+   `hero`, `text-content`, `features`, `gallery`, `testimonials`,
+   `call-to-action`.
+3. **Implémentation de brick** — `ProjectUiUxBrickImplementation`
+   (`ui-ux/implementations/`) : rendu natif par cible (`askama`, `react`,
+   `dioxus`) et rendu d'aperçu HTML pour l'éditeur. Une même définition a
+   plusieurs implémentations ; le renderer de blocs HTML partagé
+   (`implementations/html-blocks.ts`) porte le langage visuel commun.
+4. **Intégration de template** — `UI_UX_TEMPLATE_INTEGRATIONS`
+   (`ui-ux/registry.ts`) : cible de rendu résolue par couple profil/template,
+   présence d'interface native, et `supportsContentPages: false` pour les
+   interfaces pilotées par les données métier (e-commerce : seul le thème est
+   appliqué à la vitrine).
+5. **Core** — `validator.ts` délègue à `validateProjectUiUxConfig` pour les
+   profils non Static Web (configuration, compatibilités, implémentations
+   manquantes, option `docsSite`). `generator.ts` n'appelle plus le renderer
+   Static Web pour `uiUx` : les implémentations natives sont consommées par les
+   générateurs des templates. Seule exception : un template API-only avec
+   `docsSite: true` produit `docs-site/` via le renderer Static Web.
+6. **Preview** — `renderProjectUiUxPreview` (`ui-ux/preview.ts`) délègue au
+   renderer de la cible résolue : l'aperçu correspond au moteur qui produira
+   l'application.
 
-Les `StaticWebBrickDefinition` déclarent les profils et templates compatibles;
-le Core valide la configuration de la même façon, puis le générateur fournit
-un répertoire de sortie adapté. Les briques techniques historiques restent
-distinctes de ces blocs visuels. L’ajout d’un profil ou d’un template doit
-conserver cette séparation et fournir ses propres adaptations lorsque ses
-capacités de rendu diffèrent.
+### 17.2 Intégrations natives actuelles
 
-Les tests ciblés du Core UI/UX sont lancés avec `npm test`. Ils vérifient la
-conservation des sorties Static Web, la présence de la configuration sur tous
-les presets applicatifs, l’isolation de la consigne interne et la génération
-du site HTML correspondant à chaque modèle.
+| Template | Cible | Intégration |
+|---|---|---|
+| `rust-web-app` | Askama | Pages dans `templates/index.html` + `templates/pages/<slug>.html`, routes/handlers dédiés, thème dans `static/css/tokens.css`, blocs dans `static/css/style.css`, assets sous `static/assets/`. Routes `/dashboard` et API préservées. |
+| `rust-web-frontend` | Askama | Mêmes sorties ; documents autonomes (le layout n'est pas héritable), template de fondation préservé dans `templates/foundation.html` pour les routes métier. |
+| `rust-react-postgres`, `react-frontend-only`, `rust-tauri-react` | React | `frontend/src/App.tsx` alimenté (navigation par état, pages en composants, Markdown via `dangerouslySetInnerHTML`), thème et styles des blocs dans `frontend/src/index.css`, assets sous `frontend/public/assets/`. Cartes d'état métier préservées sur l'accueil. |
+| `rust-dioxus-mobile` | Dioxus | `src/main.rs` alimenté (tiroir piloté par les pages, contenu via `dangerous_inner_html`), thème dans `assets/main.css`. Carte compteur métier préservée. Limite connue : les images importées ne sont pas embarquées dans le bundle mobile (pas de dossier public servi) ; la brick `gallery` y est à réserver aux contenus sans assets locaux. |
+| `rust-ecommerce` | React (thème seul) | Vitrine pilotée par les données métier : surcharge des tokens de `frontend/src/index.css` uniquement ; la composition par blocs n'y est pas proposée. |
+| `rust-backend-only`, `python-api-service`, `go-api-service` | API-only | Pas d'interface native ; site documentaire `docs-site/` uniquement si `docsSite` est explicitement activé (désactivé par défaut, combinaison refusée par le validateur sur les templates à interface). |
+
+### 17.3 Éditeur partagé et aperçu
+
+L'éditeur (`StaticWebEditor.tsx`) conserve le parcours en cinq étapes, l'import
+de fichiers ou de dossiers `.md`, l'organisation des pages, les blocs et leurs
+propriétés, les thèmes, la navigation et l'aperçu responsive. Hors Static Web,
+il est alimenté par les bricks réellement compatibles avec le template
+(`getProjectUiUxBricksForSpec`), l'aperçu utilise l'implémentation de la cible,
+et les templates API-only exposent la case « Générer le site documentaire
+(docs-site/) », décochée par défaut.
+
+Comportements de l'aperçu, alignés sur les applications générées :
+
+- **Pages cliquables** : toutes les pages sont empilées dans l'aperçu et la
+  navigation mène aux ancres correspondantes (y compris les liens inter-pages
+  du contenu Markdown importé).
+- **Navigation** : le mode latéral bascule en menu burger au format mobile ;
+  le mode burger s'applique à toutes les tailles d'écran. Le panneau
+  déroulant est standard et identique sur toutes les cibles (300px, max 85vw).
+- **Thèmes** : les presets Paper, Ocean et Obsidian sont trois palettes
+  distinctes et identifiables ; les couleurs personnalisées dérivent une
+  palette complète (`core/ui-ux/theme.ts`) — surfaces, bordures et texte
+  atténué calculés depuis le fond et le texte — garantissant le contraste en
+  thème clair comme en thème sombre, dans l'aperçu et dans les applications
+  générées.
+- **Interrupteur clair/sombre par défaut** : toutes les interfaces générées
+  embarquent un interrupteur de thème fonctionnel (en-tête Askama, sidebar et
+  topbar React, topbar Dioxus), avec persistance locale et préférence système
+  au premier lancement. Les deux palettes (claire et sombre) sont émises dans
+  les tokens natifs. Le champ hérité `displayMode` reste dans la spec pour
+  compatibilité mais n'est plus proposé ni appliqué pour les templates
+  applicatifs (il reste actif pour Static Web et le site documentaire).
+
+### 17.4 Ajouter une brick UI/UX ou une cible
+
+1. Déclarer la `ProjectUiUxBrickDefinition` dans `ui-ux/bricks.ts` (contrat,
+   propriétés, compatibilités).
+2. Fournir une implémentation par cible visée dans
+   `ui-ux/implementations/<cible>.ts` et l'enregistrer dans
+   `ui-ux/implementations/index.ts` ; une brick utilisée sans implémentation
+   pour la cible résolue produit un diagnostic de validation bloquant.
+3. Pour un nouveau template : déclarer son `ProjectUiUxTemplateIntegration`
+   dans `ui-ux/registry.ts` et brancher sa cible dans son générateur natif.
+
+### 17.5 Tests
+
+`npm test` couvre la validation (option `docsSite`, implémentations
+manquantes), la génération native déterministe sans site parallèle, l'import
+Markdown en routes natives, les previews par cible, la non-régression métier et
+l'intégralité du pipeline Static Web. Les scaffolds générés sont vérifiés par
+`cargo check` (templates Rust) et par la compilation du frontend React.

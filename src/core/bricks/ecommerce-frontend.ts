@@ -1,5 +1,6 @@
 import type { GenerationContext, GeneratedFile } from '../types';
 import { getContentByteLength } from '../utils';
+import { uiUxEcommerceThemeCss } from '../ui-ux/implementations/react';
 
 const BRICK_ID = 'react-vite';
 const BRICK_NAME = 'React 19 + Vite Frontend';
@@ -3481,9 +3482,13 @@ body.theme-dark .toast { border-color: #46654f; background: #2b4435; color: var(
     ),
     makeFile(
       'frontend/src/index.css',
-      indexCss,
+      // La vitrine est pilotée par les données métier : seul le thème visuel
+      // configuré dans SpecForge est appliqué (tokens natifs surchargés).
+      ctx.spec.uiUx ? `${indexCss}${uiUxEcommerceThemeCss(ctx.spec.uiUx)}` : indexCss,
       'css',
-      'Styles responsives accessibles pour les pages de la boutique.'
+      ctx.spec.uiUx
+        ? 'Styles responsives accessibles pour les pages de la boutique, avec le thème UI/UX configuré.'
+        : 'Styles responsives accessibles pour les pages de la boutique.'
     ),
   ];
 }
