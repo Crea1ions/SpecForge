@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Copy, Check, Download, AlertCircle, RefreshCw, FileText, CheckCircle2 } from 'lucide-react';
 import YAML from 'yaml';
 import { ProjectSpecification } from '../types/spec';
+import { PageHero } from './PageHero';
 
 interface SpecEditorProps {
   spec: ProjectSpecification;
@@ -68,26 +69,30 @@ export const SpecEditor: React.FC<SpecEditorProps> = ({ spec, onChange }) => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4 pb-16">
-      {/* Top Controls Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-neutral-900/60 border border-neutral-800 rounded-xl p-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-white">Source of Truth — Spécification</h2>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-300 border border-emerald-800/40 flex items-center gap-1 font-medium">
+    <div className="mx-auto max-w-5xl space-y-6 pb-16">
+      <PageHero
+        eyebrow="SOURCE DE VÉRITÉ"
+        tone="cyan"
+        title="Spécification du projet"
+        accent="YAML / JSON"
+        description="Toute modification du fichier recalcule instantanément l’architecture et les fichiers générés."
+        meta={
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-800/40 bg-emerald-950/60 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
               <CheckCircle2 className="w-3 h-3" /> Synchronisée
-            </span>
-          </div>
-          <p className="text-xs text-neutral-400 mt-0.5">
-            Toute modification de ce fichier recalcule instantanément l'architecture et les fichiers générés.
-          </p>
-        </div>
+          </span>
+        }
+      />
 
+      <div className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/45 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
         <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+            Format
+          </span>
           {/* Format Switch */}
           <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-0.5 flex text-xs">
             <button
               onClick={() => setFormat('yaml')}
+              aria-pressed={format === 'yaml'}
               className={`px-3 py-1 rounded-md font-medium transition ${
                 format === 'yaml' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'
               }`}
@@ -96,6 +101,7 @@ export const SpecEditor: React.FC<SpecEditorProps> = ({ spec, onChange }) => {
             </button>
             <button
               onClick={() => setFormat('json')}
+              aria-pressed={format === 'json'}
               className={`px-3 py-1 rounded-md font-medium transition ${
                 format === 'json' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'
               }`}
@@ -103,11 +109,12 @@ export const SpecEditor: React.FC<SpecEditorProps> = ({ spec, onChange }) => {
               JSON
             </button>
           </div>
+        </div>
 
-          {/* Copy Button */}
+        <div className="grid grid-cols-2 gap-2 sm:flex">
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium transition"
+            className="ov-button-secondary flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copied ? 'Copié !' : 'Copier'}</span>
@@ -116,7 +123,7 @@ export const SpecEditor: React.FC<SpecEditorProps> = ({ spec, onChange }) => {
           {/* Download File */}
           <button
             onClick={handleDownload}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium transition"
+            className="ov-button-secondary flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Exporter .{format}</span>
@@ -126,7 +133,7 @@ export const SpecEditor: React.FC<SpecEditorProps> = ({ spec, onChange }) => {
 
       {/* Error alert if syntax error */}
       {error && (
-        <div className="p-3 bg-red-950/50 border border-red-800/80 rounded-lg text-xs text-red-300 flex items-center gap-2">
+        <div role="alert" className="p-3 bg-red-950/50 border border-red-800/80 rounded-lg text-xs text-red-300 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
           <span>{error}</span>
         </div>
@@ -139,6 +146,7 @@ export const SpecEditor: React.FC<SpecEditorProps> = ({ spec, onChange }) => {
           <span>UTF-8 • {text.split('\n').length} lignes</span>
         </div>
         <textarea
+          aria-label={`Contenu de la spécification au format ${format.toUpperCase()}`}
           value={text}
           onChange={(e) => handleTextChange(e.target.value)}
           spellCheck={false}

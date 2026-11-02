@@ -30,6 +30,21 @@ export function resolveArchitecture(
   // generic bricks are only added when they represent optional capabilities.
   if (spec.template === 'web-app') {
       activeBrickIds.push('rust-web-app');
+    } else if (spec.template === 'ecommerce') {
+      activeBrickIds.push(
+        'rust-backend',
+        'react-vite',
+        'postgres-storage',
+        'ecom-catalog',
+        'ecom-pricing',
+        'ecom-cart-orders',
+        'ecom-accounts',
+        'ecom-payment-mock',
+        'ecom-inventory-fulfillment',
+        'ecom-notifications',
+        'ecom-audit-ops',
+        'ecom-admin',
+      );
     } else if (spec.template === 'web-frontend' && spec.frontend.framework === 'askama') {
       activeBrickIds.push('rust-web-frontend');
     } else if (spec.template === 'mobile') {
@@ -38,6 +53,7 @@ export function resolveArchitecture(
     if (spec.backend.enabled) {
       if (spec.backend.language === 'rust') activeBrickIds.push('rust-backend');
       if (spec.backend.language === 'python') activeBrickIds.push('python-backend');
+      if (spec.backend.language === 'go') activeBrickIds.push('go-backend');
     }
 
     if (spec.frontend.enabled) {
@@ -196,13 +212,10 @@ const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
   }
 
   // Generic backend/API relationship
-  if (hasBrick('rust-backend') || hasBrick('python-backend')) {
-    const backendBrick = hasBrick('rust-backend')
-      ? 'rust-backend'
-      : 'python-backend';
-
+  const resolvedBackendBrick = ['rust-backend', 'python-backend', 'go-backend'].find(hasBrick);
+  if (resolvedBackendBrick) {
     addEdge(
-      backendBrick,
+      resolvedBackendBrick,
       'rest-api',
       'API',
       'HTTP/JSON'
@@ -224,24 +237,18 @@ const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
     // SQLite/SQLx persistence is part of the rust-web-app skeleton.
     // No separate sqlite-storage brick is required.
   } else {
-    const backendBrick = hasBrick('rust-backend')
-      ? 'rust-backend'
-      : hasBrick('python-backend')
-        ? 'python-backend'
-        : null;
-
-    if (backendBrick && hasBrick('sqlite-storage')) {
+    if (resolvedBackendBrick && hasBrick('sqlite-storage')) {
       addEdge(
-        backendBrick,
+        resolvedBackendBrick,
         'sqlite-storage',
         'Connection Pool',
         'Direct File I/O'
       );
     }
 
-    if (backendBrick && hasBrick('postgres-storage')) {
+    if (resolvedBackendBrick && hasBrick('postgres-storage')) {
       addEdge(
-        backendBrick,
+        resolvedBackendBrick,
         'postgres-storage',
         'Connection Pool',
         'TCP / SQLx Protocol'
@@ -269,6 +276,8 @@ const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
       ? 'rust-backend'
       : hasBrick('python-backend')
         ? 'python-backend'
+        : hasBrick('go-backend')
+          ? 'go-backend'
         : hasBrick('react-vite')
           ? 'react-vite'
           : null;

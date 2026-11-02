@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ProjectSpecification, ResolvedArchitecture, BrickDefinition, SpecForge, validateSpecification } from '../core';
 import YAML from 'yaml';
+import { PageHero } from './PageHero';
 
 interface EngineVerificationAuditProps {
   spec: ProjectSpecification;
@@ -48,7 +49,7 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
       question: 'project.yaml source de vérité',
       claim: 'Peut-on modifier le YAML et reconstruire intégralement le projet ?',
       status: 'pending',
-      details: 'Vérifie que la mutation du YAML recompile instantanément l\'arbre des fichiers et l\'architecture via SpecForge Core.',
+      details: 'Modifie la spécification, la sérialise en YAML puis vérifie que le Core la résout et répercute les valeurs dans ses sorties.',
     },
     {
       id: 'test-deterministic',
@@ -109,9 +110,9 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
     {
       id: 'test-zip-usability',
       question: 'Complétude du projet généré',
-      claim: 'Les fichiers d\'entrée racine sont-ils présents ?',
+      claim: 'Les fichiers d\'entrée requis par le profil sont-ils présents ?',
       status: 'pending',
-      details: 'Vérifie la présence des fichiers racines indispensables (Cargo.toml, main.rs, README.md).',
+      details: 'Vérifie les entrées attendues selon le runtime sélectionné (Rust, Python, Go, React/Vite ou site statique).',
     },
     {
       id: 'test-ai-role',
@@ -146,25 +147,45 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
 
       const modifiedSpec: ProjectSpecification = JSON.parse(JSON.stringify(spec));
       modifiedSpec.project.name = 'Projet_Test_Vérification';
-      modifiedSpec.backend.port = 9876;
+      if (modifiedSpec.backend.enabled) modifiedSpec.backend.port = 9876;
 
       const yaml = YAML.stringify(modifiedSpec);
       const parsedSpec = YAML.parse(yaml) as ProjectSpecification;
       const resArch = SpecForge.resolve(parsedSpec);
       const files = SpecForge.generate(parsedSpec, resArch);
 
-      const mainRs = files.find((f) => f.path === 'src/main.rs');
-      const hasUpdatedPort = mainRs?.content.includes('9876');
+      const sourceOfTruth = files.find((file) => file.path === 'project.yaml');
+      const generatedFiles = files.filter(
+        (file) => file.path !== 'project.yaml' && file.path !== 'project.md',
+      );
+      const hasUpdatedPort = !modifiedSpec.backend.enabled ||
+        generatedFiles.some((file) => file.content.includes('9876'));
+      const generationAllowed = resArch.isValid &&
+        !files.some((file) => file.path === 'ERROR_GENERATION_BLOCKED.md');
 
-      if (parsedSpec.backend.port === 9876 && hasUpdatedPort) {
+      if (
+        parsedSpec.project.name === 'Projet_Test_Vérification' &&
+        parsedSpec.backend.port === (modifiedSpec.backend.enabled ? 9876 : spec.backend.port) &&
+        sourceOfTruth?.content.includes('Projet_Test_Vérification') &&
+        hasUpdatedPort &&
+        generationAllowed
+      ) {
         updateTestStatus(
           'test-source-of-truth',
           'passed',
-          'SUCCÈS : La mutation du YAML a reconstruit l\'intégralité des fichiers avec le port 9876 et le nouveau nom.',
+          'SUCCÈS : Le YAML modifié a été résolu; le nom est présent dans la source de vérité et les paramètres applicatifs ont été régénérés.',
           Math.round(performance.now() - t0)
         );
       } else {
-        updateTestStatus('test-source-of-truth', 'failed', 'ÉCHEC : Le fichier n\'a pas reflété la modification du YAML.');
+        const blockers = resArch.issues
+          .filter((issue) => issue.severity === 'error')
+          .map((issue) => issue.message)
+          .join(' ');
+        updateTestStatus(
+          'test-source-of-truth',
+          'failed',
+          `ÉCHEC : Le Core n’a pas répercuté la spécification YAML.${blockers ? ` Blocages : ${blockers}` : ''}`,
+        );
       }
     }
 
@@ -291,11 +312,13 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
 
       const portAdr = archPort.decisions.find((d) => d.decision.includes('4455'));
 
-      if (portAdr) {
+      if (portAdr || !spec.backend.enabled) {
         updateTestStatus(
           'test-adr',
           'passed',
-          `SUCCÈS : ADR déduit dynamiquement à partir de la configuration (port 4455 enregistré dans ${portAdr.id}).`,
+          portAdr
+            ? `SUCCÈS : ADR déduit dynamiquement à partir de la configuration (port 4455 enregistré dans ${portAdr.id}).`
+            : 'SUCCÈS : Aucun ADR de port n’est attendu pour ce template sans backend.',
           Math.round(performance.now() - t0)
         );
       } else {
@@ -333,29 +356,68 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
       await new Promise((r) => setTimeout(r, 90));
 
       const files = SpecForge.generate(spec, architecture);
-      const pkgFile = files.find((f) => f.path.endsWith('package.json'));
-      const tomlFile = files.find((f) => f.path === 'Cargo.toml');
+      const packageFiles = files.filter((file) => file.path.endsWith('package.json'));
+      const jsonFiles = files.filter((file) => file.path.endsWith('.json'));
+      const tomlFiles = files.filter((file) => file.path.endsWith('.toml'));
+      const requiresRustManifest = spec.profile === 'rust';
+      const requiresPythonManifest = spec.profile === 'python';
+      const requiresGoManifest = spec.profile === 'go';
+      const requiresReactManifest = spec.frontend.enabled && spec.frontend.framework === 'react';
 
       let jsonValid = true;
-      if (pkgFile) {
+      for (const jsonFile of jsonFiles) {
         try {
-          JSON.parse(pkgFile.content);
+          JSON.parse(jsonFile.content);
         } catch {
           jsonValid = false;
+          break;
         }
       }
 
-      const tomlValid = Boolean(tomlFile && tomlFile.content.includes('[package]') && tomlFile.content.includes('[dependencies]'));
+      const rustTomlValid = tomlFiles
+        .filter((file) => file.path !== 'pyproject.toml')
+        .every((file) =>
+        /^\s*\[package\]\s*$/m.test(file.content) &&
+        /^\s*\[dependencies\]\s*$/m.test(file.content),
+      );
+      const pythonManifest = files.find((file) => file.path === 'pyproject.toml');
+      const pythonManifestValid = !requiresPythonManifest ||
+        Boolean(
+          pythonManifest &&
+          /^\s*\[project\]\s*$/m.test(pythonManifest.content) &&
+          /^\s*dependencies = \[$/m.test(pythonManifest.content),
+        );
+      const goManifest = files.find((file) => file.path === 'go.mod');
+      const goManifestValid = !requiresGoManifest ||
+        Boolean(
+          goManifest &&
+          /^module example\.com\/[a-z0-9]+(?:-[a-z0-9]+)*$/m.test(goManifest.content) &&
+          /^go 1\.22$/m.test(goManifest.content),
+        );
+      const manifestsPresent =
+        (!requiresRustManifest || tomlFiles.some((file) => file.path === 'Cargo.toml' || file.path === 'src-tauri/Cargo.toml')) &&
+        (!requiresPythonManifest || Boolean(pythonManifest)) &&
+        (!requiresGoManifest || Boolean(goManifest)) &&
+        (!requiresReactManifest || packageFiles.length > 0);
 
-      if (jsonValid && tomlValid) {
+      if (jsonValid && rustTomlValid && pythonManifestValid && goManifestValid && manifestsPresent) {
         updateTestStatus(
           'test-compilation-syntax',
           'passed',
-          'VALIDATION SYNTAXIQUE : Manifestes Cargo.toml et package.json conformes. (Compilateur réel cargo/tsc non exécuté dans ce mode).',
+          'VALIDATION SYNTAXIQUE : Les manifestes applicables au profil sont structurés. Les compilateurs ne sont pas exécutés dans ce mode.',
           Math.round(performance.now() - t0)
         );
       } else {
-        updateTestStatus('test-compilation-syntax', 'failed', 'ÉCHEC : Erreur de syntaxe dans les manifestes générés.');
+        updateTestStatus(
+          'test-compilation-syntax',
+          'failed',
+          `ÉCHEC : Manifeste manquant ou invalide (${[
+            !jsonValid ? 'JSON' : '',
+            !rustTomlValid || !pythonManifestValid ? 'TOML' : '',
+            !goManifestValid ? 'go.mod' : '',
+            !manifestsPresent ? 'manifeste requis absent' : '',
+          ].filter(Boolean).join(', ')}).`,
+        );
       }
     }
 
@@ -391,19 +453,37 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
       await new Promise((r) => setTimeout(r, 70));
 
       const files = SpecForge.generate(spec, architecture);
-      const hasMain = files.some((f) => f.path === 'src/main.rs');
-      const hasCargo = files.some((f) => f.path === 'Cargo.toml');
-      const hasReadme = files.some((f) => f.path === 'README.md');
+      const filePaths = new Set(files.map((file) => file.path));
+      const requiredPaths = spec.profile === 'static-web'
+        ? ['index.html']
+        : [
+            ...(spec.profile === 'rust'
+              ? spec.template === 'desktop'
+                ? ['src-tauri/Cargo.toml', 'src-tauri/src/main.rs']
+                : ['Cargo.toml', 'src/main.rs']
+              : []),
+            ...(spec.profile === 'python' ? ['pyproject.toml', 'main.py', 'api.py'] : []),
+            ...(spec.profile === 'go' ? ['go.mod', 'main.go', 'api.go'] : []),
+            ...(spec.frontend.enabled && spec.frontend.framework === 'react'
+              ? ['frontend/package.json', 'frontend/index.html']
+              : []),
+            'README.md',
+          ];
+      const missingPaths = requiredPaths.filter((path) => !filePaths.has(path));
 
-      if (hasMain && hasCargo && hasReadme) {
+      if (missingPaths.length === 0) {
         updateTestStatus(
           'test-zip-usability',
           'passed',
-          'SUCCÈS : L\'arborescence contient tous les fichiers requis pour exécuter immédiatement "cargo run".',
+          'SUCCÈS : L’arborescence contient les fichiers d’entrée du profil sélectionné.',
           Math.round(performance.now() - t0)
         );
       } else {
-        updateTestStatus('test-zip-usability', 'failed', 'ÉCHEC : Fichiers racines manquants pour une exécution directe.');
+        updateTestStatus(
+          'test-zip-usability',
+          'failed',
+          `ÉCHEC : Fichiers requis absents : ${missingPaths.join(', ')}.`,
+        );
       }
     }
 
@@ -503,35 +583,26 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
   const failedCount = tests.filter((t) => t.status === 'failed').length;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-16">
-      {/* Top Banner */}
-      <div className="bg-neutral-900/60 border border-neutral-800 rounded-xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/50">
-              Banc d'Épreuve &amp; Audit Technique
-            </span>
-            <span className="text-xs text-neutral-400 font-mono">12 Vérifications Réelles</span>
-          </div>
-          <h2 className="text-xl font-bold text-white tracking-tight">
-            Vérificateur Formel : Vrai Moteur vs Simulation
-          </h2>
-          <p className="text-xs text-neutral-400 mt-1 max-w-2xl">
-            Ce tableau de bord exécute en direct la suite de tests automatisés validant les 12 exigences fondamentales de la fiche produit.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
+    <div className="mx-auto max-w-6xl space-y-8 pb-16">
+      <PageHero
+        eyebrow="BANC D’ÉPREUVE // AUDIT TECHNIQUE"
+        tone="amber"
+        title="Vérificateur formel"
+        accent="du moteur"
+        description="Exécutez les tests qui vérifient les garanties déterministes, la validation et la génération du Core."
+        meta={<span className="font-mono text-neutral-400">12 vérifications réelles</span>}
+        actions={
           <button
             onClick={runAllVerificationTests}
             disabled={isRunningAll}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold shadow-sm shadow-emerald-600/30 transition"
+            aria-busy={isRunningAll}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-orange-400 bg-orange-500 px-4 py-2 text-xs font-bold text-neutral-950 shadow-sm shadow-orange-500/30 transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             <Play className={`w-3.5 h-3.5 ${isRunningAll ? 'animate-spin' : ''}`} />
             <span>{isRunningAll ? 'Tests en cours...' : 'Exécuter les 12 Tests du Moteur'}</span>
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Summary Scorecard */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
@@ -642,11 +713,13 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
             value={customBrickName}
             onChange={(e) => setCustomBrickName(e.target.value)}
             placeholder="Nom de la brique (ex: Redis Cache)"
+            aria-label="Nom de la brique personnalisée"
             className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 w-full sm:w-64"
           />
 
           <button
             onClick={handleRegisterLiveCustomBrick}
+            aria-pressed={isCustomBrickRegistered}
             className={`px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-2 ${
               isCustomBrickRegistered
                 ? 'bg-red-900/60 hover:bg-red-800 text-red-200 border border-red-700'

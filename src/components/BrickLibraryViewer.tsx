@@ -12,6 +12,7 @@ import {
   Cpu,
 } from 'lucide-react';
 import { SpecForge, BrickDefinition, BrickCategory, ResolvedArchitecture } from '../core';
+import { PageHero } from './PageHero';
 
 interface BrickLibraryViewerProps {
   architecture: ResolvedArchitecture;
@@ -46,41 +47,34 @@ export const BrickLibraryViewer: React.FC<BrickLibraryViewerProps> = ({ architec
   });
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-16">
-      {/* Header Banner */}
-      <div className="bg-neutral-900/60 border border-neutral-800 rounded-xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/50">
-              Catalogue Modulaire
-            </span>
-            <span className="text-xs text-neutral-400 font-mono">
-              {BRICK_LIBRARY.length} briques versionnées disponibles
-            </span>
+    <div className="mx-auto max-w-6xl space-y-8 pb-16">
+      <PageHero
+        eyebrow="CATALOGUE MODULAIRE // SECTION 5"
+        tone="teal"
+        title="Bibliothèque de briques"
+        accent="& contrats"
+        description="Explorez les capacités, dépendances, incompatibilités et fichiers modèles déclarés par chaque brique."
+        meta={<span className="font-mono text-neutral-400">{BRICK_LIBRARY.length} briques versionnées</span>}
+        actions={
+          <div className="rounded-lg border border-neutral-700 bg-neutral-950/45 px-3 py-2 text-xs">
+            <span className="text-neutral-300">Actives dans ce projet : </span>
+            <span className="font-mono font-bold text-emerald-300">{architecture.activeBricks.length}</span>
           </div>
-          <h2 className="text-xl font-bold text-white tracking-tight">
-            Bibliothèque de Briques &amp; Contrats Techniques (Section 5)
-          </h2>
-          <p className="text-xs text-neutral-400 mt-1 max-w-2xl">
-            Chaque brique déclare formellement ses capacités fournies, ses dépendances, ses incompatibilités et ses fichiers templates associés.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs">
-          <div className="bg-neutral-950 px-3 py-1.5 rounded-lg border border-neutral-800">
-            <span className="text-neutral-400">Actives dans ce projet : </span>
-            <span className="font-bold text-emerald-400">{architecture.activeBricks.length}</span>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-neutral-900/40 border border-neutral-800 p-3 rounded-xl">
-        <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+        <div
+          role="group"
+          aria-label="Filtrer par catégorie de brique"
+          className="flex w-full items-center gap-1 overflow-x-auto pb-1 sm:w-auto sm:pb-0"
+        >
           {categories.map((c) => (
             <button
               key={c.id}
               onClick={() => setSelectedCategory(c.id)}
+              aria-pressed={selectedCategory === c.id}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
                 selectedCategory === c.id
                   ? 'bg-neutral-800 text-white shadow-sm'
@@ -99,13 +93,22 @@ export const BrickLibraryViewer: React.FC<BrickLibraryViewerProps> = ({ architec
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Rechercher une brique..."
-            className="w-full bg-neutral-950 border border-neutral-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
+            aria-label="Rechercher une brique"
+            className="ov-field w-full rounded-lg py-1.5 pl-8 pr-3 text-xs text-white"
           />
         </div>
       </div>
 
       {/* Bricks Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {filteredBricks.length === 0 && (
+          <div
+            role="status"
+            className="col-span-full rounded-xl border border-neutral-800 bg-neutral-950 p-8 text-center text-sm text-neutral-400"
+          >
+            Aucune brique ne correspond à ces filtres.
+          </div>
+        )}
         {filteredBricks.map((brick) => {
           const isActive = activeIds.has(brick.id);
 

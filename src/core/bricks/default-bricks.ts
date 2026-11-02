@@ -15,6 +15,17 @@ import { BrickDefinition, GenerationContext, GeneratedFile, ArchitecturalDecisio
 import { getContentByteLength } from '../utils';
 import { TAURI_ICON_BASE64 } from '../assets/tauri-icon';
 import { FAVICON_BASE64 } from '../assets/favicon';
+import { generateEcommerceSchemaFiles } from './ecommerce-schema';
+import { ECOMMERCE_BRICKS } from './ecommerce-bricks';
+import {
+  applyUiUxThemeToTokensCss,
+  renderAskamaUiUx,
+  renderRustWebFrontendUiUx,
+  uiUxAskamaSupplementaryCss,
+  RUST_WEB_FRONTEND_THEME_TOKENS,
+} from '../ui-ux/implementations/askama';
+import { renderReactAppTsx, renderReactUiUx } from '../ui-ux/implementations/react';
+import { renderDioxusMainRs, renderDioxusUiUx } from '../ui-ux/implementations/dioxus';
 
 function makeFile(
   path: string,
@@ -75,7 +86,7 @@ const rustBackendBrick: BrickDefinition = {
   provides: ['backend_runtime', 'async_runtime', 'memory_safe_core'],
   requires: [],
   compatibleWith: ['react-vite', 'tauri-desktop', 'sqlite-storage', 'postgres-storage', 'rest-api', 'docker-infra'],
-  conflictsWith: ['python-backend'],
+  conflictsWith: ['python-backend', 'go-backend'],
   options: [
     {
       key: 'framework',
@@ -141,7 +152,17 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ${spec.database.enabled && spec.database.type === 'sqlite' && spec.database.orm === 'sqlx' ? `sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "macros", "chrono"${spec.database.migrations ? ', "migrate"' : ''}] }` : ''}
 ${spec.database.enabled && spec.database.type === 'postgresql' && spec.database.orm === 'sqlx' ? `sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "chrono"${spec.database.migrations ? ', "migrate"' : ''}] }` : ''}
 chrono = { version = "0.4", features = ["serde"] }
-dotenvy = "0.15"
+dotenvy = "0.15"${spec.template === 'ecommerce' ? `
+argon2 = "0.5"
+jsonwebtoken = "9"
+rand_core = { version = "0.6", features = ["getrandom"] }
+printpdf = "0.7"
+` : ''}
+${spec.template === 'ecommerce' ? `
+[dev-dependencies]
+tower = { version = "0.4.13", features = ["util"] }
+http-body-util = "0.1"
+` : ''}
 
 [profile.release]
 opt-level = 3
@@ -171,7 +192,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod config;
 mod api;
-${spec.database.enabled ? 'mod db;' : ''}
+${spec.template === 'ecommerce' ? 'mod ecommerce;\n' : ''}${spec.database.enabled ? 'mod db;' : ''}
 
 use config::AppConfig;
 
@@ -189,11 +210,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ${
       spec.database.enabled
         ? `let db_pool = db::init_database(&config.database_url).await?;
-    tracing::info!("📦 Couche de persistance ${spec.database.type.toUpperCase()} connectée avec succès.");`
+${spec.template === 'ecommerce' ? '    ecommerce::admin::bootstrap_admin(&db_pool).await?;\n' : ''}    tracing::info!("📦 Couche de persistance ${spec.database.type.toUpperCase()} connectée avec succès.");`
         : '// Aucune base de données requise.'
     }
 
-    let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
+    ${spec.template === 'ecommerce' ? 'let _cart_recovery_worker = tokio::spawn(ecommerce::audit_ops::run_cart_recovery_worker(db_pool.clone()));\n\n    ' : ''}let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
 
     ${
       hasFrontend
@@ -256,9 +277,15 @@ impl AppConfig {
         dotenvy::dotenv().ok();
         Self {
             port: env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(${spec.backend.port}),
-            database_url: env::var("DATABASE_URL").unwrap_or_else(|_| "${
-              spec.database.type === 'sqlite' ? 'sqlite://data.db' : 'postgres://postgres:postgres@localhost:5432/app'
-            }".to_string()),
+            database_url: ${
+              spec.template === 'ecommerce'
+                ? 'env::var("DATABASE_URL").expect("DATABASE_URL must be set")'
+                : `env::var("DATABASE_URL").unwrap_or_else(|_| "${
+                    spec.database.type === 'sqlite'
+                      ? 'sqlite://data.db'
+                      : 'postgres://postgres:postgres@localhost:5432/app'
+                  }".to_string())`
+            },
         }
     }
 }
@@ -282,11 +309,13 @@ impl AppConfig {
         `# Configuration locale — copier en .env et adapter
 PORT=${spec.backend.port}
 DATABASE_URL=${
-          spec.database.type === 'sqlite'
+          spec.template === 'ecommerce'
+            ? 'postgres://app:replace-with-a-local-password@localhost:5432/app\nPOSTGRES_USER=app\n# Use URL-safe characters for this password (for example, 64 hex characters).\nPOSTGRES_PASSWORD=replace-with-a-local-url-safe-password\nPOSTGRES_DB=app\nPOSTGRES_PORT=5432'
+            : spec.database.type === 'sqlite'
             ? 'sqlite://data.db'
             : 'postgres://postgres:postgres@localhost:5432/app'
         }
-RUST_LOG=info
+${spec.template === 'ecommerce' ? 'JWT_SECRET=replace-with-a-random-secret-of-at-least-32-bytes\n# Optional first-admin bootstrap: configure both ECOM_ADMIN_EMAIL and ECOM_ADMIN_PASSWORD.\n# ECOM_ADMIN_EMAIL=manager@example.test\n# ECOM_ADMIN_PASSWORD=replace-with-a-12-character-password\n# Acceptance tests require a disposable database ending in _test.\nECOMMERCE_ACCEPTANCE_TESTS=0\nECOMMERCE_TEST_DATABASE_URL=postgres://app:replace-with-a-test-password@localhost:5432/ecommerce_test\n' : ''}RUST_LOG=info
 `,
         'bash',
         'rust-backend',
@@ -305,13 +334,13 @@ const pythonBackendBrick: BrickDefinition = {
   id: 'python-backend',
   name: 'Python FastAPI Backend',
   category: 'backend',
-  version: '1.1.0',
+  version: '2.0.0',
   description: 'Backend moderne et rapide en Python avec typage Pydantic et documentation OpenAPI automatique.',
   iconName: 'FileCode2',
   provides: ['backend_runtime', 'ai_ready_core'],
   requires: [],
-  compatibleWith: ['react-vite', 'sqlite-storage', 'postgres-storage', 'rest-api', 'docker-infra'],
-  conflictsWith: ['rust-backend'],
+  compatibleWith: ['react-vite', 'rest-api', 'openapi', 'quality-suite'],
+  conflictsWith: ['rust-backend', 'go-backend'],
   options: [
     {
       key: 'port',
@@ -321,7 +350,7 @@ const pythonBackendBrick: BrickDefinition = {
       description: 'Port d\'écoute Uvicorn.',
     },
   ],
-  templateFiles: ['pyproject.toml', 'main.py', 'requirements.txt'],
+  templateFiles: ['pyproject.toml', 'main.py'],
   tags: ['python', 'fastapi', 'pydantic', 'asyncio'],
 
   generateDecisions: (ctx) => [
@@ -338,73 +367,199 @@ const pythonBackendBrick: BrickDefinition = {
 
   generateFiles: (ctx) => {
     const { spec } = ctx;
-    const files: GeneratedFile[] = [];
+    const projectName = JSON.stringify(spec.project.name);
+    const projectDescription = JSON.stringify(spec.project.description);
+    const projectVersion = JSON.stringify(spec.project.version);
+    const modules = spec.api.style === 'rest' ? '"main", "api"' : '"main"';
+    const pyproject = `[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
 
-    const reqs = `fastapi>=0.111.0
-uvicorn[standard]>=0.30.0
-pydantic>=2.7.0
-python-dotenv>=1.0.0
-${spec.database.enabled ? 'sqlalchemy>=2.0.0' : ''}
+[project]
+name = ${JSON.stringify(spec.project.slug)}
+version = ${JSON.stringify(spec.project.version)}
+description = ${projectDescription}
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "uvicorn[standard]>=0.30,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27,<1.0",
+  "pytest>=8.0,<9.0",
+  "ruff>=0.6,<1.0",
+]
+
+[tool.setuptools]
+py-modules = [${modules}]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
 `;
-    files.push(
-      makeFile(
-        'requirements.txt',
-        reqs,
-        'bash',
-        'python-backend',
-        'Python FastAPI Backend',
-        '1.1.0',
-        'Fichier de dépendances Python pip (FastAPI, Uvicorn, Pydantic).'
-      )
-    );
+    const mainPy = `import os
 
-    const mainPy = `from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-import os
+from fastapi import FastAPI
+${spec.api.style === 'rest' ? 'from api import router as api_router\n' : ''}${spec.backend.cors ? 'from fastapi.middleware.cors import CORSMiddleware\n' : ''}
 
-app = FastAPI(title="${spec.project.name}", version="${spec.project.version}")
-
+app = FastAPI(title=${projectName}, description=${projectDescription}, version=${projectVersion})
+${spec.api.style === 'rest' ? 'app.include_router(api_router)' : ''}
+${spec.backend.cors ? `
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.get("/api/health")
-def health_check():
-    return {
-        "status": "healthy",
-        "service": "${spec.project.name}",
-        "version": "${spec.project.version}",
-        "database": "${spec.database.enabled ? spec.database.type : 'none'}"
-    }
-
-@app.get("/api/items")
-def list_items():
-    return [
-        {"id": 1, "title": "Configuration initiale", "completed": True},
-        {"id": 2, "title": "Service API Python", "completed": True}
-    ]
+` : ''}
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=${spec.backend.port}, reload=True)
+    port = int(os.environ.get("PORT", "${spec.backend.port}"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 `;
-    files.push(
+
+    return [
+      makeFile(
+        'pyproject.toml',
+        pyproject,
+        'toml',
+        'python-backend',
+        'Python FastAPI Backend',
+        '1.3.0',
+        'Manifeste Python avec dépendances applicatives, outils de test et configuration Ruff.'
+      ),
       makeFile(
         'main.py',
         mainPy,
-        'typescript',
+        'python',
         'python-backend',
         'Python FastAPI Backend',
-        '1.1.0',
-        'Point d\'entrée applicatif FastAPI avec middleware CORS et routes de santé.'
-      )
-    );
+        '2.0.0',
+        'Point d’entrée FastAPI configuré depuis la spécification et le port d’environnement.'
+      ),
+    ];
+  },
+};
 
-    return files;
+const goBackendBrick: BrickDefinition = {
+  id: 'go-backend',
+  name: 'Go net/http Backend',
+  category: 'backend',
+  version: '1.0.0',
+  description: 'Runtime backend Go utilisant le serveur HTTP standard, sans dépendance externe.',
+  iconName: 'FileCode2',
+  provides: ['backend_runtime'],
+  requires: [],
+  compatibleWith: ['rest-api', 'openapi', 'quality-suite'],
+  conflictsWith: ['rust-backend', 'python-backend'],
+  options: [
+    {
+      key: 'port',
+      label: 'Port HTTP',
+      type: 'number',
+      default: 8080,
+      description: 'Port d’écoute du serveur HTTP Go.',
+    },
+  ],
+  templateFiles: ['go.mod', 'main.go'],
+  tags: ['go', 'net/http', 'backend', 'api'],
+
+  generateDecisions: (ctx) => [
+    {
+      id: 'ADR-001',
+      title: 'Sélection du runtime Go (net/http)',
+      status: 'Accepted',
+      context: 'Le projet nécessite un service HTTP Go minimal, compilable sans dépendance externe.',
+      decision: `Adoption de Go net/http sur le port ${ctx.spec.backend.port}.`,
+      consequences: ['Les routes HTTP utilisent la bibliothèque standard Go.'],
+      generatingBrick: 'go-backend',
+    },
+  ],
+
+  generateFiles: (ctx) => {
+    const { spec } = ctx;
+    const goModule = `module example.com/${spec.project.slug}
+
+go 1.22
+`;
+    const router = spec.api.style === 'rest' ? 'newAPIRouter()' : 'http.NewServeMux()';
+    const corsMiddleware = spec.backend.cors
+      ? `
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+`
+      : '';
+    const handlerSetup = [
+      `var handler http.Handler = ${router}`,
+      ...(spec.backend.cors ? ['handler = withCORS(handler)'] : []),
+    ].join('\n\t');
+    const mainGo = `package main
+
+import (
+	"log"
+	"net/http"
+	"os"
+	"time"
+)
+
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "${spec.backend.port}"
+	}
+
+	${handlerSetup}
+
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	log.Printf("starting %s on port %s", ${JSON.stringify(spec.project.slug)}, port)
+	if err := server.ListenAndServe(); err != nil {
+		log.Fatal(err)
+	}
+}
+${corsMiddleware}
+`.trimEnd() + '\n';
+
+    return [
+      makeFile(
+        'go.mod',
+        goModule,
+        'go',
+        'go-backend',
+        'Go net/http Backend',
+        '1.0.0',
+        'Module Go sans dépendance externe pour compiler le service généré.'
+      ),
+      makeFile(
+        'main.go',
+        mainGo,
+        'go',
+        'go-backend',
+        'Go net/http Backend',
+        '1.0.0',
+        'Point d’entrée Go avec configuration du port et serveur HTTP standard.'
+      ),
+    ];
   },
 };
 
@@ -418,7 +573,7 @@ const reactViteBrick: BrickDefinition = {
   iconName: 'Layout',
   provides: ['ui_client', 'spa_bundle'],
   requires: [],
-  compatibleWith: ['rust-backend', 'python-backend', 'tauri-desktop', 'rest-api'],
+  compatibleWith: ['rust-backend', 'python-backend', 'go-backend', 'tauri-desktop', 'rest-api'],
   conflictsWith: [],
   options: [
     {
@@ -466,10 +621,19 @@ const reactViteBrick: BrickDefinition = {
     const { spec } = ctx;
     const files: GeneratedFile[] = [];
 
+    if (spec.template === 'ecommerce') {
+      return files;
+    }
+
     // Proxy /api utile seulement si un serveur HTTP est réellement généré.
     const hasHttpBackend =
       spec.backend.enabled &&
       ctx.activeBricks.some((b) => b.id === 'rest-api' || b.id === 'python-backend');
+
+    // Configuration UI/UX : alimente l'interface native React (pages, blocs,
+    // thème, navigation) sans site HTML parallèle. La logique métier (appels
+    // API, cartes d'état) est préservée sur la page d'accueil.
+    const uiUx = spec.uiUx ? renderReactUiUx(spec, spec.uiUx) : undefined;
 
     const pkg = `{
   "name": "${spec.project.slug}-frontend",
@@ -826,7 +990,7 @@ a:focus-visible {
   }
 }
 `;
-          const appTsx = `import { useEffect, useState, type ReactNode } from 'react';
+          const defaultAppTsx = `import { useEffect, useState, type ReactNode } from 'react';
 import {
   Database,
   LayoutDashboard,
@@ -1112,26 +1276,46 @@ function Card({
     files.push(
       makeFile(
         'frontend/src/App.tsx',
-        appTsx,
+        uiUx
+          ? renderReactAppTsx(spec, spec.uiUx!, { hasHttpBackend })
+          : defaultAppTsx,
         'typescript',
         'react-vite',
         'React 19 + Vite Frontend',
         '2.1.0',
-        'Composant racine React connecté aux routes de santé et données du backend.'
+        uiUx
+          ? 'Composant racine React alimenté par la configuration UI/UX, avec cartes d\'état métier préservées.'
+          : 'Composant racine React connecté aux routes de santé et données du backend.'
       )
     );
 
     files.push(
       makeFile(
         'frontend/src/index.css',
-        indexCss,
+        uiUx ? `${indexCss}${uiUx.supplementaryCss}` : indexCss,
         'css',
         'react-vite',
         'React 19 + Vite Frontend',
         '2.1.0',
-        'Point d\'entrée Tailwind CSS.'
+        uiUx
+          ? 'Point d\'entrée Tailwind CSS enrichi du thème et des styles UI/UX configurés.'
+          : 'Point d\'entrée Tailwind CSS.'
       )
     );
+
+    // Assets importés dans l'éditeur UI/UX : servis nativement par Vite (public/).
+    for (const asset of uiUx?.assetFiles ?? []) {
+      files.push(
+        makeBinaryFile(
+          asset.path,
+          asset.content,
+          'react-vite',
+          'React 19 + Vite Frontend',
+          '2.1.0',
+          `Ressource importée (${asset.mediaType}) utilisée par le contenu UI/UX configuré.`
+        )
+      );
+    }
 
     return files;
   },
@@ -1330,7 +1514,7 @@ const sqliteStorageBrick: BrickDefinition = {
   iconName: 'Database',
   provides: ['sql_storage', 'embedded_persistence'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend', 'tauri-desktop'],
+  compatibleWith: ['rust-backend', 'tauri-desktop'],
   conflictsWith: ['postgres-storage'],
   options: [],
   templateFiles: ['src/db.rs', 'migrations/0001_initial.sql'],
@@ -1461,7 +1645,7 @@ const postgresStorageBrick: BrickDefinition = {
   iconName: 'Layers',
   provides: ['sql_storage', 'distributed_persistence', 'acid_transactions'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend', 'docker-infra'],
+  compatibleWith: ['rust-backend', 'docker-infra'],
   conflictsWith: ['sqlite-storage', 'tauri-desktop'],
   options: [],
   templateFiles: ['src/db.rs', 'migrations/0001_initial.sql'],
@@ -1538,7 +1722,7 @@ pub async fn init_database(
         )
       );
 
-      if (ctx.spec.database.migrations) {
+      if (ctx.spec.database.migrations && ctx.spec.template !== 'ecommerce') {
         const migrationSql = `-- Migration initiale PostgreSQL générée par SpecForge pour SQLx
 CREATE TABLE IF NOT EXISTS items (
     id BIGSERIAL PRIMARY KEY,
@@ -1560,6 +1744,9 @@ CREATE TABLE IF NOT EXISTS items (
           )
         );
       }
+      if (ctx.spec.template === 'ecommerce') {
+        files.push(...generateEcommerceSchemaFiles(ctx));
+      }
     }
     return files;
   },
@@ -1575,7 +1762,7 @@ const jwtAuthBrick: BrickDefinition = {
   iconName: 'ShieldCheck',
   provides: ['jwt_authentication', 'token_authentication'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend', 'rest-api', 'react-vite'],
+  compatibleWith: ['rust-backend', 'rest-api', 'react-vite'],
   conflictsWith: [],
   options: [],
   templateFiles: ['src/auth.rs'],
@@ -1601,6 +1788,10 @@ const jwtAuthBrick: BrickDefinition = {
 
   generateFiles: (ctx) => {
     const files: GeneratedFile[] = [];
+
+    if (ctx.spec.template === 'ecommerce') {
+      return files;
+    }
 
     if (ctx.spec.backend.language === 'rust') {
       const authRs = `//! Authentification JWT
@@ -1645,14 +1836,18 @@ const restApiBrick: BrickDefinition = {
   iconName: 'Network',
   provides: ['rest_server', 'json_serialization', 'health_probes'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend', 'react-vite'],
+  compatibleWith: ['rust-backend', 'python-backend', 'go-backend', 'react-vite'],
   conflictsWith: [],
   options: [],
-  templateFiles: ['src/api.rs'],
+  templateFiles: ['src/api.rs', 'api.py', 'api.go'],
   tags: ['rest', 'json', 'crud'],
 
   generateFiles: (ctx) => {
     const files: GeneratedFile[] = [];
+    if (ctx.spec.template === 'ecommerce') {
+      return files;
+    }
+
     if (ctx.spec.backend.language === 'rust') {
       const isSqlite =
   ctx.spec.database.enabled &&
@@ -1906,6 +2101,161 @@ pub fn router() -> Router {
           'Gestionnaires de requêtes REST (Health check, CRUD items) avec sérialisation JSON.'
         )
       );
+    } else if (ctx.spec.backend.language === 'python') {
+      const apiPy = `from threading import Lock
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+router = APIRouter(prefix="/api")
+
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+    version: str
+
+
+class Item(BaseModel):
+    id: int
+    title: str
+    completed: bool
+
+
+class CreateItemRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
+_items: list[Item] = []
+_items_lock = Lock()
+_next_item_id = 1
+
+
+@router.get("/health", response_model=HealthResponse)
+def health_check() -> HealthResponse:
+    return HealthResponse(
+        status="healthy",
+        service=${JSON.stringify(ctx.spec.project.slug)},
+        version=${JSON.stringify(ctx.spec.project.version)},
+    )
+
+
+@router.get("/items", response_model=list[Item])
+def list_items() -> list[Item]:
+    with _items_lock:
+        return list(_items)
+
+
+@router.post("/items", response_model=Item, status_code=201)
+def create_item(payload: CreateItemRequest) -> Item:
+    global _next_item_id
+
+    with _items_lock:
+        item = Item(id=_next_item_id, title=payload.title, completed=False)
+        _next_item_id += 1
+        _items.append(item)
+        return item
+`;
+      files.push(
+        makeFile(
+          'api.py',
+          apiPy,
+          'python',
+          'rest-api',
+          'RESTful API Engine',
+          '1.3.0',
+          'Routes FastAPI de santé et de démonstration, avec validation des entrées.'
+        )
+      );
+    } else if (ctx.spec.backend.language === 'go') {
+      const apiGo = `package main
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+	"strings"
+	"sync"
+)
+
+type item struct {
+	ID        int    \`json:"id"\`
+	Title     string \`json:"title"\`
+	Completed bool   \`json:"completed"\`
+}
+
+type createItemRequest struct {
+	Title string \`json:"title"\`
+}
+
+var (
+	itemsMu sync.RWMutex
+	items   = []item{}
+	nextID  = 1
+)
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		log.Printf("write JSON response: %v", err)
+	}
+}
+
+func newAPIRouter() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/health", healthCheck)
+	mux.HandleFunc("GET /api/items", listItems)
+	mux.HandleFunc("POST /api/items", createItem)
+	return mux
+}
+
+func healthCheck(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "healthy",
+		"service": ${JSON.stringify(ctx.spec.project.slug)},
+		"version": ${JSON.stringify(ctx.spec.project.version)},
+	})
+}
+
+func listItems(w http.ResponseWriter, _ *http.Request) {
+	itemsMu.RLock()
+	response := append([]item{}, items...)
+	itemsMu.RUnlock()
+	writeJSON(w, http.StatusOK, response)
+}
+
+func createItem(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var payload createItemRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	if strings.TrimSpace(payload.Title) == "" || len(payload.Title) > 200 {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "title must contain 1 to 200 characters"})
+		return
+	}
+
+	itemsMu.Lock()
+	created := item{ID: nextID, Title: payload.Title, Completed: false}
+	nextID++
+	items = append(items, created)
+	itemsMu.Unlock()
+	writeJSON(w, http.StatusCreated, created)
+}
+`;
+      files.push(
+        makeFile(
+          'api.go',
+          apiGo,
+          'go',
+          'rest-api',
+          'RESTful API Engine',
+          '1.3.0',
+          'Routes Go de santé et de démonstration, avec réponses JSON et validation des entrées.'
+        )
+      );
     }
     return files;
   },
@@ -1921,7 +2271,7 @@ const openapiBrick: BrickDefinition = {
   iconName: 'FileJson',
   provides: ['openapi_contract', 'api_documentation'],
   requires: ['rest_server'],
-  compatibleWith: ['rust-backend', 'python-backend', 'rest-api', 'react-vite'],
+  compatibleWith: ['rust-backend', 'python-backend', 'go-backend', 'rest-api', 'react-vite'],
   conflictsWith: [],
   options: [],
   templateFiles: ['openapi.yaml'],
@@ -1949,11 +2299,295 @@ const openapiBrick: BrickDefinition = {
     const files: GeneratedFile[] = [];
 
     if (ctx.activeBricks.some((brick) => brick.id === 'rest-api')) {
+      if (ctx.spec.template === 'ecommerce') {
+        const openapiYaml = `openapi: 3.0.3
+info:
+  title: ${JSON.stringify(ctx.spec.project.name)}
+  version: ${JSON.stringify(ctx.spec.project.version)}
+  description: ${JSON.stringify(ctx.spec.project.description)}
+servers:
+  - url: http://localhost:${ctx.spec.backend.port}
+paths:
+  /api/health:
+    get:
+      summary: État du service
+      responses:
+        '200':
+          description: Service disponible
+  /api/products:
+    get:
+      summary: Parcourir le catalogue
+      responses:
+        '200':
+          description: Produits publiés et vendables
+  /api/products/{product_id}:
+    get:
+      summary: Consulter un produit
+      parameters:
+        - $ref: '#/components/parameters/productId'
+      responses:
+        '200':
+          description: Produit
+        '404':
+          description: Produit introuvable
+  /api/categories:
+    get:
+      summary: Parcourir les catégories
+      responses:
+        '200':
+          description: Catégories du catalogue
+  /api/shipping-methods:
+    get:
+      summary: Lister les modes de livraison disponibles
+      responses:
+        '200':
+          description: Modes de livraison publiés
+  /api/auth/register:
+    post:
+      summary: Créer un compte client
+      responses:
+        '201':
+          description: Compte créé et connecté
+  /api/auth/login:
+    post:
+      summary: Connecter un client
+      responses:
+        '200':
+          description: Jeton client
+  /api/admin/login:
+    post:
+      summary: Connecter un administrateur
+      responses:
+        '200':
+          description: Jeton administrateur
+  /api/customer/addresses:
+    get:
+      summary: Lister les adresses du client connecté
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Carnet d’adresses du client
+    post:
+      summary: Ajouter une adresse au carnet du client
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Adresse créée
+  /api/customer/addresses/{address_id}:
+    parameters:
+      - $ref: '#/components/parameters/addressId'
+    put:
+      summary: Remplacer une adresse du client connecté
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Adresse mise à jour
+        '404':
+          description: Adresse introuvable
+    delete:
+      summary: Supprimer une adresse du client connecté
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Adresse supprimée
+        '404':
+          description: Adresse introuvable
+  /api/cart:
+    get:
+      summary: Consulter le panier courant
+      parameters:
+        - $ref: '#/components/parameters/cartSession'
+      responses:
+        '200':
+          description: Panier courant
+    post:
+      summary: Créer ou récupérer le panier courant
+      parameters:
+        - $ref: '#/components/parameters/cartSession'
+      responses:
+        '200':
+          description: Panier courant
+  /api/cart/items:
+    get:
+      summary: Lister les lignes du panier
+      parameters:
+        - $ref: '#/components/parameters/cartSession'
+      responses:
+        '200':
+          description: Lignes du panier
+    post:
+      summary: Ajouter un produit au panier
+      parameters:
+        - $ref: '#/components/parameters/cartSession'
+      responses:
+        '200':
+          description: Panier mis à jour
+  /api/cart/items/{product_id}:
+    parameters:
+      - $ref: '#/components/parameters/productId'
+      - $ref: '#/components/parameters/cartSession'
+    patch:
+      summary: Modifier la quantité d’un produit du panier
+      responses:
+        '200':
+          description: Panier mis à jour
+    delete:
+      summary: Retirer un produit du panier
+      responses:
+        '204':
+          description: Produit retiré
+  /api/orders/checkout:
+    post:
+      summary: Valider le panier, appliquer la promotion et payer avec le mock
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Commande confirmée et paiement mock réussi
+  /api/customer/orders:
+    get:
+      summary: Lister les commandes du client connecté
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Commandes du client
+  /api/customer/orders/{reference}/returns:
+    parameters:
+      - $ref: '#/components/parameters/orderReference'
+    post:
+      summary: Demander le retour d’une commande livrée
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Demande de retour créée
+  /api/admin/products:
+    get:
+      summary: Lister les produits en administration
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Produits administrables
+  /api/admin/products/{product_id}:
+    parameters:
+      - $ref: '#/components/parameters/productId'
+    patch:
+      summary: Mettre à jour prix, publication, vendabilité et stock
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Produit mis à jour
+  /api/admin/orders:
+    get:
+      summary: Lister les commandes en administration
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Commandes administrables
+  /api/admin/orders/{order_number}/shipment:
+    parameters:
+      - $ref: '#/components/parameters/orderNumber'
+    post:
+      summary: Faire évoluer l’expédition et le stock
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Expédition mise à jour
+  /api/admin/returns:
+    get:
+      summary: Lister les demandes de retour
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Demandes de retour
+  /api/admin/returns/{return_id}/process:
+    parameters:
+      - $ref: '#/components/parameters/returnId'
+    post:
+      summary: Approuver, refuser ou recevoir un retour avec remboursement mock
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Retour traité
+components:
+  parameters:
+    productId:
+      name: product_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    orderReference:
+      name: reference
+      in: path
+      required: true
+      schema:
+        type: string
+    orderNumber:
+      name: order_number
+      in: path
+      required: true
+      schema:
+        type: string
+    returnId:
+      name: return_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    addressId:
+      name: address_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    cartSession:
+      name: x-cart-session
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 128
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+`;
+        files.push(
+          makeFile(
+            'openapi.yaml',
+            openapiYaml,
+            'yaml',
+            'openapi',
+            'OpenAPI Contract',
+            '1.0.0',
+            'Contrat OpenAPI décrivant les routes du preset e-commerce.'
+          )
+        );
+        return files;
+      }
+
       const openapiYaml = `openapi: 3.0.3
 info:
-  title: ${ctx.spec.project.name}
-  version: ${ctx.spec.project.version}
-  description: ${ctx.spec.project.description}
+  title: ${ctx.spec.profile === 'python' || ctx.spec.profile === 'go' ? JSON.stringify(ctx.spec.project.name) : ctx.spec.project.name}
+  version: ${ctx.spec.profile === 'python' || ctx.spec.profile === 'go' ? JSON.stringify(ctx.spec.project.version) : ctx.spec.project.version}
+  description: ${ctx.spec.profile === 'python' || ctx.spec.profile === 'go' ? JSON.stringify(ctx.spec.project.description) : ctx.spec.project.description}
 
 servers:
   - url: http://localhost:${ctx.spec.backend.port}
@@ -2038,7 +2672,7 @@ const systemdInfraBrick: BrickDefinition = {
   iconName: 'ServerCog',
   provides: ['systemd_service', 'linux_service'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend'],
+  compatibleWith: ['rust-backend'],
   conflictsWith: [],
   options: [],
   templateFiles: ['deploy/systemd/app.service'],
@@ -2108,7 +2742,7 @@ const dockerInfraBrick: BrickDefinition = {
   iconName: 'Box',
   provides: ['container_image', 'compose_orchestration'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend', 'react-vite', 'postgres-storage'],
+  compatibleWith: ['rust-backend', 'react-vite', 'postgres-storage'],
   conflictsWith: ['tauri-desktop'],
   options: [],
   templateFiles: ['Dockerfile', 'docker-compose.yml'],
@@ -2142,15 +2776,25 @@ generateFiles: (ctx) => {
     const needsStatic = hasRustWebApp;
 
     const copyTemplatesLine = needsTemplates ? 'COPY templates ./templates\n' : '';
+    const rustBuildContext = spec.template === 'ecommerce'
+      ? 'COPY . ./'
+      : `COPY Cargo.toml Cargo.lock ./\nCOPY src ./src\n${copyTemplatesLine}COPY migrations ./migrations`;
+    const cargoBuildCommand =
+      spec.template === 'ecommerce'
+        ? 'RUN if [ -f Cargo.lock ]; then cargo build --release --locked; else cargo build --release; fi'
+        : 'RUN cargo build --release --locked';
 
     // Étape frontend (react-vite) : build Vite puis copie du dist dans /app/static
     const frontendBuilderStage = hasReactVite
       ? `# --- Étape 1 : build du frontend React/Vite ---
 FROM node:22-alpine AS frontend-builder
 WORKDIR /frontend
-COPY frontend/package.json frontend/package-lock.json* ./
+${spec.template === 'ecommerce'
+  ? `COPY frontend/ ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi`
+  : `COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci || npm install
-COPY frontend/ ./
+COPY frontend/ ./`}
 RUN npm run build
 
 `
@@ -2165,10 +2809,8 @@ RUN npm run build
 FROM rust:1.94-alpine AS builder
 RUN apk add --no-cache musl-dev
 WORKDIR /app
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-${copyTemplatesLine}COPY migrations ./migrations
-RUN cargo build --release --locked
+${rustBuildContext}
+${cargoBuildCommand}
 
 # --- Étape finale ---
 FROM alpine:3.20
@@ -2230,6 +2872,8 @@ docs/
       const compose = `services:
   app:
     build: .
+    env_file:
+      - .env
     ports:
       - "${spec.backend.port}:${spec.backend.port}"
     environment:
@@ -2262,10 +2906,45 @@ volumes:
     : ''
 }
 `;
+      const composeContent = spec.template === 'ecommerce'
+        ? `services:
+  app:
+    build: .
+    ports:
+      - "${spec.backend.port}:${spec.backend.port}"
+    environment:
+      PORT: "${spec.backend.port}"
+      JWT_SECRET: "\${JWT_SECRET:?Set JWT_SECRET in .env}"
+      DATABASE_URL: "postgres://\${POSTGRES_USER:-app}:\${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/\${POSTGRES_DB:-app}"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: "\${POSTGRES_USER:-app}"
+      POSTGRES_PASSWORD: "\${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      POSTGRES_DB: "\${POSTGRES_DB:-app}"
+    ports:
+      - "127.0.0.1:\${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER:-app} -d \${POSTGRES_DB:-app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+`
+        : compose;
       files.push(
         makeFile(
           'docker-compose.yml',
-          compose,
+          composeContent,
           'yaml',
           'docker-infra',
           'Docker & Multi-Stage Compose',
@@ -2285,30 +2964,50 @@ const qualitySuiteBrick: BrickDefinition = {
   name: 'Quality, Tests & GitHub Actions CI',
   category: 'quality',
   version: '1.3.0',
-  description: 'Suite automatisée de tests, formateur et pipeline GitHub Actions CI.',
+  description: 'Suite automatisée de tests, formatage et pipeline CI adaptés aux runtimes générés.',
   iconName: 'CheckCircle2',
   provides: ['ci_pipeline', 'linter_config', 'unit_tests'],
   requires: [],
-  compatibleWith: ['rust-backend', 'python-backend', 'react-vite', 'tauri-desktop'],
+  compatibleWith: ['rust-backend', 'python-backend', 'go-backend', 'react-vite', 'tauri-desktop'],
   conflictsWith: [],
   options: [],
   templateFiles: [
     '.github/workflows/ci.yml',
     '.gitignore',
     'tests/smoke_test.rs',
+    'tests/test_api.py',
+    'api_test.go',
     'rustfmt.toml',
     'frontend/.eslintrc.json',
   ],
-  tags: ['ci', 'tests', 'github-actions'],
+  tags: ['rust', 'python', 'go', 'tests', 'github-actions'],
 
   generateFiles: (ctx) => {
     const { spec } = ctx;
     const files: GeneratedFile[] = [];
+    const activeIds = ctx.activeBricks.map((brick) => brick.id);
+    const hasRust = activeIds.some((id) =>
+      ['rust-backend', 'rust-web-app', 'rust-web-frontend', 'rust-dioxus-mobile', 'tauri-desktop'].includes(id),
+    );
+    const hasRustBackend = spec.backend.enabled && spec.backend.language === 'rust';
+    const hasPython = spec.backend.enabled && spec.backend.language === 'python';
+    const hasGo = spec.backend.enabled && spec.backend.language === 'go';
+    const hasReact = activeIds.includes('react-vite');
 
+    const extraIgnoreEntries = hasPython
+      ? `__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.py[cod]
+`
+      : hasGo
+        ? 'vendor/\n'
+        : '';
     const gitignore = `target/
 dist/
 node_modules/
-*.db
+${extraIgnoreEntries}*.db
 *.sqlite
 data/*.db
 data/*.db-shm
@@ -2329,7 +3028,7 @@ data/*.db-wal
     );
 
     if (spec.quality.tests) {
-      if (spec.backend.enabled && spec.backend.language === 'rust') {
+      if (hasRustBackend) {
         const smokeTest = `//! Smoke tests et vérification structurelle générés par SpecForge
 
 #[test]
@@ -2358,31 +3057,119 @@ fn test_server_port_configuration() {
           )
         );
       }
+
+      if (hasPython) {
+        const pythonTests = `from fastapi.testclient import TestClient
+
+from main import app
+
+client = TestClient(app)
+
+
+def test_health_endpoint_returns_service_metadata() -> None:
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "healthy"
+
+
+def test_items_can_be_created_and_listed() -> None:
+    created = client.post("/api/items", json={"title": "First item"})
+
+    assert created.status_code == 201
+    assert created.json()["title"] == "First item"
+    assert client.get("/api/items").json()[-1]["id"] == created.json()["id"]
+`;
+        files.push(
+          makeFile(
+            'tests/test_api.py',
+            pythonTests,
+            'python',
+            'quality-suite',
+            'Quality, Tests & GitHub Actions CI',
+            '1.3.0',
+            'Tests HTTP FastAPI de la santé et des opérations de base de l’API.'
+          )
+        );
+      }
+
+      if (hasGo) {
+        const goTests = `package main
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestHealthEndpoint(t *testing.T) {
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	newAPIRouter().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.Code)
+	}
+	if !strings.Contains(response.Body.String(), \`"status":"healthy"\`) {
+		t.Fatalf("unexpected health response: %s", response.Body.String())
+	}
+}
+
+func TestCreateAndListItems(t *testing.T) {
+	router := newAPIRouter()
+	createResponse := httptest.NewRecorder()
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/items", strings.NewReader(\`{"title":"First item"}\`))
+	router.ServeHTTP(createResponse, createRequest)
+
+	if createResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createResponse.Code)
+	}
+
+	listResponse := httptest.NewRecorder()
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/items", nil)
+	router.ServeHTTP(listResponse, listRequest)
+	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), "First item") {
+		t.Fatalf("unexpected item list response: %s", listResponse.Body.String())
+	}
+}
+`;
+        files.push(
+          makeFile(
+            'api_test.go',
+            goTests,
+            'go',
+            'quality-suite',
+            'Quality, Tests & GitHub Actions CI',
+            '2.0.0',
+            'Tests HTTP Go de la santé et des opérations de base de l’API.'
+          )
+        );
+      }
     }
 
-    if (spec.quality.lint) {
-      if (spec.backend.enabled && spec.backend.language === 'rust') {
-        const rustfmt = `# Configuration du formateur et linter de style Rust (rustfmt)
+    if (spec.quality.lint && hasRustBackend) {
+      const rustfmt = `# Configuration du formateur et linter de style Rust (rustfmt)
 edition = "2021"
 max_width = 100
 newline_style = "Unix"
 use_small_heuristics = "Default"
 `;
-        files.push(
-          makeFile(
-            'rustfmt.toml',
-            rustfmt,
-            'toml',
-            'quality-suite',
-            'Quality, Tests & GitHub Actions CI',
-            '1.3.0',
-            'Configuration de style et de formatage de code pour rustfmt.'
-          )
-        );
-      }
+      files.push(
+        makeFile(
+          'rustfmt.toml',
+          rustfmt,
+          'toml',
+          'quality-suite',
+          'Quality, Tests & GitHub Actions CI',
+          '1.3.0',
+          'Configuration de style et de formatage de code pour rustfmt.'
+        )
+      );
+    }
 
-      if (spec.frontend.enabled && spec.frontend.framework === 'react') {
-        const eslintConfig = `{
+    if (spec.quality.lint && hasReact) {
+      const eslintConfig = `{
   "env": {
     "browser": true,
     "es2020": true
@@ -2400,30 +3187,31 @@ use_small_heuristics = "Default"
   }
 }
 `;
-        files.push(
-          makeFile(
-            'frontend/.eslintrc.json',
-            eslintConfig,
-            'json',
-            'quality-suite',
-            'Quality, Tests & GitHub Actions CI',
-            '1.3.0',
-            'Configuration ESLint minimale pour l\'interface utilisateur React/TypeScript.'
-          )
-        );
-      }
+      files.push(
+        makeFile(
+          'frontend/.eslintrc.json',
+          eslintConfig,
+          'json',
+          'quality-suite',
+          'Quality, Tests & GitHub Actions CI',
+          '1.3.0',
+          'Configuration ESLint minimale pour l\'interface utilisateur React/TypeScript.'
+        )
+      );
     }
 
     if (spec.quality.ci) {
-      const mobileSystemDeps =
-        spec.template === 'mobile'
-          ? `      - name: System dependencies (Dioxus WebView)
+      let ci: string;
+      if (hasRust) {
+        const mobileSystemDeps =
+          spec.template === 'mobile'
+            ? `      - name: System dependencies (Dioxus WebView)
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev libudev-dev libayatana-appindicator3-dev libxdo-dev libglib2.0-dev
 `
-          : '';
-      const ci = `name: CI Pipeline
+            : '';
+        ci = `name: CI Pipeline
 
 on:
   push:
@@ -2443,8 +3231,73 @@ jobs:
       - name: Format
         run: cargo fmt --check
 ${mobileSystemDeps}      - name: Tests
-        run: cargo test
+        run: cargo test`;
+      } else {
+        const steps = ['      - uses: actions/checkout@v4'];
+        if (hasPython) {
+          const pythonChecks = spec.quality.tests || spec.quality.lint;
+          steps.push(`      - name: Python Toolchain
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"`);
+          if (pythonChecks) {
+            steps.push(`      - name: Install Python project
+        run: python -m pip install -e ".[dev]"`);
+          }
+          if (spec.quality.lint) {
+            steps.push(`      - name: Lint Python
+        run: ruff check .`);
+          }
+          if (spec.quality.tests) {
+            steps.push(`      - name: Test Python
+        run: pytest`);
+          }
+        }
+        if (hasGo) {
+          steps.push(`      - name: Go Toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Build Go
+        run: go build ./...`);
+          if (spec.quality.lint) {
+            steps.push(`      - name: Format Go
+        run: test -z "$(gofmt -l .)"
+      - name: Vet Go
+        run: go vet ./...`);
+          }
+          if (spec.quality.tests) {
+            steps.push(`      - name: Test Go
+        run: go test ./...`);
+          }
+        }
+        if (hasReact) {
+          steps.push(`      - name: Node.js Toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build React frontend
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build`);
+        }
+        ci = `name: CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+${steps.join('\n')}
 `;
+      }
+
       files.push(
         makeFile(
           '.github/workflows/ci.yml',
@@ -2483,6 +3336,46 @@ const docsPackBrick: BrickDefinition = {
     const files: GeneratedFile[] = [];
 
     if (spec.documentation.readme) {
+      const runtimeInstructions = spec.profile === 'python'
+        ? `## Démarrage local
+
+\`\`\`bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+uvicorn main:app --reload --port ${spec.backend.port}
+\`\`\`
+
+L’API expose \`/api/health\` et les opérations de démonstration \`/api/items\`.
+La documentation interactive FastAPI est disponible sur \`/docs\`; les données
+des éléments sont conservées en mémoire et ne sont pas persistées.
+
+Le site documentaire UI/UX autonome se trouve dans \`docs-site/\`.
+`
+        : spec.profile === 'go'
+          ? `## Démarrage local
+
+\`\`\`bash
+go run .
+go test ./...
+\`\`\`
+
+L’API expose \`/api/health\` et les opérations de démonstration \`/api/items\`.
+Le contrat OpenAPI est fourni dans \`openapi.yaml\`; les données des éléments
+sont conservées en mémoire et ne sont pas persistées.
+
+Le site documentaire UI/UX autonome se trouve dans \`docs-site/\`.
+`
+          : spec.profile === 'typescript'
+            ? `## Démarrage local
+
+\`\`\`bash
+cd frontend
+npm install
+npm run dev
+\`\`\`
+`
+            : '';
       const readme = `# ${spec.project.name}
 
 > ${spec.project.description}
@@ -2494,8 +3387,7 @@ const docsPackBrick: BrickDefinition = {
 - **Type d'application :** \`${spec.template}\`
 - **Auteur :** ${spec.project.author}
 - **Licence :** \`${spec.project.license}\`
-
-La documentation technique de référence du projet se trouve dans
+${runtimeInstructions ? `\n${runtimeInstructions}\n` : '\n'}La documentation technique de référence du projet se trouve dans
 \`project.yaml\`.
 
 Une représentation lisible de cette spécification est disponible dans
@@ -2828,6 +3720,12 @@ generateFiles: (ctx) => {
   const brickName = 'Rust Web Frontend';
   const brickVersion = '1.1.0';
 
+  // Configuration UI/UX : alimente l'interface native Askama (pages en documents
+  // autonomes, thème, navigation) sans site HTML parallèle. Les routes métier
+  // (dashboard, workspace, profile, settings) sont préservées.
+  const uiUx = ctx.spec.uiUx ? renderRustWebFrontendUiUx(ctx.spec, ctx.spec.uiUx) : undefined;
+  const extraUiUxPages = uiUx?.pages.slice(1) ?? [];
+
   files.push(
     makeFile(
         'Cargo.toml',
@@ -2885,7 +3783,7 @@ use tower_http::{
 };
 
 #[derive(Template)]
-#[template(path = "index.html")]
+#[template(path = "${uiUx ? 'foundation.html' : 'index.html'}")]
 struct PageTemplate<'a> {
     project_name: &'a str,
     project_description: &'a str,
@@ -2894,6 +3792,21 @@ struct PageTemplate<'a> {
     page_title: &'a str,
     page_content: &'a str,
 }
+${uiUx
+  ? `
+#[derive(Template)]
+#[template(path = "index.html")]
+struct HomeTemplate;
+${extraUiUxPages
+  .map(
+    (page) => `
+#[derive(Template)]
+#[template(path = "pages/${page.slug}.html")]
+struct ${page.structName};
+`,
+  )
+  .join('')}`
+  : ''}
 
 #[tokio::main]
 async fn main() {
@@ -2907,7 +3820,9 @@ async fn main() {
         .route("/dashboard", get(dashboard))
         .route("/workspace", get(workspace))
         .route("/profile", get(profile))
-        .route("/settings", get(settings))
+        .route("/settings", get(settings))${extraUiUxPages
+          .map((page) => `\n        .route("${page.routePath}", get(${page.handlerName}))`)
+          .join('')}
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http());
 
@@ -2942,13 +3857,27 @@ fn render_page(
     Html(template.render().expect("template rendering failed"))
 }
 
-async fn home() -> Html<String> {
+${uiUx
+  ? `async fn home() -> Html<String> {
+    Html(HomeTemplate.render().expect("template rendering failed"))
+}
+${extraUiUxPages
+  .map(
+    (page) => `
+async fn ${page.handlerName}() -> Html<String> {
+    Html(${page.structName}.render().expect("template rendering failed"))
+}
+`,
+  )
+  .join('')}`
+  : `async fn home() -> Html<String> {
     render_page(
         "home",
         "Home",
         "Point d'entrée de l'application.",
     )
 }
+`}
 
 async fn dashboard() -> Html<String> {
     render_page(
@@ -3087,10 +4016,7 @@ async fn settings() -> Html<String> {
       )
     );
 
-    files.push(
-      makeFile(
-        'templates/index.html',
-        `{% extends "layout.html" %}
+    const foundationTemplate = `{% extends "layout.html" %}
 
 {% block content %}
 <section class="stack">
@@ -3145,14 +4071,52 @@ async fn settings() -> Html<String> {
 
 </section>
 {% endblock %}
-`,
+`;
+
+    // Template de fondation partagé par les routes métier (dashboard, workspace,
+    // profile, settings) lorsque l'accueil est alimenté par la config UI/UX.
+    if (uiUx) {
+      files.push(
+        makeFile(
+          'templates/foundation.html',
+          foundationTemplate,
+          'html',
+          brickId,
+          brickName,
+          brickVersion,
+          'Template de fondation des pages métier, préservé lors de l’intégration UI/UX.'
+        )
+      );
+    }
+
+    files.push(
+      makeFile(
+        'templates/index.html',
+        uiUx ? uiUx.pages[0]!.template : foundationTemplate,
         'html',
         brickId,
         brickName,
         brickVersion,
-        'Page d’accueil de démonstration de la fondation.'
+        uiUx
+          ? 'Page d’accueil server-rendered alimentée par la configuration UI/UX du projet.'
+          : 'Page d’accueil de démonstration de la fondation.'
       )
     );
+
+    // Pages UI/UX additionnelles : documents Askama natifs servis par leurs routes.
+    for (const page of extraUiUxPages) {
+      files.push(
+        makeFile(
+          page.templatePath,
+          page.template,
+          'html',
+          brickId,
+          brickName,
+          brickVersion,
+          `Page '${page.title}' générée depuis la configuration UI/UX du projet.`
+        )
+      );
+    }
 
     files.push(
       makeFile(
@@ -3422,10 +4386,7 @@ async fn settings() -> Html<String> {
       )
     );
 
-    files.push(
-      makeFile(
-        'static/css/tokens.css',
-        `:root {
+    const baseTokensCss = `:root {
     color-scheme: dark;
 
     --color-bg: #0f1115;
@@ -3488,12 +4449,27 @@ async fn settings() -> Html<String> {
     --color-border: #d7dde4;
     --color-accent: #526f8c;
 }
-`,
+`;
+
+    const tokensCss = uiUx
+      ? applyUiUxThemeToTokensCss(
+          baseTokensCss,
+          ctx.spec.uiUx!,
+          RUST_WEB_FRONTEND_THEME_TOKENS,
+        )
+      : baseTokensCss;
+
+    files.push(
+      makeFile(
+        'static/css/tokens.css',
+        tokensCss,
         'css',
         brickId,
         brickName,
         brickVersion,
-        'Tokens structurels du design system SpecForge.'
+        uiUx
+          ? 'Tokens structurels du design system, alimentés par le thème UI/UX configuré.'
+          : 'Tokens structurels du design system SpecForge.'
       )
     );
 
@@ -3508,10 +4484,7 @@ async fn settings() -> Html<String> {
       )
     );
 
-    files.push(
-      makeFile(
-        'static/css/style.css',
-        `* {
+    const baseStyleCss = `* {
     box-sizing: border-box;
 }
 
@@ -3878,12 +4851,23 @@ button {
         cursor: pointer;
     }
 }
-`,
+`;
+
+    const styleCss = uiUx
+      ? `${baseStyleCss}${uiUxAskamaSupplementaryCss(ctx.spec.uiUx!)}`
+      : baseStyleCss;
+
+    files.push(
+      makeFile(
+        'static/css/style.css',
+        styleCss,
         'css',
         brickId,
         brickName,
         brickVersion,
-        'Styles du design system responsive.'
+        uiUx
+          ? 'Styles du design system responsive enrichis des blocs UI/UX configurés.'
+          : 'Styles du design system responsive.'
       )
     );
 
@@ -3960,6 +4944,20 @@ button {
         'Interactions minimales de thème, navigation mobile et arbre de navigation.'
       )
     );
+
+    // Assets importés dans l'éditeur UI/UX : servis nativement sous /static/assets/.
+    for (const asset of uiUx?.assetFiles ?? []) {
+      files.push(
+        makeBinaryFile(
+          asset.path,
+          asset.content,
+          brickId,
+          brickName,
+          brickVersion,
+          `Ressource importée (${asset.mediaType}) utilisée par le contenu UI/UX configuré.`
+        )
+      );
+    }
 
     return files;
   },
@@ -4088,6 +5086,12 @@ const rustWebAppBrick: BrickDefinition = {
     const brickName = 'Rust Web App';
     const brickVersion = '1.0.0';
     const hasRestApi = ctx.activeBricks.some((brick) => brick.id === 'rest-api');
+    // Configuration UI/UX : alimente l'interface native Askama (pages, blocs,
+    // thème, navigation) sans site HTML parallèle. Routes, handlers, dashboard
+    // et API métier sont préservés.
+    const uiUx = ctx.spec.uiUx ? renderAskamaUiUx(ctx.spec, ctx.spec.uiUx) : undefined;
+    const hasUiUx = Boolean(uiUx);
+    const extraUiUxPages = uiUx?.pages.slice(1) ?? [];
 
     files.push(
       makeFile(
@@ -4254,7 +5258,9 @@ ${hasRestApi ? 'use crate::api;\n' : ''}
 pub fn router() -> Router<SqlitePool> {
     let router = Router::new()
         .route("/", get(handlers::index))
-        .route("/dashboard", get(handlers::dashboard));
+        .route("/dashboard", get(handlers::dashboard))${extraUiUxPages
+          .map((page) => `\n        .route("${page.routePath}", get(handlers::${page.handlerName}))`)
+          .join('')};
 
     ${hasRestApi ? 'router.merge(api::router())' : 'router'}
 }
@@ -4279,11 +5285,25 @@ use sqlx::SqlitePool;
 
 use crate::models::AppInfo;
 
+${hasUiUx
+  ? `#[derive(Template)]
+#[template(path = "index.html")]
+struct IndexTemplate;
+${extraUiUxPages
+  .map(
+    (page) => `
 #[derive(Template)]
+#[template(path = "pages/${page.slug}.html")]
+struct ${page.structName};
+`,
+  )
+  .join('')}`
+  : `#[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate<'a> {
     app_name: &'a str,
 }
+`}
 
 #[derive(Template)]
 #[template(path = "dashboard.html")]
@@ -4291,7 +5311,28 @@ struct DashboardTemplate {
     app: AppInfo,
 }
 
-pub async fn index() -> Html<String> {
+${hasUiUx
+  ? `pub async fn index() -> Html<String> {
+    Html(
+        IndexTemplate
+            .render()
+            .unwrap_or_else(|_| "Template rendering error".to_string()),
+    )
+}
+${extraUiUxPages
+  .map(
+    (page) => `
+pub async fn ${page.handlerName}() -> Html<String> {
+    Html(
+        ${page.structName}
+            .render()
+            .unwrap_or_else(|_| "Template rendering error".to_string()),
+    )
+}
+`,
+  )
+  .join('')}`
+  : `pub async fn index() -> Html<String> {
     let template = IndexTemplate {
         app_name: "Rust Web App",
     };
@@ -4302,6 +5343,7 @@ pub async fn index() -> Html<String> {
             .unwrap_or_else(|_| "Template rendering error".to_string()),
     )
 }
+`}
 
 pub async fn dashboard(
     State(_db): State<SqlitePool>,
@@ -4423,10 +5465,7 @@ pub struct AppInfo {
       )
     );
 
-    files.push(
-      makeFile(
-        'templates/index.html',
-        `{% extends "layout.html" %}
+    const defaultIndexTemplate = `{% extends "layout.html" %}
 
 {% block title %}{{ app_name }}{% endblock %}
 
@@ -4448,14 +5487,36 @@ pub struct AppInfo {
     </div>
 </section>
 {% endblock %}
-`,
+`;
+
+    files.push(
+      makeFile(
+        'templates/index.html',
+        hasUiUx ? uiUx!.pages[0]!.template : defaultIndexTemplate,
         'html',
         brickId,
         brickName,
         brickVersion,
-        'Page d’accueil server-rendered du template.'
+        hasUiUx
+          ? 'Page d’accueil server-rendered alimentée par la configuration UI/UX du projet.'
+          : 'Page d’accueil server-rendered du template.'
       )
     );
+
+    // Pages UI/UX additionnelles : templates Askama natifs servis par leurs routes.
+    for (const page of extraUiUxPages) {
+      files.push(
+        makeFile(
+          page.templatePath,
+          page.template,
+          'html',
+          brickId,
+          brickName,
+          brickVersion,
+          `Page '${page.title}' générée depuis la configuration UI/UX du projet.`
+        )
+      );
+    }
 
     files.push(
       makeFile(
@@ -4504,6 +5565,17 @@ pub struct AppInfo {
       )
     );
 
+    const themeToggleButton = `
+    <button
+        class="theme-toggle"
+        type="button"
+        data-theme-toggle
+        aria-label="Changer de thème"
+        title="Basculer entre thème clair et sombre"
+    >
+        ◐
+    </button>`;
+
     files.push(
       makeFile(
         'templates/components/header.html',
@@ -4513,6 +5585,7 @@ pub struct AppInfo {
         <span>Rust Web App</span>
     </a>
 
+    <span class="topbar-actions">${hasUiUx ? themeToggleButton : ''}
     <button
         class="menu-button"
         type="button"
@@ -4522,6 +5595,7 @@ pub struct AppInfo {
     >
         Menu
     </button>
+    </span>
 </header>
 `,
         'html',
@@ -4532,10 +5606,7 @@ pub struct AppInfo {
       )
     );
 
-    files.push(
-      makeFile(
-        'templates/components/navigation.html',
-        `<nav
+    const defaultNavigationTemplate = `<nav
     id="main-navigation"
     class="navigation"
     data-navigation
@@ -4544,7 +5615,25 @@ pub struct AppInfo {
     <a href="/">Accueil</a>
     <a href="/dashboard">Tableau de bord</a>
 </nav>
-`,
+`;
+
+    const uiUxNavigationTemplate = uiUx
+      ? `<nav
+    id="main-navigation"
+    class="navigation"
+    data-navigation
+    aria-label="Navigation principale"
+>
+${uiUx.navigationLinks.map((link) => `    <a href="${link.href}">${link.label}</a>`).join('\n')}
+    <a href="/dashboard">Tableau de bord</a>
+</nav>
+`
+      : defaultNavigationTemplate;
+
+    files.push(
+      makeFile(
+        'templates/components/navigation.html',
+        uiUxNavigationTemplate,
         'html',
         brickId,
         brickName,
@@ -4569,10 +5658,7 @@ pub struct AppInfo {
       )
     );
 
-    files.push(
-      makeFile(
-        'static/css/tokens.css',
-        `:root {
+    const baseTokensCss = `:root {
     --color-background: #f5f3f0;
     --color-surface: #ffffff;
     --color-surface-muted: #ebe7e2;
@@ -4601,12 +5687,23 @@ pub struct AppInfo {
 
     --content-width: 1200px;
 }
-`,
+`;
+
+    const tokensCss = hasUiUx
+      ? applyUiUxThemeToTokensCss(baseTokensCss, ctx.spec.uiUx!)
+      : baseTokensCss;
+
+    files.push(
+      makeFile(
+        'static/css/tokens.css',
+        tokensCss,
         'css',
         brickId,
         brickName,
         brickVersion,
-        'Tokens du design system léger et responsive.'
+        hasUiUx
+          ? 'Tokens du design system, alimentés par le thème UI/UX configuré.'
+          : 'Tokens du design system léger et responsive.'
       )
     );
 
@@ -4621,10 +5718,7 @@ pub struct AppInfo {
       )
     );
 
-    files.push(
-      makeFile(
-        'static/css/style.css',
-        `* {
+    const baseStyleCss = `* {
     box-sizing: border-box;
 }
 
@@ -4871,19 +5965,27 @@ a {
         flex-direction: column;
     }
 }
-`,
+`;
+
+    const styleCss = hasUiUx
+      ? `${baseStyleCss}${uiUxAskamaSupplementaryCss(ctx.spec.uiUx!)}`
+      : baseStyleCss;
+
+    files.push(
+      makeFile(
+        'static/css/style.css',
+        styleCss,
         'css',
         brickId,
         brickName,
         brickVersion,
-        'Design system et structure responsive desktop/mobile du template.'
+        hasUiUx
+          ? 'Design system responsive enrichi des styles des blocs UI/UX configurés.'
+          : 'Design system et structure responsive desktop/mobile du template.'
       )
     );
 
-    files.push(
-      makeFile(
-        'static/js/app.js',
-        `(() => {
+    const menuJs = `(() => {
     const menuButton = document.querySelector('[data-menu-toggle]');
     const navigation = document.querySelector('[data-navigation]');
 
@@ -4903,14 +6005,57 @@ a {
         navigation.classList.toggle('open', !expanded);
     });
 })();
-`,
+`;
+
+    // Interrupteur clair/sombre : persistance locale, palette claire par défaut.
+    const themeToggleJs = `
+(() => {
+    const themeKey = 'specforge-theme';
+    const themeToggle = document.querySelector('[data-theme-toggle]');
+
+    const storedTheme = localStorage.getItem(themeKey);
+    if (storedTheme === 'dark' || storedTheme === 'light') {
+        document.documentElement.dataset.theme = storedTheme;
+    }
+
+    themeToggle?.addEventListener('click', () => {
+        const next =
+            document.documentElement.dataset.theme === 'dark'
+                ? 'light'
+                : 'dark';
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem(themeKey, next);
+    });
+})();
+`;
+
+    files.push(
+      makeFile(
+        'static/js/app.js',
+        hasUiUx ? `${menuJs}${themeToggleJs}` : menuJs,
         'javascript',
         brickId,
         brickName,
         brickVersion,
-        'Interaction JavaScript minimale pour la navigation responsive.'
+        hasUiUx
+          ? 'Interactions de navigation responsive et interrupteur clair/sombre.'
+          : 'Interaction JavaScript minimale pour la navigation responsive.'
       )
     );
+
+    // Assets importés dans l'éditeur UI/UX : servis nativement sous /static/assets/.
+    for (const asset of uiUx?.assetFiles ?? []) {
+      files.push(
+        makeBinaryFile(
+          asset.path,
+          asset.content,
+          brickId,
+          brickName,
+          brickVersion,
+          `Ressource importée (${asset.mediaType}) utilisée par le contenu UI/UX configuré.`
+        )
+      );
+    }
 
     return files;
   },
@@ -4974,6 +6119,11 @@ const rustDioxusMobileBrick: BrickDefinition = {
       sanitizeText(project.identifier) || mobileFallbackIdentifier(project.slug);
     const publisher = sanitizeText(project.author) || sanitizeText(project.name);
 
+    // Configuration UI/UX : alimente l'interface native Dioxus (pages, thème,
+    // navigation du tiroir) sans site HTML parallèle. La carte compteur métier
+    // est préservée.
+    const uiUx = ctx.spec.uiUx ? renderDioxusUiUx(ctx.spec, ctx.spec.uiUx) : undefined;
+
     files.push(
       makeFile(
         'Cargo.toml',
@@ -5016,10 +6166,7 @@ publisher = ${tomlString(publisher)}
       )
     );
 
-    files.push(
-      makeFile(
-        'src/main.rs',
-        `use dioxus::prelude::*;
+    const defaultMainRs = `use dioxus::prelude::*;
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 
@@ -5160,19 +6307,23 @@ fn App() -> Element {
         }
     }
 }
-`,
+`;
+
+    files.push(
+      makeFile(
+        'src/main.rs',
+        uiUx ? renderDioxusMainRs(ctx.spec, ctx.spec.uiUx!) : defaultMainRs,
         'rust',
         brickId,
         brickName,
         brickVersion,
-        'Point d\'entrée Dioxus : composant racine avec menu burger et cartes UI.'
+        uiUx
+          ? 'Point d\'entrée Dioxus alimenté par la configuration UI/UX, avec carte compteur métier préservée.'
+          : 'Point d\'entrée Dioxus : composant racine avec menu burger et cartes UI.'
       )
     );
 
-    files.push(
-      makeFile(
-        'assets/main.css',
-        `:root {
+    const baseMobileCss = `:root {
   color-scheme: dark;
 
   --background: #0d1117;
@@ -5453,12 +6604,19 @@ body {
   color: var(--text-primary);
   background: var(--surface-hover);
 }
-`,
+`;
+
+    files.push(
+      makeFile(
+        'assets/main.css',
+        uiUx ? `${baseMobileCss}${uiUx.supplementaryCss}` : baseMobileCss,
         'css',
         brickId,
         brickName,
         brickVersion,
-        'Feuille de style thème Dark moderne pour application mobile Specforge.'
+        uiUx
+          ? 'Feuille de style mobile enrichie du thème et des styles UI/UX configurés.'
+          : 'Feuille de style thème Dark moderne pour application mobile Specforge.'
       )
     );
 
@@ -5552,6 +6710,7 @@ export const DEFAULT_BRICKS: BrickDefinition[] = [
   rustDioxusMobileBrick,
   rustWebAppBrick,
   pythonBackendBrick,
+  goBackendBrick,
   reactViteBrick,
   tauriDesktopBrick,
   sqliteStorageBrick,
@@ -5564,4 +6723,5 @@ export const DEFAULT_BRICKS: BrickDefinition[] = [
   qualitySuiteBrick,
   docsPackBrick,
   workStructureBrick,
+  ...ECOMMERCE_BRICKS,
 ];

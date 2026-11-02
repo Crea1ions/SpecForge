@@ -3,32 +3,99 @@
  * Main Application Component
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { Header } from './components/Header';
-import { ProjectWizard } from './components/ProjectWizard';
+import { ProjectWizard, type OnboardingStage } from './components/ProjectWizard';
+import { AboutSpecForge } from './components/AboutSpecForge';
 import { SpecEditor } from './components/SpecEditor';
 import { ArchitectureGraph } from './components/ArchitectureGraph';
 import { FileTreeViewer } from './components/FileTreeViewer';
 import { BrickLibraryViewer } from './components/BrickLibraryViewer';
 import { EngineVerificationAudit } from './components/EngineVerificationAudit';
 import { AiAssistModal } from './components/AiAssistModal';
-import { findPreset, PRESETS } from './engine/presets';
+import { PRESETS } from './engine/presets';
 import { SpecForge, ProjectSpecification, TechnicalProfile } from './core';
-import { CheckCircle2, ShieldCheck, Terminal, Heart } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ShieldCheck } from 'lucide-react';
+
+const desktopHeroImage = new URL('../assets/hero.png', import.meta.url).href;
+const mobileHeroImage = new URL('../assets/hero-mobile.png', import.meta.url).href;
+
+const AppBackground: React.FC = () => {
+  const backgroundRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const background = backgroundRef.current;
+    if (!background) return;
+
+    const smallViewport = window.matchMedia('(max-width: 767px)');
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let animationFrame = 0;
+
+    const updateParallax = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => {
+        const offset =
+          smallViewport.matches || reducedMotion.matches
+            ? 0
+            : Math.min(window.scrollY * 0.015, 36);
+        background.style.transform = `translate3d(0, ${-offset}px, 0)`;
+      });
+    };
+
+    updateParallax();
+    window.addEventListener('scroll', updateParallax, { passive: true });
+    smallViewport.addEventListener('change', updateParallax);
+    reducedMotion.addEventListener('change', updateParallax);
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      window.removeEventListener('scroll', updateParallax);
+      smallViewport.removeEventListener('change', updateParallax);
+      reducedMotion.removeEventListener('change', updateParallax);
+    };
+  }, []);
+
+  return (
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+      <div
+        ref={backgroundRef}
+        className="absolute inset-x-0 -inset-y-12"
+      >
+        <picture className="absolute inset-0 block">
+          <source media="(max-width: 767px)" srcSet={mobileHeroImage} />
+          <img
+            src={desktopHeroImage}
+            alt=""
+            decoding="async"
+            fetchPriority="high"
+            className="app-background-image h-full w-full object-cover"
+          />
+        </picture>
+        <div className="absolute inset-0 bg-neutral-950/30" />
+        <div className="absolute inset-0 bg-gradient-to-b from-neutral-950/45 via-transparent to-neutral-950/65" />
+        <div className="absolute inset-0 bg-gradient-to-r from-neutral-950/45 via-transparent to-neutral-950/10" />
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   // Current active specification (Source of Truth)
   const [spec, setSpec] = useState<ProjectSpecification>(PRESETS[0].spec);
   const [currentTab, setCurrentTab] = useState<
-    'wizard' | 'spec' | 'architecture' | 'files' | 'bricks' | 'audit'
+    'wizard' | 'about' | 'spec' | 'architecture' | 'files' | 'bricks' | 'audit'
   >('wizard');
+  const [onboardingStage, setOnboardingStage] = useState<OnboardingStage>(-1);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{
+    message: string;
+    type: 'success' | 'error';
+  } | null>(null);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToastMessage({ message, type });
     setTimeout(() => setToastMessage(null), 3500);
   };
 
@@ -48,29 +115,20 @@ export default function App() {
       return;
     }
 
-    const preset = findPreset(profile, spec.template);
+    const preset = PRESETS.find((candidate) => candidate.spec.profile === profile);
 
     if (!preset) {
-      showToast(`Template "${spec.template}" indisponible pour le profil ${profile}.`);
+      showToast(`Aucun preset disponible pour le profil ${profile}.`, 'error');
       return;
     }
 
-    setSpec({
-      ...preset.spec,
-      project: {
-        ...preset.spec.project,
-        ...spec.project,
-        type: preset.spec.project.type,
-      },
-    });
-
-    showToast(`Profil technique chargé : ${profile}`);
+    setSpec(preset.spec);
   };
 
   // Download entire project as ZIP
   const handleDownloadZip = async () => {
     if (!architecture.isValid) {
-      showToast('Impossible d\'exporter : résolvez d\'abord les conflits de compatibilité.');
+      showToast('Impossible d\'exporter : résolvez d\'abord les conflits de compatibilité.', 'error');
       return;
     }
 
@@ -101,30 +159,79 @@ export default function App() {
       showToast(`Archive ${link.download} générée et téléchargée avec succès !`);
     } catch (err: any) {
       console.error('Failed to generate ZIP', err);
-      showToast('Erreur lors de la création du fichier ZIP.');
+      showToast('Erreur lors de la création du fichier ZIP.', 'error');
     } finally {
       setIsDownloading(false);
     }
   };
 
+  const handleDownloadHtml = () => {
+    if (!architecture.isValid) {
+      showToast('Impossible d\'exporter : résolvez d\'abord les erreurs de configuration.', 'error');
+      return;
+    }
+
+    const htmlFile =
+      generatedFiles.find((file) => file.path.endsWith('/index.html') && file.language === 'html') ??
+      generatedFiles.find((file) => file.path === 'index.html' && file.language === 'html');
+    if (!htmlFile) {
+      showToast('Aucun fichier HTML autonome n’a été généré.', 'error');
+      return;
+    }
+
+    const blob = new Blob([htmlFile.content], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${spec.project.slug || 'site'}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast(`Fichier ${link.download} téléchargé avec succès.`);
+  };
+
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div className="min-h-screen flex flex-col bg-neutral-950 font-sans text-neutral-100">
+      <AppBackground />
+
+      <a
+        href="#main-content"
+        className="sr-only fixed left-4 top-4 z-[60] rounded-lg bg-neutral-100 px-4 py-3 font-semibold text-neutral-950 focus:not-sr-only"
+      >
+        Passer au contenu
+      </a>
+
       {/* Header */}
       <Header
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
-        spec={spec}
-        onSelectProfile={handleSelectProfile}
-        architecture={architecture}
         onOpenAiAssist={() => setIsAiModalOpen(true)}
-        onDownloadZip={handleDownloadZip}
-        isDownloading={isDownloading}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className={`relative z-10 w-full flex-1 ${currentTab === 'wizard' ? '' : 'mx-auto max-w-7xl px-shell pt-6'}`}
+      >
         {currentTab === 'wizard' && (
-          <ProjectWizard spec={spec} onChange={setSpec} architecture={architecture} />
+          <ProjectWizard
+            spec={spec}
+            onChange={setSpec}
+            architecture={architecture}
+            onSelectProfile={handleSelectProfile}
+            onboardingStage={onboardingStage}
+            setOnboardingStage={setOnboardingStage}
+            onDownloadZip={handleDownloadZip}
+            onDownloadHtml={handleDownloadHtml}
+            onOpenArchitecture={() => setCurrentTab('architecture')}
+            isDownloading={isDownloading}
+          />
+        )}
+
+        {currentTab === 'about' && (
+          <AboutSpecForge onStartProject={() => setCurrentTab('wizard')} />
         )}
 
         {currentTab === 'spec' && <SpecEditor spec={spec} onChange={setSpec} />}
@@ -158,21 +265,17 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-neutral-900 bg-neutral-950/80 py-6 text-xs text-neutral-500">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
+      <footer className="relative z-10 border-t border-neutral-800/60 bg-neutral-950/50 py-5 text-xs text-neutral-500 backdrop-blur-sm sm:py-6">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-shell text-center sm:flex-row sm:text-left">
+          <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 sm:justify-start">
             <span className="font-semibold text-neutral-300">SpecForge</span>
             <span>—</span>
             <span>Specification-first, modulaire, explicite &amp; reproductible.</span>
           </div>
 
-          <div className="flex items-center gap-4 text-[11px] text-neutral-400">
+          <div className="flex items-center gap-1.5 text-[11px] text-neutral-400">
             <span className="flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Validation Déterministe
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1">
-              <Terminal className="w-3.5 h-3.5 text-indigo-400" /> Rust + React Ready
             </span>
           </div>
         </div>
@@ -192,9 +295,17 @@ export default function App() {
 
       {/* Global Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-neutral-900 border border-neutral-700 text-white text-xs font-medium rounded-xl shadow-2xl animate-in slide-in-from-bottom-3 duration-200">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>{toastMessage}</span>
+        <div
+          role={toastMessage.type === 'error' ? 'alert' : 'status'}
+          aria-live={toastMessage.type === 'error' ? 'assertive' : 'polite'}
+          className="fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] items-start gap-2.5 rounded-xl border border-neutral-600 bg-neutral-900 px-4 py-3 text-xs font-medium text-neutral-100 shadow-2xl sm:bottom-6 sm:right-6"
+        >
+          {toastMessage.type === 'error' ? (
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" aria-hidden="true" />
+          ) : (
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+          )}
+          <span>{toastMessage.message}</span>
         </div>
       )}
     </div>

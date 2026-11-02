@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   GitGraph,
   ArrowRight,
@@ -14,6 +14,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { ResolvedArchitecture, ProjectSpecification, ArchitectureNode } from '../types/spec';
+import { PageHero } from './PageHero';
 
 interface ArchitectureGraphProps {
   architecture: ResolvedArchitecture;
@@ -29,6 +30,12 @@ export const ArchitectureGraph: React.FC<ArchitectureGraphProps> = ({
   const [selectedNode, setSelectedNode] = useState<ArchitectureNode | null>(
     architecture.nodes[0] || null
   );
+
+  useEffect(() => {
+    setSelectedNode(
+      (current) => architecture.nodes.find((node) => node.id === current?.id) || architecture.nodes[0] || null
+    );
+  }, [architecture.nodes]);
 
   const getLayerColor = (layer: ArchitectureNode['layer']) => {
     switch (layer) {
@@ -48,34 +55,28 @@ export const ArchitectureGraph: React.FC<ArchitectureGraphProps> = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-16">
-      {/* Header with quick stats */}
-      <div className="bg-neutral-900/60 border border-neutral-800 rounded-xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/50">
-              Résolution Déterministe
-            </span>
-            <span className="text-xs text-neutral-400">
-              {architecture.nodes.length} composants interconnectés
-            </span>
-          </div>
-          <h2 className="text-xl font-bold text-white tracking-tight">
-            Graphe d'Architecture &amp; Registre des Décisions
-          </h2>
-          <p className="text-xs text-neutral-400 mt-1 max-w-2xl">
-            Visualisation des frontières logiques, protocoles d'échange et décisions architecturales déduites de votre spécification.
-          </p>
-        </div>
-
-        <button
-          onClick={onOpenAiAnalysis}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-700 hover:bg-neutral-800 text-neutral-200 text-xs font-medium transition self-start md:self-auto"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Audit Architectural IA</span>
-        </button>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-10 pb-16">
+      <PageHero
+        eyebrow="RÉSOLUTION DÉTERMINISTE"
+        tone="blue"
+        title="Graphe d’architecture"
+        accent="& décisions"
+        description="Visualisez les frontières logiques, les protocoles d’échange et les choix déduits de votre spécification."
+        meta={
+          <span className="font-mono text-neutral-400">
+            {architecture.nodes.length} composants interconnectés
+          </span>
+        }
+        actions={
+          <button
+            onClick={onOpenAiAnalysis}
+            className="ov-button-secondary flex w-full items-center justify-center gap-2 px-4 py-2 text-xs font-medium sm:w-auto"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-indigo-400" aria-hidden="true" />
+            <span>Audit Architectural IA</span>
+          </button>
+        }
+      />
 
       {/* Visual Component Pipeline / Graph */}
       <div className="bg-neutral-900/40 border border-neutral-800 rounded-xl p-6 space-y-6">
@@ -92,6 +93,15 @@ export const ArchitectureGraph: React.FC<ArchitectureGraphProps> = ({
               <div
                 key={node.id}
                 onClick={() => setSelectedNode(node)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setSelectedNode(node);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-pressed={isSelected}
                 className={`p-4 rounded-xl border cursor-pointer transition relative ${
                   isSelected
                     ? 'ring-2 ring-indigo-500 border-indigo-500 bg-neutral-900'

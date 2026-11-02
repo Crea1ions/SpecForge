@@ -14,6 +14,9 @@ import { ProjectSpecification, GeneratedFile, ResolvedArchitecture, GenerationCo
 import { BrickRegistry, defaultRegistry } from './registry';
 import { resolveArchitecture } from './resolver';
 import { getContentByteLength } from './utils';
+import { generateStaticWebSite } from './static-web/render';
+import { shouldGenerateUiUxDocsSite } from './ui-ux/registry';
+import { UI_UX_DOCS_SITE_DIRECTORY } from './ui-ux/config';
 import YAML from 'yaml';
 
 function renderMarkdown(value: unknown, level = 1): string {
@@ -169,6 +172,11 @@ ${renderMarkdown(spec, 2)}
     decisions: resolved.decisions,
   };
 
+  if (spec.profile === 'static-web') {
+    files.push(...generateStaticWebSite(spec));
+    return files;
+  }
+
   // 3. Invoke each autonomous brick plugin
   for (const brick of resolved.activeBricks) {
     if (typeof brick.generateFiles === 'function') {
@@ -179,6 +187,21 @@ ${renderMarkdown(spec, 2)}
         console.error(`Erreur dans le générateur de la brique ${brick.id}:`, err);
       }
     }
+  }
+
+  // Templates applicatifs : la configuration UI/UX alimente l'interface native
+  // via les implémentations résolues (consommées par les générateurs de
+  // templates, ex. rust-web-app → Askama). Aucun site HTML parallèle n'est
+  // émis. Exception : templates API-only avec site documentaire explicitement
+  // activé — le renderer Static Web produit alors 'docs-site/'.
+  if (spec.uiUx && shouldGenerateUiUxDocsSite(spec)) {
+    files.push(
+      ...generateStaticWebSite(spec, {
+        config: spec.uiUx,
+        template: 'static-documentation',
+        outputDirectory: UI_UX_DOCS_SITE_DIRECTORY,
+      }),
+    );
   }
 
   return files;

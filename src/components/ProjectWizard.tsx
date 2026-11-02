@@ -1,646 +1,458 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Server,
-  Layout,
-  Database,
-  Shield,
-  Box,
-  CheckSquare,
-  FileText,
-  Radio,
-  Sliders,
-  AlertCircle,
-  HelpCircle,
-  CheckCircle,
+  ArrowRight,
+  CheckCircle2,
+  ChevronUp,
 } from 'lucide-react';
-import { ApplicationTemplate, ProjectSpecification, ResolvedArchitecture } from '../types/spec';
-import { findPreset } from '../engine/presets';
+import { DropdownSelect } from './DropdownSelect';
+import { ApplicationTemplate, ProjectSpecification, ResolvedArchitecture, TechnicalProfile } from '../types/spec';
+import { findPreset, PRESETS } from '../engine/presets';
+import { AnimatedHeading } from './AnimatedHeading';
+import { StaticWebEditor } from './StaticWebEditor';
+
+export type OnboardingStage = -1 | 0 | 1 | 2 | 3;
 
 interface ProjectWizardProps {
   spec: ProjectSpecification;
   onChange: (updated: ProjectSpecification) => void;
   architecture: ResolvedArchitecture;
+  onSelectProfile: (profile: TechnicalProfile) => void;
+  onboardingStage: OnboardingStage;
+  setOnboardingStage: (stage: OnboardingStage) => void;
+  onDownloadZip: () => void;
+  onDownloadHtml: () => void;
+  onOpenArchitecture: () => void;
+  isDownloading: boolean;
 }
 
-export const ProjectWizard: React.FC<ProjectWizardProps> = ({ spec, onChange, architecture }) => {
-  const updateSpec = <K extends keyof ProjectSpecification>(
-    key: K,
-    val: Partial<ProjectSpecification[K]>
-  ) => {
-    const currentValue = spec[key];
-    const updatedValue =
-      typeof currentValue === 'object' && currentValue !== null
-        ? { ...currentValue, ...val }
-        : val;
+const profileLabels: Record<TechnicalProfile, string> = {
+  rust: 'Rust',
+  python: 'Python',
+  typescript: 'TypeScript',
+  go: 'Go',
+  'static-web': 'Static Web',
+};
 
-    onChange({
-      ...spec,
-      [key]: updatedValue,
+const documentedApplicationTypes: Array<{ template: ApplicationTemplate; label: string }> = [
+  { template: 'web-frontend', label: 'Web Frontend' },
+  { template: 'web-app', label: 'Web App' },
+  { template: 'web-platform', label: 'Web Platform' },
+  { template: 'api-service', label: 'API Service' },
+  { template: 'desktop', label: 'Desktop' },
+  { template: 'mobile', label: 'Mobile' },
+  { template: 'ecommerce', label: 'E-commerce' },
+];
+
+export const ProjectWizard: React.FC<ProjectWizardProps> = ({
+  spec,
+  onChange,
+  architecture,
+  onSelectProfile,
+  onboardingStage,
+  setOnboardingStage,
+  onDownloadZip,
+  onDownloadHtml,
+  onOpenArchitecture,
+  isDownloading,
+}) => {
+  const [flowError, setFlowError] = useState<string | null>(null);
+  const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
+  const quickCreateRef = useRef<HTMLElement>(null);
+  const quickCreateButtonRef = useRef<HTMLButtonElement>(null);
+  const profileOptions = Array.from(new Set(PRESETS.map((preset) => preset.spec.profile)));
+  const templateOptions = PRESETS.filter(
+    (preset, index, presets) =>
+      preset.spec.profile === spec.profile &&
+      presets.findIndex(
+        (candidate) =>
+          candidate.spec.profile === spec.profile &&
+          candidate.spec.template === preset.spec.template
+      ) === index
+  );
+  const selectedTemplate =
+    templateOptions.find((preset) => preset.spec.template === spec.template)?.name ??
+    spec.template;
+  const unavailableApplicationTypes = documentedApplicationTypes
+    .filter(({ template }) => !templateOptions.some((preset) => preset.spec.template === template))
+    .map(({ label }) => label);
+  useEffect(() => {
+    if (!isQuickCreateOpen || !quickCreateRef.current) return;
+
+    const panel = quickCreateRef.current;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    panel.scrollIntoView({
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      block: 'start',
     });
+    panel.focus({ preventScroll: true });
+  }, [isQuickCreateOpen]);
+
+  const handleProfileChange = (profileValue: string) => {
+    const profile = profileOptions.find((option) => option === profileValue);
+    if (!profile) return;
+    onSelectProfile(profile);
+    setFlowError(null);
+    setOnboardingStage(1);
   };
 
-const handleTemplateChange = (template: ApplicationTemplate) => {
-    const preset = findPreset(spec.profile, template);
+  const handleTemplateChange = (templateValue: string) => {
+    if (!templateValue) return;
 
+    const template = templateOptions.find(
+      (option) => option.spec.template === templateValue
+    )?.spec.template;
+    const preset = template ? findPreset(spec.profile, template) : undefined;
     if (!preset) {
+      setFlowError('Ce modèle n’est plus disponible pour ce profil. Choisissez un autre modèle.');
       return;
     }
 
-    const newSlug = preset.spec.project.slug;
-    const defaultIdentifier =
-      spec.project.identifier && !spec.project.identifier.startsWith('com.example.')
-        ? spec.project.identifier
-        : `com.acme.${newSlug.replace(/[^a-z0-9]/g, '')}`;
+    onChange(preset.spec);
+    setFlowError(null);
+    setOnboardingStage(2);
+  };
+
+  const handleProjectNameChange = (name: string) => {
+    const slug =
+      name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || spec.project.slug;
 
     onChange({
-      ...preset.spec,
+      ...spec,
       project: {
         ...spec.project,
-        name: preset.spec.project.name,
-        slug: newSlug,
-        identifier: template === 'mobile' ? defaultIdentifier : spec.project.identifier,
-        description: preset.spec.project.description,
-        type: preset.spec.project.type,
+        name,
+        slug,
       },
     });
   };
 
-  const errors = architecture.issues.filter((i) => i.severity === 'error');
-  const warnings = architecture.issues.filter((i) => i.severity === 'warning');
+  const canContinue = spec.project.name.trim().length > 0;
+  const stepCount = onboardingStage < 1 ? 1 : onboardingStage === 1 ? 2 : onboardingStage === 2 ? 3 : 4;
+
+  const closeQuickCreate = () => {
+    setIsQuickCreateOpen(false);
+    window.requestAnimationFrame(() => quickCreateButtonRef.current?.focus());
+  };
+
+  const focusAfterUpdate = (id: string) => {
+    window.requestAnimationFrame(() => document.getElementById(id)?.focus());
+  };
+
+  const continueToGeneration = () => {
+    if (!canContinue) return;
+    setOnboardingStage(3);
+    focusAfterUpdate('static-web-generation-toggle');
+  };
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto pb-16">
-      {/* Overview Banner */}
-      <div className="bg-neutral-900/60 border border-neutral-800 rounded-xl p-6 relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/50">
-                Spécification Active
-              </span>
-              <span className="text-xs text-neutral-400 font-mono">v{spec.specVersion}</span>
-            </div>
-            <h2 className="text-xl font-bold text-white tracking-tight">
-              {spec.project.name || 'Projet sans nom'}
-            </h2>
-            <p className="text-xs text-neutral-400 mt-1 max-w-2xl">
-              {spec.project.description ||
-                "Définissez les capacités requises ci-dessous. Le moteur déduit l'architecture et les briques nécessaires."}
+    <div className="w-full pb-8">
+      <section
+        aria-labelledby="home-title"
+        className="relative isolate flex min-h-[calc(100svh-4rem)] overflow-hidden"
+      >
+        <div className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center gap-20 px-shell py-12 sm:gap-24 sm:py-16 lg:gap-32">
+          <div className="max-w-2xl -translate-y-2">
+            <p className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] sm:text-xs">
+              <span className="brand-eyebrow">GÉNÉRATION DE PROJETS</span>
+              <span className="brand-eyebrow-rule" aria-hidden="true" />
             </p>
+            <AnimatedHeading
+              as="h1"
+              id="home-title"
+              tone="brand"
+              className="w-fit max-w-full text-[clamp(2.375rem,4.5vw,3.5rem)] font-bold leading-tight tracking-tight text-neutral-100"
+              lines={[
+                { text: "De l'idée à une" },
+                {
+                  text: 'base de code structurée.',
+                  className: 'mt-1',
+                  highlights: { code: 'lavender' },
+                },
+              ]}
+            />
           </div>
-
-          <div className="flex flex-wrap gap-2 items-center text-xs">
-            <div className="bg-neutral-950/80 px-3 py-1.5 rounded-lg border border-neutral-800">
-              <span className="text-neutral-400">Briques : </span>
-              <span className="font-semibold text-white">{architecture.activeBricks.length}</span>
-            </div>
-            <div className="bg-neutral-950/80 px-3 py-1.5 rounded-lg border border-neutral-800">
-              <span className="text-neutral-400">Fichiers : </span>
-              <span className="font-semibold text-white">{architecture.stats.totalFiles}</span>
-            </div>
-            <div className="bg-neutral-950/80 px-3 py-1.5 rounded-lg border border-neutral-800">
-              <span className="text-neutral-400">Moteur : </span>
-              <span className="font-semibold text-emerald-400">Déterministe</span>
-            </div>
+          <div className="flex translate-y-4 flex-col items-start gap-5 sm:translate-y-6">
+            <AnimatedHeading
+              as="h2"
+              tone="brand"
+              className="w-fit font-mono text-2xl font-semibold text-indigo-300 sm:text-3xl"
+              reverseGradient
+              lines={[
+                {
+                  text: 'Prêt à coder.',
+                  accent: true,
+                },
+              ]}
+            />
+            <button
+              ref={quickCreateButtonRef}
+              type="button"
+              aria-expanded={isQuickCreateOpen}
+              aria-controls="project-configuration"
+              onClick={() => setIsQuickCreateOpen((open) => !open)}
+              className="ov-button-translucent-action inline-flex items-center gap-2.5 px-5 py-3 text-sm"
+            >
+              {isQuickCreateOpen ? 'Masquer la création' : 'Créer mon projet'}
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </button>
           </div>
         </div>
+      </section>
 
-        {/* Validation issues bar */}
-        {errors.length > 0 && (
-          <div className="mt-4 p-3 bg-red-950/40 border border-red-800/60 rounded-lg text-xs text-red-300 space-y-1">
-            {errors.map((err) => (
-              <div key={err.id} className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold">{err.title} : </span>
-                  {err.message}{' '}
-                  {err.fixSuggestion && (
-                    <span className="text-red-200 underline cursor-pointer">{err.fixSuggestion}</span>
-                  )}
-                </div>
+      <section
+        ref={quickCreateRef}
+        id="project-configuration"
+        aria-labelledby="configuration-title"
+        tabIndex={-1}
+        hidden={!isQuickCreateOpen}
+        className={`quick-create-reveal mx-auto w-full scroll-mt-24 px-shell pb-12 ${
+          spec.profile === 'static-web' || onboardingStage >= 1 ? 'max-w-[96rem]' : 'max-w-2xl'
+        }`}
+      >
+        <div className="ov-panel ov-panel-translucent p-4 sm:p-6">
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-300">
+                  Création rapide
+                </p>
+                <h2 id="configuration-title" className="mt-1 text-lg font-semibold text-neutral-100">
+                  Votre projet, en quelques choix
+                </h2>
               </div>
-            ))}
-          </div>
-        )}
-
-        {warnings.length > 0 && errors.length === 0 && (
-          <div className="mt-4 p-3 bg-amber-950/40 border border-amber-800/60 rounded-lg text-xs text-amber-300 space-y-1">
-            {warnings.map((warn) => (
-              <div key={warn.id} className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold">{warn.title} : </span>
-                  {warn.message}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 1. Informations Générales & Type */}
-      <section className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-6 space-y-5">
-        <div className="flex items-center gap-2.5 text-white font-semibold border-b border-neutral-800 pb-3">
-          <Sliders className="w-4 h-4 text-indigo-400" />
-          <h3 className="text-base">1. Informations Générales &amp; Type de Projet</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-              Nom du projet
-            </label>
-            <input
-              type="text"
-              value={spec.project.name}
-              onChange={(e) => updateSpec('project', { name: e.target.value })}
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-              placeholder="ex: Lexi Core"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-              Slug technique
-            </label>
-            <input
-              type="text"
-              value={spec.project.slug}
-              onChange={(e) =>
-                updateSpec('project', {
-                  slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-                })
-              }
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-indigo-500"
-              placeholder="ex: lexi-core"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-              Auteur / Équipe
-            </label>
-            <input
-              type="text"
-              value={spec.project.author}
-              onChange={(e) => updateSpec('project', { author: e.target.value })}
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-            />
-          </div>
-
-          <div className="md:col-span-3">
-            <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-              Description de l'intention
-            </label>
-            <input
-              type="text"
-              value={spec.project.description}
-              onChange={(e) => updateSpec('project', { description: e.target.value })}
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-              placeholder="ex: Plateforme haute performance de streaming et de traitement audio."
-            />
-          </div>
-
-          {/* Champ Identifiant Reverse-DNS / Bundle ID (activé pour mobile) */}
-          {(spec.template === 'mobile' || spec.project.type === 'mobile') && (
-            <div className="md:col-span-3">
-              <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                Identifiant d'application Mobile (Bundle ID / Reverse-DNS)
-              </label>
-              <input
-                type="text"
-                value={spec.project.identifier || ''}
-                onChange={(e) => updateSpec('project', { identifier: e.target.value })}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-indigo-500"
-                placeholder="ex: com.acme.monapp"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Project Type Selectors */}
-        <div>
-          <label className="block text-xs font-medium text-neutral-300 mb-2">
-            Type d'application
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-            {[
-              { id: 'web-frontend', label: 'Web Frontend', desc: 'Client web seul' },
-              { id: 'web-app', label: 'Web App', desc: 'Backend + UI Web' },
-              { id: 'web-platform', label: 'Web Platform', desc: 'Frontend + Backend séparés' },
-              { id: 'api-service', label: 'API Service', desc: 'Service backend pur' },
-              { id: 'desktop', label: 'Desktop', desc: 'Tauri + Rust + UI' },
-              { id: 'mobile', label: 'Mobile', desc: 'Application mobile' },
-            ].map((t) => {
-              const template = t.id as ApplicationTemplate;
-              const preset = findPreset(spec.profile, template);
-              const isActive = spec.template === template;
-              const isAvailable = !!preset;
-
-              return (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-neutral-400">
+                  {onboardingStage >= 1
+                    ? 'Configuration UI/UX · 5 étapes'
+                    : `Étape ${stepCount} sur 4`}
+                </span>
                 <button
-                  key={t.id}
                   type="button"
-                  disabled={!isAvailable}
-                  onClick={() => handleTemplateChange(template)}
-                  className={`p-3 rounded-lg border text-left transition ${
-                    isActive
-                      ? 'bg-indigo-950/60 border-indigo-600 text-white shadow-sm'
-                      : isAvailable
-                        ? 'bg-neutral-950/60 border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700'
-                        : 'bg-neutral-950/30 border-neutral-900 text-neutral-600 cursor-not-allowed'
-                  }`}
+                  onClick={closeQuickCreate}
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-neutral-100"
                 >
-                  <div className="font-semibold text-xs text-white">{t.label}</div>
-                  <div className="text-[10px] text-neutral-400 mt-0.5 leading-tight">
-                    {isAvailable ? t.desc : 'Template non disponible'}
-                  </div>
+                  Fermer
+                  <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* 2. Backend & Frontend Setup */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Backend Card */}
-        <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
-            <div className="flex items-center gap-2 text-white font-semibold">
-              <Server className="w-4 h-4 text-emerald-400" />
-              <h4 className="text-sm">Backend Service</h4>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={spec.backend.enabled}
-                onChange={(e) => updateSpec('backend', { enabled: e.target.checked })}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
-            </label>
-          </div>
-
-          {spec.backend.enabled ? (
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-neutral-400 mb-1">Langage &amp; Runtime</label>
-                <select
-                  value={spec.backend.language}
-                  onChange={(e) =>
-                    updateSpec('backend', {
-                      language: e.target.value as any,
-                      framework: e.target.value === 'rust' ? 'axum' : 'fastapi',
-                    })
-                  }
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="rust">Rust (Tokio, mémoire garantie, binaire ultra-rapide)</option>
-                  <option value="python">Python (FastAPI, Asyncio, écosystème IA/Data)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-neutral-400 mb-1">Framework Web</label>
-                <select
-                  value={spec.backend.framework}
-                  onChange={(e) => updateSpec('backend', { framework: e.target.value as any })}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-                >
-                  {spec.backend.language === 'rust' ? (
-                    <option value="axum">Axum (Recommandé par la communauté Tokio)</option>
-                  ) : (
-                    <option value="fastapi">FastAPI (Typage strict Pydantic + OpenAPI)</option>
-                  )}
-                </select>
-              </div>
-
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <label className="block text-neutral-400 mb-1">Port HTTP</label>
-                  <input
-                    type="number"
-                    value={spec.backend.port}
-                    onChange={(e) => updateSpec('backend', { port: parseInt(e.target.value) || 8080 })}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white font-mono"
-                  />
-                </div>
-                <div className="flex items-center gap-2 pt-5">
-                  <input
-                    type="checkbox"
-                    id="cors"
-                    checked={spec.backend.cors}
-                    onChange={(e) => updateSpec('backend', { cors: e.target.checked })}
-                    className="rounded bg-neutral-900 border-neutral-700 text-indigo-600 focus:ring-0"
-                  />
-                  <label htmlFor="cors" className="text-neutral-300 cursor-pointer">
-                    CORS permissif
-                  </label>
-                </div>
               </div>
             </div>
-          ) : (
-            <p className="text-xs text-neutral-500 italic">
-              Service backend désactivé dans cette cible de génération.
-            </p>
-          )}
-        </div>
 
-        {/* Frontend Card */}
-        <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
-            <div className="flex items-center gap-2 text-white font-semibold">
-              <Layout className="w-4 h-4 text-sky-400" />
-              <h4 className="text-sm">Interface Utilisateur</h4>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={spec.frontend.enabled}
-                onChange={(e) => updateSpec('frontend', { enabled: e.target.checked })}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-600"></div>
-            </label>
-          </div>
-
-          {spec.frontend.enabled ? (
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-neutral-400 mb-1">Framework &amp; Bundler</label>
-                <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800 text-white flex items-center justify-between">
-                  <span>React 19 + Vite (TypeScript)</span>
-                  <span className="text-[10px] bg-sky-950 text-sky-300 px-2 py-0.5 rounded border border-sky-800/40">
-                    SPA Native
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-neutral-400 mb-1">Système de styles</label>
-                <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800 text-white flex items-center justify-between">
-                  <span>Tailwind CSS v4 (Utilitaires optimisés)</span>
-                  <span className="text-emerald-400 text-xs">Activé</span>
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-neutral-800/60">
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={spec.frontend.tauri}
-                    disabled={spec.project.type !== 'desktop'}
-                    onChange={(e) => updateSpec('frontend', { tauri: e.target.checked })}
-                    className="rounded bg-neutral-900 border-neutral-700 text-sky-600 focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
-                  <div>
-                    <span className="text-white font-medium">Empaquetage Bureau Tauri</span>
-                    <p className="text-[11px] text-neutral-400">
-                      Génère la couche native `src-tauri` pour exécuter l'UI dans une fenêtre OS légère.
-                    </p>
+            <ol className="space-y-2.5">
+              <li className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-3 sm:p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="font-mono text-xs text-neutral-400">01</span>
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-semibold text-neutral-100">Profil technique</h3>
+                      {onboardingStage >= 1 && onboardingStage !== 0 && (
+                        <p className="mt-0.5 text-xs text-neutral-400">
+                          {profileLabels[spec.profile]}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </label>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-neutral-500 italic">
-              Interface utilisateur non incluse dans cette configuration.
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* 3. Base de données & API */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Database Card */}
-        <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
-            <div className="flex items-center gap-2 text-white font-semibold">
-              <Database className="w-4 h-4 text-amber-400" />
-              <h4 className="text-sm">Base de données &amp; Stockage</h4>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={spec.database.enabled}
-                onChange={(e) => updateSpec('database', { enabled: e.target.checked })}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
-            </label>
-          </div>
-
-          {spec.database.enabled ? (
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-neutral-400 mb-1">Moteur Relationnel</label>
-                <select
-                  value={spec.database.type}
-                  onChange={(e) =>
-                    updateSpec('database', {
-                      type: e.target.value as any,
-                      orm: 'sqlx',
-                    })
-                  }
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="sqlite">SQLite (Embarqué, zéro-configuration, fichier local)</option>
-                  <option value="postgresql">PostgreSQL (Production, forte charge, Docker compose)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-neutral-400 mb-1">Couche d'Accès aux Données</label>
-                <div className="p-2 rounded-lg bg-neutral-950 border border-neutral-800 text-neutral-200">
-                  {spec.database.type === 'sqlite' ? (
-                    <span>Rusqlite &amp; SQLx vérifié au compile-time</span>
-                  ) : (
-                    <span>SQLx avec connection pool asynchrone</span>
+                  {onboardingStage >= 1 && onboardingStage !== 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOnboardingStage(0);
+                        focusAfterUpdate('onboarding-profile');
+                      }}
+                      className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-neutral-100"
+                    >
+                      Modifier
+                    </button>
+                  )}
+                  {onboardingStage >= 1 && onboardingStage !== 0 && (
+                    <CheckCircle2
+                      className="h-4 w-4 shrink-0 text-emerald-300"
+                      aria-label="Profil sélectionné"
+                    />
                   )}
                 </div>
-              </div>
+                {onboardingStage <= 0 && (
+                  <div className="mt-3">
+                    <DropdownSelect
+                      id="onboarding-profile"
+                      label="Choisir un profil technique"
+                      value={onboardingStage === -1 ? '' : spec.profile}
+                      placeholder="Choisir un profil technique"
+                      options={profileOptions.map((profile) => ({
+                        value: profile,
+                        label: profileLabels[profile],
+                      }))}
+                      onChange={(profile) => {
+                        handleProfileChange(profile);
+                        focusAfterUpdate('onboarding-template');
+                      }}
+                    />
+                  </div>
+                )}
+              </li>
 
-              <div className="flex items-center gap-4 pt-1">
-                <label className="flex items-center gap-1.5 text-neutral-300">
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Migrations SQL incluses</span>
-                </label>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-neutral-500 italic">
-              Aucun stockage de données persistant configuré.
-            </p>
-          )}
-        </div>
+              {spec.profile !== 'static-web' && onboardingStage >= 1 && (
+                <li className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-3 sm:p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="font-mono text-xs text-neutral-400">02</span>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold text-neutral-100">Modèle de projet</h3>
+                        {onboardingStage >= 2 && onboardingStage !== 1 && (
+                          <p className="mt-0.5 truncate text-xs text-neutral-400">
+                            {selectedTemplate}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {onboardingStage >= 2 && onboardingStage !== 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOnboardingStage(1);
+                          focusAfterUpdate('onboarding-template');
+                        }}
+                        className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-neutral-100"
+                      >
+                        Modifier
+                      </button>
+                    )}
+                    {onboardingStage >= 2 && onboardingStage !== 1 && (
+                      <CheckCircle2
+                        className="h-4 w-4 shrink-0 text-emerald-300"
+                        aria-label="Modèle sélectionné"
+                      />
+                    )}
+                  </div>
+                  {onboardingStage === 1 && (
+                    <div className="mt-3">
+                      <DropdownSelect
+                        id="onboarding-template"
+                        label="Choisir un modèle de projet"
+                        value=""
+                        placeholder="Choisir un modèle"
+                        options={templateOptions.map((preset) => ({
+                          value: preset.spec.template,
+                          label: `${preset.tagline} — ${preset.name}`,
+                        }))}
+                        onChange={(template) => {
+                          handleTemplateChange(template);
+                          focusAfterUpdate('onboarding-project-name');
+                        }}
+                        disabled={templateOptions.length === 0}
+                      />
+                      {templateOptions.length === 0 && (
+                        <p role="status" className="mt-2 text-xs text-neutral-400">
+                          Aucun modèle n’est disponible pour ce profil.
+                        </p>
+                      )}
+                      {flowError && (
+                        <p role="alert" className="mt-2 text-xs text-red-200">
+                          {flowError}
+                        </p>
+                      )}
+                      {unavailableApplicationTypes.length > 0 && (
+                        <p role="status" className="mt-2 text-xs text-neutral-500">
+                          Types pas encore disponibles pour {profileLabels[spec.profile]} :{' '}
+                          {unavailableApplicationTypes.join(', ')}.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </li>
+              )}
 
-        {/* API & Auth Card */}
-        <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 space-y-4">
-          <div className="flex items-center gap-2 text-white font-semibold border-b border-neutral-800 pb-3">
-            <Shield className="w-4 h-4 text-purple-400" />
-            <h4 className="text-sm">Protocole API &amp; Authentification</h4>
-          </div>
+              {spec.profile !== 'static-web' && onboardingStage >= 2 && (
+                <li className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-3 sm:p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="font-mono text-xs text-neutral-400">03</span>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold text-neutral-100">Nom du projet</h3>
+                        {onboardingStage >= 3 && (
+                          <p className="mt-0.5 truncate text-xs text-neutral-400">
+                            {spec.project.name}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {onboardingStage >= 3 && (
+                      <button
+                        type="button"
+                        onClick={() => setOnboardingStage(2)}
+                        className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-neutral-100"
+                      >
+                        Modifier
+                      </button>
+                    )}
+                    {onboardingStage >= 3 && (
+                      <CheckCircle2
+                        className="h-4 w-4 shrink-0 text-emerald-300"
+                        aria-label="Nom de projet confirmé"
+                      />
+                    )}
+                  </div>
+                  {onboardingStage === 2 && (
+                    <div className="mt-3">
+                      <label htmlFor="onboarding-project-name" className="sr-only">
+                        Nom du projet
+                      </label>
+                      <input
+                        id="onboarding-project-name"
+                        type="text"
+                        autoComplete="off"
+                        value={spec.project.name}
+                        onChange={(event) => handleProjectNameChange(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && canContinue) {
+                            event.preventDefault();
+                            continueToGeneration();
+                          }
+                        }}
+                        className="ov-field w-full rounded-lg px-3 py-2 text-sm"
+                        placeholder="Ex. : Mon projet"
+                        aria-describedby="project-name-help"
+                      />
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                        <p id="project-name-help" className="text-xs text-neutral-400">
+                          Nom suggéré par le modèle, modifiable à tout moment.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={continueToGeneration}
+                          disabled={!canContinue}
+                          className="ov-button-secondary inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold disabled:opacity-50"
+                        >
+                          Continuer
+                          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              )}
 
-          <div className="space-y-3 text-xs">
-            <div>
-              <label className="block text-neutral-400 mb-1">Style d'API</label>
-              <select
-                value={spec.api.style}
-                onChange={(e) => updateSpec('api', { style: e.target.value as any })}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
-              >
-                <option value="rest">REST API (Endpoints JSON, pagination, handlers CRUD)</option>
-                <option value="websocket">WebSocket (Diffusion temps réel &amp; messages)</option>
-                <option value="none">Aucune API (CLI / Traitement batch)</option>
-              </select>
-            </div>
+              {onboardingStage >= 1 && (
+                <li className="rounded-xl border border-neutral-700 bg-neutral-900/50 p-3 sm:p-4">
+                  <StaticWebEditor
+                    spec={spec}
+                    onChange={onChange}
+                    architecture={architecture}
+                    canGenerate={canContinue}
+                    isDownloading={isDownloading}
+                    onProjectNameChange={handleProjectNameChange}
+                    onDownloadZip={onDownloadZip}
+                    onDownloadHtml={onDownloadHtml}
+                    onOpenArchitecture={onOpenArchitecture}
+                  />
+                </li>
+              )}
 
-            <div className="pt-2 border-t border-neutral-800/60">
-              <label className="flex items-center justify-between cursor-pointer mb-2">
-                <span className="text-neutral-300 font-medium">Authentification JWT</span>
-                <input
-                  type="checkbox"
-                  checked={spec.authentication.enabled}
-                  onChange={(e) =>
-                    updateSpec('authentication', {
-                      enabled: e.target.checked,
-                      provider: e.target.checked ? 'jwt' : 'none',
-                    })
-                  }
-                  className="rounded bg-neutral-900 border-neutral-700 text-purple-600 focus:ring-0"
-                />
-              </label>
-              <p className="text-[11px] text-neutral-400">
-                Active le middleware de vérification de Bearer tokens et la signature cryptographique.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 4. Infrastructure & DevOps */}
-      <section className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 space-y-4">
-        <div className="flex items-center gap-2 text-white font-semibold border-b border-neutral-800 pb-3">
-          <Box className="w-4 h-4 text-blue-400" />
-          <h4 className="text-sm">Infrastructure &amp; Déploiement</h4>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-          <label
-            className={`p-3.5 rounded-lg border cursor-pointer transition ${
-              spec.infrastructure.docker
-                ? 'bg-blue-950/40 border-blue-700 text-white'
-                : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-semibold text-white">Docker Multi-Stage</span>
-              <input
-                type="checkbox"
-                checked={spec.infrastructure.docker}
-                onChange={(e) =>
-                  updateSpec('infrastructure', {
-                    docker: e.target.checked,
-                    compose: e.target.checked ? spec.infrastructure.compose : false,
-                  })
-                }
-                className="rounded bg-neutral-900 border-neutral-700 text-blue-600 focus:ring-0"
-              />
-            </div>
-            <p className="text-[11px] text-neutral-400 leading-snug">
-              Génère le Dockerfile optimisé Alpine pour un runtime minimal.
-            </p>
-          </label>
-
-          <label
-            className={`p-3.5 rounded-lg border cursor-pointer transition ${
-              spec.infrastructure.compose
-                ? 'bg-blue-950/40 border-blue-700 text-white'
-                : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-semibold text-white">Docker Compose</span>
-              <input
-                type="checkbox"
-                disabled={!spec.infrastructure.docker}
-                checked={spec.infrastructure.compose}
-                onChange={(e) => updateSpec('infrastructure', { compose: e.target.checked })}
-                className="rounded bg-neutral-900 border-neutral-700 text-blue-600 focus:ring-0"
-              />
-            </div>
-            <p className="text-[11px] text-neutral-400 leading-snug">
-              Orchestre le backend et la base PostgreSQL en une commande.
-            </p>
-          </label>
-
-          <label
-            className={`p-3.5 rounded-lg border cursor-pointer transition ${
-              spec.infrastructure.systemd
-                ? 'bg-blue-950/40 border-blue-700 text-white'
-                : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-semibold text-white">Service Linux systemd</span>
-              <input
-                type="checkbox"
-                checked={spec.infrastructure.systemd}
-                onChange={(e) => updateSpec('infrastructure', { systemd: e.target.checked })}
-                className="rounded bg-neutral-900 border-neutral-700 text-blue-600 focus:ring-0"
-              />
-            </div>
-            <p className="text-[11px] text-neutral-400 leading-snug">
-              Fichier d'unité pour déploiement direct bare-metal sur VPS.
-            </p>
-          </label>
-        </div>
-      </section>
-
-      {/* 5. Qualité, CI & Documentation */}
-      <section className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 space-y-4">
-        <div className="flex items-center gap-2 text-white font-semibold border-b border-neutral-800 pb-3">
-          <CheckSquare className="w-4 h-4 text-emerald-400" />
-          <h4 className="text-sm">Assurance Qualité &amp; Documentation</h4>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-          {[
-            { key: 'tests', label: 'Tests Unitaires & Intégration', category: 'quality' },
-            { key: 'ci', label: 'GitHub Actions CI', category: 'quality' },
-            { key: 'readme', label: 'README.md', category: 'documentation' },
-          ].map((item) => {
-            const isQuality = item.category === 'quality';
-            const isChecked = isQuality
-              ? (spec.quality as any)[item.key]
-              : (spec.documentation as any)[item.key];
-
-            return (
-              <label
-                key={item.key}
-                className={`p-3 rounded-lg border cursor-pointer flex items-center justify-between ${
-                  isChecked
-                    ? 'bg-neutral-900 border-neutral-700 text-white'
-                    : 'bg-neutral-950 border-neutral-800 text-neutral-500'
-                }`}
-              >
-                <span className="font-medium text-[11px] leading-tight pr-2">{item.label}</span>
-                <input
-                  type="checkbox"
-                  checked={Boolean(isChecked)}
-                  onChange={(e) => {
-                    if (isQuality) {
-                      updateSpec('quality', { [item.key]: e.target.checked });
-                    } else {
-                      updateSpec('documentation', { [item.key]: e.target.checked });
-                    }
-                  }}
-                  className="rounded bg-neutral-900 border-neutral-700 text-indigo-600 focus:ring-0 shrink-0"
-                />
-              </label>
-            );
-          })}
+            </ol>
         </div>
       </section>
     </div>

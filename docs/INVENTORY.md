@@ -1,10 +1,12 @@
 # INVENTORY.md — Inventaire Fonctionnel des Briques
 
 **Projet :** SpecForge
-**Dernière mise à jour :** 2026-09-20
-**Branche :** `feat/rust-mobile-dioxus`
+**Dernière mise à jour :** 2026-11-01
+**Branche :** `feat/static-web-profile`
 
-> **État au 2026-09-20.** Ce document est un plan de conception historique (composition de briques). L'état réel du Core, des 17 briques et des 6 templates est décrit dans `docs/ARCHITECTURE-CORE-BRICKS-TEMPLATES.md`. Depuis ce plan, `jwt-auth`, `openapi`, `systemd-infra` et `rust-dioxus-mobile` ont été créées, et `rust-web-app` est un template autonome. Les sections ci-dessous sont conservées pour mémoire, sauf les tableaux de briques, tenus à jour.
+> **État au 2026-11-01.** Ce document conserve un plan de conception historique (composition de briques). L'état réel des profils, des 18 briques de base et des templates est tenu à jour dans ce document et dans `docs/ARCHITECTURE-CORE-BRICKS-TEMPLATES.md`.
+>
+> **2026-11-02 — Bricks UI/UX natives par template.** La configuration `uiUx` des modèles applicatifs alimente désormais l'interface native de chaque template (module `core/ui-ux/`, contrats Definition/Implementation/Integration, cibles Askama/React/Dioxus) ; aucun site HTML parallèle n'est généré. Static Web conserve son système séparé. Les templates API-only ne produisent `docs-site/` que sur option explicite (`docsSite`, désactivé par défaut). Voir la section 17 de `docs/ARCHITECTURE-CORE-BRICKS-TEMPLATES.md`.
 
 ---
 
@@ -61,12 +63,13 @@ Les briques peuvent :
 | Brique              | Fichiers autonomes                           | Contributions à prévoir          |
 | ------------------- | -------------------------------------------- | -------------------------------- |
 | `rust-backend`      | `Cargo.toml`, `src/main.rs`, `src/config.rs` | Socle de `Cargo.toml`, `main.rs` |
-| `python-backend`    | `requirements.txt`, `main.py`                | À traiter ultérieurement         |
+| `python-backend`    | `pyproject.toml`, `main.py`                   | FastAPI; REST et tests via `rest-api` et `quality-suite` |
+| `go-backend`        | `go.mod`, `main.go`                           | Serveur standard Go; REST et tests via `rest-api` et `quality-suite` |
 | `react-vite`        | `frontend/*`                                 | À traiter ultérieurement         |
 | `tauri-desktop`     | fichiers Tauri                               | À traiter ultérieurement         |
 | `sqlite-storage`    | `src/db.rs`, `migrations/*`                  | `Cargo.toml`, `main.rs`          |
 | `postgres-storage`  | `src/db.rs`, `migrations/*`                  | `Cargo.toml`, `main.rs`          |
-| `rest-api`          | `src/api.rs`                                 | `Cargo.toml`, `main.rs`          |
+| `rest-api`          | `src/api.rs`, `api.py`, `api.go`              | Routes adaptées au runtime sélectionné |
 | `docker-infra`      | `Dockerfile`, `docker-compose.yml`           | Aucune à ce stade                |
 | `quality-suite`     | tests, CI/lint                               | Aucune à ce stade                |
 | `docs-pack`         | `README.md`                                  | Aucune à ce stade                |

@@ -118,6 +118,8 @@ Go
 
 Ajouter un profil ne signifie pas simplement ajouter une option dans un `<select>`.
 
+État livré : Rust dispose de sept modèles applicatifs; TypeScript de Web Frontend React/Vite; Python et Go d’un premier API Service (FastAPI et `net/http`). Ces deux nouveaux profils de base peuvent accueillir ultérieurement plusieurs modèles et technologies complémentaires; les autres combinaisons restent indisponibles jusque-là.
+
 Il faut progressivement fournir les templates correspondants.
 
 La progression recommandée est :

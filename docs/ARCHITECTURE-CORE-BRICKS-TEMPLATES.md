@@ -467,13 +467,15 @@ Le resolver choisit d'abord le squelette du template (étape 1 de `resolveArchit
 | `desktop` | `rust-tauri-react` | `react-vite`, `tauri-desktop`, `sqlite-storage` | branche générique |
 | `api-service` | `rust-backend-only` | `rust-backend`, `sqlite-storage` | branche générique |
 | `web-frontend` (React) | `react-frontend-only` | `react-vite` | branche générique |
+| `api-service` (Python) | `python-api-service` | `python-backend`, `rest-api`, `openapi`, `quality-suite` | branche générique |
+| `api-service` (Go) | `go-api-service` | `go-backend`, `rest-api`, `openapi`, `quality-suite` | branche générique |
 
-Il y a 7 presets pour 6 templates : `web-frontend` a deux variantes, choisies par le profil technique (`rust` → Askama, `typescript` → React).
+Les profils techniques proposent 10 presets pour 7 types de template : `web-frontend` a les variantes Rust/Askama et TypeScript/React; `api-service` a les variantes Rust, Python/FastAPI et Go/`net/http`. Static Web ajoute ses trois templates autonomes.
 
 Points à connaître :
 
 - La brique `rust-web-frontend` n'est choisie que si `frontend.framework` vaut `askama`. Avec `react`, la branche générique active `react-vite`.
-- `docker-infra` exige la capacité `backend_runtime`, fournie par `rust-backend`, `python-backend`, `tauri-desktop` et `rust-web-app`. Un preset sans backend (`react-frontend-only`, `rust-web-frontend`, `rust-dioxus-mobile`) doit donc avoir `docker: false`.
+- `docker-infra` génère actuellement une image exécutable pour les runtimes Rust pris en charge; les presets Python et Go gardent `docker: false` et le validateur refuse cette capacité jusqu’à ce qu’un Dockerfile adapté soit généré.
 - Le preset `rust-tauri-react` n'active pas `rust-backend` : `tauri-desktop` fournit `backend_runtime`.
 
 ------------------------------------------------------------------------
@@ -588,12 +590,13 @@ deviendrait rapidement déconnectée des composants réels.
 
 ## 11. Exemple des briques actuellement intégrées
 
-Le registre actuel comprend 17 briques :
+Le registre actuel comprend 18 briques de base, complétées par les briques e-commerce :
 
   Brique                Domaine            Rôle
   --------------------- ------------------ --------------------------------------
   `rust-backend`        backend            Runtime/backend Rust
-  `python-backend`      backend            Backend Python
+  `python-backend`      backend            Runtime Python/FastAPI
+  `go-backend`          backend            Runtime Go/net/http
   `react-vite`          frontend           React + Vite + TypeScript + Tailwind
   `tauri-desktop`       frontend/desktop   Interface desktop Tauri
   `sqlite-storage`      data               Persistance SQLite
@@ -751,3 +754,154 @@ Template   → possède une architecture applicative cohérente
 Generator  → matérialise le résultat
 Developer  → construit le produit
 ```
+
+---
+
+## 16. Profil Static Web et bricks de composition
+
+Le profil `static-web` ajoute une configuration de contenu et de présentation `staticWeb` à la
+`ProjectSpecification`. Le Core conserve le pipeline existant :
+
+```text
+ProjectSpecification.staticWeb
+        ↓
+validateStaticWebConfig
+        ↓
+Static Web renderer
+        ↓
+GeneratedFile[]
+```
+
+Le modèle comprend séparément le mode de composition
+(`content-driven` / `layout-driven`), l'organisation des pages
+(`single-page` / `multi-page` / `documentation`) et le mode de navigation.
+La configuration propose un menu latéral repliable ou un menu burger
+déroulant ; les anciennes valeurs `topbar` et `combined` restent interprétées
+pour préserver les projets existants. Les templates `static-documentation`,
+`static-website` et `static-landing-page` sont des points de départ, pas des
+catégories fermées.
+
+Les contrats de composition sont déclarés dans
+`src/core/static-web/bricks.ts` et exposés par `StaticWebBrickRegistry`.
+Chaque `StaticWebBrickDefinition` décrit son identité, sa catégorie, ses
+propriétés, ses valeurs par défaut et ses profils/templates compatibles. Les
+six bricks initiales sont Hero, Text / Content, Features / Cards, Gallery,
+Testimonials et Call To Action. L'interface édite les propriétés déclarées ;
+le moteur dans `render.ts` possède les implémentations de rendu. Cette
+séparation est additive : elle ne transforme pas les `BrickDefinition`
+existantes et ne suppose pas que leur code de génération soit partagé avec un
+autre profil.
+
+`content.ts` lit le frontmatter YAML et produit les pages normalisées. La
+validation du Core vérifie les slugs, les propriétés de bricks, les couleurs,
+les URL, les chemins et les ressources locales. Le moteur Markdown échappe les
+fragments HTML et n'émet pas les liens utilisant des protocoles non autorisés.
+Les prévisualisations et la génération utilisent les mêmes fonctions de
+rendu.
+
+Single HTML intègre CSS, JavaScript, contenu et assets en base64. L'export
+multi-fichiers n'utilise que des références relatives locales et comprend son
+CSS, son JavaScript et ses assets. La recherche est générée à partir d'un index
+local intégré au HTML ; aucun chargement réseau, import dynamique, CDN ou
+backend n'est requis pour ouvrir le résultat via `file://`.
+
+## 17. Bricks UI/UX natives par template (module `core/ui-ux/`)
+
+Les modèles applicatifs hors Static Web portent une configuration `uiUx` dans
+`ProjectSpecification`. Cette configuration alimente **l'interface native du
+template** — templates Askama, composants React, RSX Dioxus — sans produire de
+site HTML parallèle. Le système Static Web (`core/static-web/`) reste un
+système séparé et autonome : registre, renderer, pipeline et tests inchangés.
+
+### 17.1 Responsabilités séparées
+
+1. **Configuration commune** — `ProjectUiUxConfig` (type autonome, distinct de
+   `StaticWebConfig`) : pages et contenu Markdown, blocs composés, navigation,
+   thème/tokens, assets importés, et l'option `docsSite` réservée aux templates
+   API-only (désactivée par défaut).
+2. **Définition de brick** — `ProjectUiUxBrickDefinition` (`ui-ux/bricks.ts`) :
+   contrat sémantique (identifiant, catégorie, propriétés, valeurs par défaut,
+   compatibilités profil/template), sans génération liée à un langage. Socle :
+   `hero`, `text-content`, `features`, `gallery`, `testimonials`,
+   `call-to-action`.
+3. **Implémentation de brick** — `ProjectUiUxBrickImplementation`
+   (`ui-ux/implementations/`) : rendu natif par cible (`askama`, `react`,
+   `dioxus`) et rendu d'aperçu HTML pour l'éditeur. Une même définition a
+   plusieurs implémentations ; le renderer de blocs HTML partagé
+   (`implementations/html-blocks.ts`) porte le langage visuel commun.
+4. **Intégration de template** — `UI_UX_TEMPLATE_INTEGRATIONS`
+   (`ui-ux/registry.ts`) : cible de rendu résolue par couple profil/template,
+   présence d'interface native, et `supportsContentPages: false` pour les
+   interfaces pilotées par les données métier (e-commerce : seul le thème est
+   appliqué à la vitrine).
+5. **Core** — `validator.ts` délègue à `validateProjectUiUxConfig` pour les
+   profils non Static Web (configuration, compatibilités, implémentations
+   manquantes, option `docsSite`). `generator.ts` n'appelle plus le renderer
+   Static Web pour `uiUx` : les implémentations natives sont consommées par les
+   générateurs des templates. Seule exception : un template API-only avec
+   `docsSite: true` produit `docs-site/` via le renderer Static Web.
+6. **Preview** — `renderProjectUiUxPreview` (`ui-ux/preview.ts`) délègue au
+   renderer de la cible résolue : l'aperçu correspond au moteur qui produira
+   l'application.
+
+### 17.2 Intégrations natives actuelles
+
+| Template | Cible | Intégration |
+|---|---|---|
+| `rust-web-app` | Askama | Pages dans `templates/index.html` + `templates/pages/<slug>.html`, routes/handlers dédiés, thème dans `static/css/tokens.css`, blocs dans `static/css/style.css`, assets sous `static/assets/`. Routes `/dashboard` et API préservées. |
+| `rust-web-frontend` | Askama | Mêmes sorties ; documents autonomes (le layout n'est pas héritable), template de fondation préservé dans `templates/foundation.html` pour les routes métier. |
+| `rust-react-postgres`, `react-frontend-only`, `rust-tauri-react` | React | `frontend/src/App.tsx` alimenté (navigation par état, pages en composants, Markdown via `dangerouslySetInnerHTML`), thème et styles des blocs dans `frontend/src/index.css`, assets sous `frontend/public/assets/`. Cartes d'état métier préservées sur l'accueil. |
+| `rust-dioxus-mobile` | Dioxus | `src/main.rs` alimenté (tiroir piloté par les pages, contenu via `dangerous_inner_html`), thème dans `assets/main.css`. Carte compteur métier préservée. Limite connue : les images importées ne sont pas embarquées dans le bundle mobile (pas de dossier public servi) ; la brick `gallery` y est à réserver aux contenus sans assets locaux. |
+| `rust-ecommerce` | React (thème seul) | Vitrine pilotée par les données métier : surcharge des tokens de `frontend/src/index.css` uniquement ; la composition par blocs n'y est pas proposée. |
+| `rust-backend-only`, `python-api-service`, `go-api-service` | API-only | Pas d'interface native ; site documentaire `docs-site/` uniquement si `docsSite` est explicitement activé (désactivé par défaut, combinaison refusée par le validateur sur les templates à interface). |
+
+### 17.3 Éditeur partagé et aperçu
+
+L'éditeur (`StaticWebEditor.tsx`) conserve le parcours en cinq étapes, l'import
+de fichiers ou de dossiers `.md`, l'organisation des pages, les blocs et leurs
+propriétés, les thèmes, la navigation et l'aperçu responsive. Hors Static Web,
+il est alimenté par les bricks réellement compatibles avec le template
+(`getProjectUiUxBricksForSpec`), l'aperçu utilise l'implémentation de la cible,
+et les templates API-only exposent la case « Générer le site documentaire
+(docs-site/) », décochée par défaut.
+
+Comportements de l'aperçu, alignés sur les applications générées :
+
+- **Pages cliquables** : toutes les pages sont empilées dans l'aperçu et la
+  navigation mène aux ancres correspondantes (y compris les liens inter-pages
+  du contenu Markdown importé).
+- **Navigation** : le mode latéral bascule en menu burger au format mobile ;
+  le mode burger s'applique à toutes les tailles d'écran. Le panneau
+  déroulant est standard et identique sur toutes les cibles (300px, max 85vw).
+- **Thèmes** : les presets Paper, Ocean et Obsidian sont trois palettes
+  distinctes et identifiables ; les couleurs personnalisées dérivent une
+  palette complète (`core/ui-ux/theme.ts`) — surfaces, bordures et texte
+  atténué calculés depuis le fond et le texte — garantissant le contraste en
+  thème clair comme en thème sombre, dans l'aperçu et dans les applications
+  générées.
+- **Interrupteur clair/sombre par défaut** : toutes les interfaces générées
+  embarquent un interrupteur de thème fonctionnel (en-tête Askama, sidebar et
+  topbar React, topbar Dioxus), avec persistance locale et préférence système
+  au premier lancement. Les deux palettes (claire et sombre) sont émises dans
+  les tokens natifs. Le champ hérité `displayMode` reste dans la spec pour
+  compatibilité mais n'est plus proposé ni appliqué pour les templates
+  applicatifs (il reste actif pour Static Web et le site documentaire).
+
+### 17.4 Ajouter une brick UI/UX ou une cible
+
+1. Déclarer la `ProjectUiUxBrickDefinition` dans `ui-ux/bricks.ts` (contrat,
+   propriétés, compatibilités).
+2. Fournir une implémentation par cible visée dans
+   `ui-ux/implementations/<cible>.ts` et l'enregistrer dans
+   `ui-ux/implementations/index.ts` ; une brick utilisée sans implémentation
+   pour la cible résolue produit un diagnostic de validation bloquant.
+3. Pour un nouveau template : déclarer son `ProjectUiUxTemplateIntegration`
+   dans `ui-ux/registry.ts` et brancher sa cible dans son générateur natif.
+
+### 17.5 Tests
+
+`npm test` couvre la validation (option `docsSite`, implémentations
+manquantes), la génération native déterministe sans site parallèle, l'import
+Markdown en routes natives, les previews par cible, la non-régression métier et
+l'intégralité du pipeline Static Web. Les scaffolds générés sont vérifiés par
+`cargo check` (templates Rust) et par la compilation du frontend React.
