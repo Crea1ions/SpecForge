@@ -99,10 +99,12 @@
 - [ ] Thème
 - [ ] Adaptation profil × template
 
-## Profils futurs
-- [ ] Python
-- [ ] TypeScript
-- [ ] Go
+## Profils techniques et premiers templates
+- [x] TypeScript — Web Frontend React/Vite existant, vérifié et documenté
+- [x] Python — API Service FastAPI, REST, OpenAPI, tests et site UI/UX autonome
+- [x] Go — API Service `net/http`, REST, OpenAPI, tests et site UI/UX autonome
+- [ ] Ajouter progressivement d’autres templates compatibles Python et Go
+- [x] Afficher explicitement dans le Wizard les types d’application encore indisponibles
 
 ## IA
 - [ ] Intent → Spec

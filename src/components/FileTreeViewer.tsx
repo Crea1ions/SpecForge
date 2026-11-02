@@ -75,6 +75,8 @@ export const FileTreeViewer: React.FC<FileTreeViewerProps> = ({
     if (path.endsWith('.rs')) return <span className="text-orange-400 font-mono text-xs">🦀</span>;
     if (path.endsWith('.tsx') || path.endsWith('.ts'))
       return <span className="text-sky-400 font-mono text-xs">TS</span>;
+    if (lang === 'python') return <span className="text-yellow-300 font-mono text-xs">PY</span>;
+    if (lang === 'go') return <span className="text-cyan-300 font-mono text-xs">GO</span>;
     if (path.endsWith('.json')) return <span className="text-amber-400 font-mono text-xs">{}</span>;
     if (path.endsWith('.yaml') || path.endsWith('.yml'))
       return <span className="text-purple-400 font-mono text-xs">YM</span>;

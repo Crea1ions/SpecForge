@@ -322,7 +322,7 @@ test('all starter presets resolve and generate deterministically through the Cor
 
 test('all non-Static-Web presets expose and generate their UI/UX pages', () => {
   const presets = PRESETS.filter((preset) => preset.spec.profile !== 'static-web');
-  assert.equal(presets.length, 8);
+  assert.equal(presets.length, 10);
 
   for (const preset of presets) {
     assert.ok(preset.spec.uiUx, `${preset.name} should have UI/UX configuration`);

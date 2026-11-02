@@ -82,7 +82,7 @@ SpecForge est conçu pour supporter plusieurs profils :
 * Go
 * Static Web
 
-Le profil **Static Web** génère des sites autonomes en HTML/CSS/JavaScript, à partir de Markdown ou de blocs configurables, sans framework ni backend. Rust dispose de ses templates applicatifs; TypeScript propose Web Frontend avec React. Python et Go font partie du modèle cible, mais ne sont pas encore développés.
+Le profil **Static Web** génère des sites autonomes en HTML/CSS/JavaScript, à partir de Markdown ou de blocs configurables, sans framework ni backend. Rust dispose de sept modèles applicatifs; TypeScript propose Web Frontend avec React/Vite; Python et Go proposent chacun un premier modèle API Service, respectivement avec FastAPI et `net/http`. Les autres combinaisons Python/Go restent indisponibles jusqu’à leur implémentation.
 
 ---
 
@@ -131,6 +131,14 @@ Templates Rust actuellement disponibles :
 * Rust + Axum + React + PostgreSQL → E-commerce (`rust-ecommerce`)
 
 Les types d'applications génériques sont couverts par un template Rust ; le preset e-commerce est une spécialisation métier distincte.
+
+Premiers modèles des autres profils techniques :
+
+* **TypeScript + Web Frontend** — React/Vite ;
+* **Python + API Service** — FastAPI, REST, OpenAPI et tests ;
+* **Go + API Service** — serveur standard `net/http`, REST, OpenAPI et tests.
+
+Les modèles Python et Go génèrent aussi un site documentaire UI/UX autonome dans `docs-site/`. Leur API de démonstration conserve les éléments en mémoire; aucune persistance, authentification ou conteneurisation n’est déclarée disponible pour ces profils.
 
 Le profil Static Web propose trois templates de départ configurables :
 
@@ -375,17 +383,19 @@ Le socle suivant est en place :
 * système de profils techniques ;
 * système de templates par profil et type d'application ;
 * sept presets Rust : Web App, Web Platform, Web Frontend, API Service, Desktop, Mobile et E-commerce V2 ;
+* premiers templates TypeScript Web Frontend, Python API Service et Go API Service ;
+* éditeur UI/UX partagé et site documentaire autonome pour les templates sans interface métier ;
 * génération Desktop (Tauri) et Mobile (Dioxus) ;
 * interface de vérification et d'audit ;
 * assistance IA séparée du Core.
 
-Le preset e-commerce illustre une spécialisation métier complète au-dessus des briques du Core. La configuration globale d'interface et de thème, partagée entre tous les templates, reste une évolution distincte.
+Le preset e-commerce illustre une spécialisation métier complète au-dessus des briques du Core. L'éditeur UI/UX configure pages, blocs, navigation, apparence et génération pour les presets non Static Web; les templates backend-only exportent leur présentation dans `docs-site/`.
 
 ---
 
 ## Direction future
 
-Une configuration complémentaire, indépendante des choix propres aux presets spécialisés, permettra progressivement de préciser certains aspects globaux du projet, notamment :
+Les prochaines évolutions pourront enrichir cette configuration UI/UX partagée, indépendante des choix propres aux presets spécialisés, notamment :
 
 ```text
 Projet

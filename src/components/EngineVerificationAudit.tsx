@@ -112,7 +112,7 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
       question: 'Complétude du projet généré',
       claim: 'Les fichiers d\'entrée requis par le profil sont-ils présents ?',
       status: 'pending',
-      details: 'Vérifie les entrées attendues selon le runtime sélectionné (Cargo, React/Vite, application native ou site statique).',
+      details: 'Vérifie les entrées attendues selon le runtime sélectionné (Rust, Python, Go, React/Vite ou site statique).',
     },
     {
       id: 'test-ai-role',
@@ -312,11 +312,13 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
 
       const portAdr = archPort.decisions.find((d) => d.decision.includes('4455'));
 
-      if (portAdr) {
+      if (portAdr || !spec.backend.enabled) {
         updateTestStatus(
           'test-adr',
           'passed',
-          `SUCCÈS : ADR déduit dynamiquement à partir de la configuration (port 4455 enregistré dans ${portAdr.id}).`,
+          portAdr
+            ? `SUCCÈS : ADR déduit dynamiquement à partir de la configuration (port 4455 enregistré dans ${portAdr.id}).`
+            : 'SUCCÈS : Aucun ADR de port n’est attendu pour ce template sans backend.',
           Math.round(performance.now() - t0)
         );
       } else {
@@ -358,6 +360,8 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
       const jsonFiles = files.filter((file) => file.path.endsWith('.json'));
       const tomlFiles = files.filter((file) => file.path.endsWith('.toml'));
       const requiresRustManifest = spec.profile === 'rust';
+      const requiresPythonManifest = spec.profile === 'python';
+      const requiresGoManifest = spec.profile === 'go';
       const requiresReactManifest = spec.frontend.enabled && spec.frontend.framework === 'react';
 
       let jsonValid = true;
@@ -370,19 +374,37 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
         }
       }
 
-      const tomlValid = tomlFiles.every((file) =>
+      const rustTomlValid = tomlFiles
+        .filter((file) => file.path !== 'pyproject.toml')
+        .every((file) =>
         /^\s*\[package\]\s*$/m.test(file.content) &&
         /^\s*\[dependencies\]\s*$/m.test(file.content),
       );
+      const pythonManifest = files.find((file) => file.path === 'pyproject.toml');
+      const pythonManifestValid = !requiresPythonManifest ||
+        Boolean(
+          pythonManifest &&
+          /^\s*\[project\]\s*$/m.test(pythonManifest.content) &&
+          /^\s*dependencies = \[$/m.test(pythonManifest.content),
+        );
+      const goManifest = files.find((file) => file.path === 'go.mod');
+      const goManifestValid = !requiresGoManifest ||
+        Boolean(
+          goManifest &&
+          /^module example\.com\/[a-z0-9]+(?:-[a-z0-9]+)*$/m.test(goManifest.content) &&
+          /^go 1\.22$/m.test(goManifest.content),
+        );
       const manifestsPresent =
         (!requiresRustManifest || tomlFiles.some((file) => file.path === 'Cargo.toml' || file.path === 'src-tauri/Cargo.toml')) &&
+        (!requiresPythonManifest || Boolean(pythonManifest)) &&
+        (!requiresGoManifest || Boolean(goManifest)) &&
         (!requiresReactManifest || packageFiles.length > 0);
 
-      if (jsonValid && tomlValid && manifestsPresent) {
+      if (jsonValid && rustTomlValid && pythonManifestValid && goManifestValid && manifestsPresent) {
         updateTestStatus(
           'test-compilation-syntax',
           'passed',
-          'VALIDATION SYNTAXIQUE : Les manifestes JSON et TOML applicables au profil sont structurés. (Les compilateurs cargo/tsc ne sont pas exécutés dans ce mode).',
+          'VALIDATION SYNTAXIQUE : Les manifestes applicables au profil sont structurés. Les compilateurs ne sont pas exécutés dans ce mode.',
           Math.round(performance.now() - t0)
         );
       } else {
@@ -391,7 +413,8 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
           'failed',
           `ÉCHEC : Manifeste manquant ou invalide (${[
             !jsonValid ? 'JSON' : '',
-            !tomlValid ? 'TOML' : '',
+            !rustTomlValid || !pythonManifestValid ? 'TOML' : '',
+            !goManifestValid ? 'go.mod' : '',
             !manifestsPresent ? 'manifeste requis absent' : '',
           ].filter(Boolean).join(', ')}).`,
         );
@@ -439,6 +462,8 @@ export const EngineVerificationAudit: React.FC<EngineVerificationAuditProps> = (
                 ? ['src-tauri/Cargo.toml', 'src-tauri/src/main.rs']
                 : ['Cargo.toml', 'src/main.rs']
               : []),
+            ...(spec.profile === 'python' ? ['pyproject.toml', 'main.py', 'api.py'] : []),
+            ...(spec.profile === 'go' ? ['go.mod', 'main.go', 'api.go'] : []),
             ...(spec.frontend.enabled && spec.frontend.framework === 'react'
               ? ['frontend/package.json', 'frontend/index.html']
               : []),

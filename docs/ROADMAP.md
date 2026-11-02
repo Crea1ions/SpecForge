@@ -64,7 +64,7 @@ La priorité est de conserver un Core fiable avant d'ajouter de nouvelles capaci
 * [x] Sélecteur de profil dans le Header
 * [x] Sélecteur des sept types d'application
 * [x] Gestion des templates indisponibles
-* [x] Conservation de Rust comme seul profil réellement implémenté
+* [x] Profils Rust, TypeScript Web Frontend, Python API Service et Go API Service reliés au Core
 
 Types actuellement prévus :
 
@@ -376,13 +376,15 @@ L'objectif reste de fournir un **point de départ**, pas une application termin�
 
 ---
 
-# 8. Phase future — Nouveaux profils techniques
+# 8. Profils techniques — état et extensions
 
-Lorsque le modèle Rust sera suffisamment stable :
+Premiers templates actuellement livrés :
 
-* [ ] Python
-* [ ] TypeScript
-* [ ] Go
+* [x] Python — API Service FastAPI ;
+* [x] TypeScript — Web Frontend React/Vite ;
+* [x] Go — API Service avec `net/http`.
+
+Python et Go sont des profils de base, pas une contrainte imposant un seul langage à toutes les couches du projet. Les templates suivants pourront associer ces profils à des technologies complémentaires (par exemple React/Vite pour un frontend séparé). Ajouter ces modèles progressivement, après validation de leurs briques, de leur génération et de leurs diagnostics; ne pas afficher une combinaison avant qu’elle soit réellement implémentée.
 
 Pour chaque nouveau profil :
 

@@ -17,7 +17,7 @@
 | **Autorité technique**             | Core déterministe                                |
 | **Source de vérité**               | ProjectSpecification                             |
 | **IA**                             | Assistance à la formalisation et à l'explication |
-| **Profils actuellement disponibles** | Rust (complet), TypeScript (partiel)             |
+| **Profils actuellement disponibles** | Rust (7 modèles), TypeScript (1), Python (1), Go (1), Static Web (3) |
 
 ---
 
@@ -186,9 +186,9 @@ Les profils prévus par le modèle sont :
 
 ### État actuel
 
-Le profil **Rust** dispose de sept templates. **TypeScript** est disponible pour un template Web Frontend avec React.
+Le profil **Rust** dispose de sept templates. **TypeScript** est disponible pour un template Web Frontend avec React/Vite. **Python** et **Go** disposent chacun d’un premier template API Service, avec FastAPI et le serveur standard Go `net/http`.
 
-Python et Go font partie de l'architecture cible, mais ne sont pas encore implémentés.
+Les profils définissent une technologie de base; chaque template peut associer des technologies complémentaires selon le type de projet. Les autres types d’application pour Python et Go restent indisponibles jusqu’à la livraison de templates compatibles.
 
 ---
 
@@ -255,6 +255,7 @@ pour sélectionner le template correspondant.
 Le profil TypeScript propose également un template React pour Web Frontend. Certains types d'application restent indisponibles tant qu'un template compatible n'est pas réellement implémenté.
 
 L'interface ne doit pas simuler une disponibilité qui n'existe pas dans le Core.
+Python et Go proposent pour l’instant un API Service chacun; leurs presets incluent un site documentaire UI/UX autonome, sans interface métier.
 
 ---
 
@@ -609,9 +610,9 @@ Le périmètre actuel porte principalement sur :
 * la vérification de la génération ;
 * la documentation et la maintenance du projet.
 
-Le profil Rust et un template TypeScript Web Frontend sont actuellement disponibles ; Python et Go ne sont pas encore implémentés.
+Rust, TypeScript Web Frontend, Python API Service et Go API Service sont disponibles. Chaque template applicatif partage l’éditeur UI/UX; les services sans interface métier génèrent un site documentaire autonome.
 
-Le design system de l’interface SpecForge est en place. La configuration avancée de l’UI/UX et du thème appliquée aux projets générés reste une évolution future et ne doit pas ralentir la stabilisation du socle actuel.
+Le design system de l’interface SpecForge et l’éditeur UI/UX partagé sont en place. Les capacités proposées restent adaptées au template sélectionné; les nouvelles combinaisons d’application sont ajoutées progressivement.
 
 ---
 

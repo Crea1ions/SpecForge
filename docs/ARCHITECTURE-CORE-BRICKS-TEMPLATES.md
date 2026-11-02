@@ -467,13 +467,15 @@ Le resolver choisit d'abord le squelette du template (étape 1 de `resolveArchit
 | `desktop` | `rust-tauri-react` | `react-vite`, `tauri-desktop`, `sqlite-storage` | branche générique |
 | `api-service` | `rust-backend-only` | `rust-backend`, `sqlite-storage` | branche générique |
 | `web-frontend` (React) | `react-frontend-only` | `react-vite` | branche générique |
+| `api-service` (Python) | `python-api-service` | `python-backend`, `rest-api`, `openapi`, `quality-suite` | branche générique |
+| `api-service` (Go) | `go-api-service` | `go-backend`, `rest-api`, `openapi`, `quality-suite` | branche générique |
 
-Il y a 7 presets pour 6 templates : `web-frontend` a deux variantes, choisies par le profil technique (`rust` → Askama, `typescript` → React).
+Les profils techniques proposent 10 presets pour 7 types de template : `web-frontend` a les variantes Rust/Askama et TypeScript/React; `api-service` a les variantes Rust, Python/FastAPI et Go/`net/http`. Static Web ajoute ses trois templates autonomes.
 
 Points à connaître :
 
 - La brique `rust-web-frontend` n'est choisie que si `frontend.framework` vaut `askama`. Avec `react`, la branche générique active `react-vite`.
-- `docker-infra` exige la capacité `backend_runtime`, fournie par `rust-backend`, `python-backend`, `tauri-desktop` et `rust-web-app`. Un preset sans backend (`react-frontend-only`, `rust-web-frontend`, `rust-dioxus-mobile`) doit donc avoir `docker: false`.
+- `docker-infra` génère actuellement une image exécutable pour les runtimes Rust pris en charge; les presets Python et Go gardent `docker: false` et le validateur refuse cette capacité jusqu’à ce qu’un Dockerfile adapté soit généré.
 - Le preset `rust-tauri-react` n'active pas `rust-backend` : `tauri-desktop` fournit `backend_runtime`.
 
 ------------------------------------------------------------------------
@@ -588,12 +590,13 @@ deviendrait rapidement déconnectée des composants réels.
 
 ## 11. Exemple des briques actuellement intégrées
 
-Le registre actuel comprend 17 briques :
+Le registre actuel comprend 18 briques de base, complétées par les briques e-commerce :
 
   Brique                Domaine            Rôle
   --------------------- ------------------ --------------------------------------
   `rust-backend`        backend            Runtime/backend Rust
-  `python-backend`      backend            Backend Python
+  `python-backend`      backend            Runtime Python/FastAPI
+  `go-backend`          backend            Runtime Go/net/http
   `react-vite`          frontend           React + Vite + TypeScript + Tailwind
   `tauri-desktop`       frontend/desktop   Interface desktop Tauri
   `sqlite-storage`      data               Persistance SQLite

@@ -77,7 +77,7 @@ const rustBackendBrick: BrickDefinition = {
   provides: ['backend_runtime', 'async_runtime', 'memory_safe_core'],
   requires: [],
   compatibleWith: ['react-vite', 'tauri-desktop', 'sqlite-storage', 'postgres-storage', 'rest-api', 'docker-infra'],
-  conflictsWith: ['python-backend'],
+  conflictsWith: ['python-backend', 'go-backend'],
   options: [
     {
       key: 'framework',
@@ -325,13 +325,13 @@ const pythonBackendBrick: BrickDefinition = {
   id: 'python-backend',
   name: 'Python FastAPI Backend',
   category: 'backend',
-  version: '1.1.0',
+  version: '2.0.0',
   description: 'Backend moderne et rapide en Python avec typage Pydantic et documentation OpenAPI automatique.',
   iconName: 'FileCode2',
   provides: ['backend_runtime', 'ai_ready_core'],
   requires: [],
-  compatibleWith: ['react-vite', 'sqlite-storage', 'postgres-storage', 'rest-api', 'docker-infra'],
-  conflictsWith: ['rust-backend'],
+  compatibleWith: ['react-vite', 'rest-api', 'openapi', 'quality-suite'],
+  conflictsWith: ['rust-backend', 'go-backend'],
   options: [
     {
       key: 'port',
@@ -341,7 +341,7 @@ const pythonBackendBrick: BrickDefinition = {
       description: 'Port d\'écoute Uvicorn.',
     },
   ],
-  templateFiles: ['pyproject.toml', 'main.py', 'requirements.txt'],
+  templateFiles: ['pyproject.toml', 'main.py'],
   tags: ['python', 'fastapi', 'pydantic', 'asyncio'],
 
   generateDecisions: (ctx) => [
@@ -358,73 +358,199 @@ const pythonBackendBrick: BrickDefinition = {
 
   generateFiles: (ctx) => {
     const { spec } = ctx;
-    const files: GeneratedFile[] = [];
+    const projectName = JSON.stringify(spec.project.name);
+    const projectDescription = JSON.stringify(spec.project.description);
+    const projectVersion = JSON.stringify(spec.project.version);
+    const modules = spec.api.style === 'rest' ? '"main", "api"' : '"main"';
+    const pyproject = `[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
 
-    const reqs = `fastapi>=0.111.0
-uvicorn[standard]>=0.30.0
-pydantic>=2.7.0
-python-dotenv>=1.0.0
-${spec.database.enabled ? 'sqlalchemy>=2.0.0' : ''}
+[project]
+name = ${JSON.stringify(spec.project.slug)}
+version = ${JSON.stringify(spec.project.version)}
+description = ${projectDescription}
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "uvicorn[standard]>=0.30,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27,<1.0",
+  "pytest>=8.0,<9.0",
+  "ruff>=0.6,<1.0",
+]
+
+[tool.setuptools]
+py-modules = [${modules}]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
 `;
-    files.push(
-      makeFile(
-        'requirements.txt',
-        reqs,
-        'bash',
-        'python-backend',
-        'Python FastAPI Backend',
-        '1.1.0',
-        'Fichier de dépendances Python pip (FastAPI, Uvicorn, Pydantic).'
-      )
-    );
+    const mainPy = `import os
 
-    const mainPy = `from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-import os
+from fastapi import FastAPI
+${spec.api.style === 'rest' ? 'from api import router as api_router\n' : ''}${spec.backend.cors ? 'from fastapi.middleware.cors import CORSMiddleware\n' : ''}
 
-app = FastAPI(title="${spec.project.name}", version="${spec.project.version}")
-
+app = FastAPI(title=${projectName}, description=${projectDescription}, version=${projectVersion})
+${spec.api.style === 'rest' ? 'app.include_router(api_router)' : ''}
+${spec.backend.cors ? `
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.get("/api/health")
-def health_check():
-    return {
-        "status": "healthy",
-        "service": "${spec.project.name}",
-        "version": "${spec.project.version}",
-        "database": "${spec.database.enabled ? spec.database.type : 'none'}"
-    }
-
-@app.get("/api/items")
-def list_items():
-    return [
-        {"id": 1, "title": "Configuration initiale", "completed": True},
-        {"id": 2, "title": "Service API Python", "completed": True}
-    ]
+` : ''}
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=${spec.backend.port}, reload=True)
+    port = int(os.environ.get("PORT", "${spec.backend.port}"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 `;
-    files.push(
+
+    return [
+      makeFile(
+        'pyproject.toml',
+        pyproject,
+        'toml',
+        'python-backend',
+        'Python FastAPI Backend',
+        '1.3.0',
+        'Manifeste Python avec dépendances applicatives, outils de test et configuration Ruff.'
+      ),
       makeFile(
         'main.py',
         mainPy,
-        'typescript',
+        'python',
         'python-backend',
         'Python FastAPI Backend',
-        '1.1.0',
-        'Point d\'entrée applicatif FastAPI avec middleware CORS et routes de santé.'
-      )
-    );
+        '2.0.0',
+        'Point d’entrée FastAPI configuré depuis la spécification et le port d’environnement.'
+      ),
+    ];
+  },
+};
 
-    return files;
+const goBackendBrick: BrickDefinition = {
+  id: 'go-backend',
+  name: 'Go net/http Backend',
+  category: 'backend',
+  version: '1.0.0',
+  description: 'Runtime backend Go utilisant le serveur HTTP standard, sans dépendance externe.',
+  iconName: 'FileCode2',
+  provides: ['backend_runtime'],
+  requires: [],
+  compatibleWith: ['rest-api', 'openapi', 'quality-suite'],
+  conflictsWith: ['rust-backend', 'python-backend'],
+  options: [
+    {
+      key: 'port',
+      label: 'Port HTTP',
+      type: 'number',
+      default: 8080,
+      description: 'Port d’écoute du serveur HTTP Go.',
+    },
+  ],
+  templateFiles: ['go.mod', 'main.go'],
+  tags: ['go', 'net/http', 'backend', 'api'],
+
+  generateDecisions: (ctx) => [
+    {
+      id: 'ADR-001',
+      title: 'Sélection du runtime Go (net/http)',
+      status: 'Accepted',
+      context: 'Le projet nécessite un service HTTP Go minimal, compilable sans dépendance externe.',
+      decision: `Adoption de Go net/http sur le port ${ctx.spec.backend.port}.`,
+      consequences: ['Les routes HTTP utilisent la bibliothèque standard Go.'],
+      generatingBrick: 'go-backend',
+    },
+  ],
+
+  generateFiles: (ctx) => {
+    const { spec } = ctx;
+    const goModule = `module example.com/${spec.project.slug}
+
+go 1.22
+`;
+    const router = spec.api.style === 'rest' ? 'newAPIRouter()' : 'http.NewServeMux()';
+    const corsMiddleware = spec.backend.cors
+      ? `
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+`
+      : '';
+    const handlerSetup = [
+      `var handler http.Handler = ${router}`,
+      ...(spec.backend.cors ? ['handler = withCORS(handler)'] : []),
+    ].join('\n\t');
+    const mainGo = `package main
+
+import (
+	"log"
+	"net/http"
+	"os"
+	"time"
+)
+
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "${spec.backend.port}"
+	}
+
+	${handlerSetup}
+
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	log.Printf("starting %s on port %s", ${JSON.stringify(spec.project.slug)}, port)
+	if err := server.ListenAndServe(); err != nil {
+		log.Fatal(err)
+	}
+}
+${corsMiddleware}
+`.trimEnd() + '\n';
+
+    return [
+      makeFile(
+        'go.mod',
+        goModule,
+        'go',
+        'go-backend',
+        'Go net/http Backend',
+        '1.0.0',
+        'Module Go sans dépendance externe pour compiler le service généré.'
+      ),
+      makeFile(
+        'main.go',
+        mainGo,
+        'go',
+        'go-backend',
+        'Go net/http Backend',
+        '1.0.0',
+        'Point d’entrée Go avec configuration du port et serveur HTTP standard.'
+      ),
+    ];
   },
 };
 
@@ -438,7 +564,7 @@ const reactViteBrick: BrickDefinition = {
   iconName: 'Layout',
   provides: ['ui_client', 'spa_bundle'],
   requires: [],
-  compatibleWith: ['rust-backend', 'python-backend', 'tauri-desktop', 'rest-api'],
+  compatibleWith: ['rust-backend', 'python-backend', 'go-backend', 'tauri-desktop', 'rest-api'],
   conflictsWith: [],
   options: [
     {
@@ -1354,7 +1480,7 @@ const sqliteStorageBrick: BrickDefinition = {
   iconName: 'Database',
   provides: ['sql_storage', 'embedded_persistence'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend', 'tauri-desktop'],
+  compatibleWith: ['rust-backend', 'tauri-desktop'],
   conflictsWith: ['postgres-storage'],
   options: [],
   templateFiles: ['src/db.rs', 'migrations/0001_initial.sql'],
@@ -1485,7 +1611,7 @@ const postgresStorageBrick: BrickDefinition = {
   iconName: 'Layers',
   provides: ['sql_storage', 'distributed_persistence', 'acid_transactions'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend', 'docker-infra'],
+  compatibleWith: ['rust-backend', 'docker-infra'],
   conflictsWith: ['sqlite-storage', 'tauri-desktop'],
   options: [],
   templateFiles: ['src/db.rs', 'migrations/0001_initial.sql'],
@@ -1602,7 +1728,7 @@ const jwtAuthBrick: BrickDefinition = {
   iconName: 'ShieldCheck',
   provides: ['jwt_authentication', 'token_authentication'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend', 'rest-api', 'react-vite'],
+  compatibleWith: ['rust-backend', 'rest-api', 'react-vite'],
   conflictsWith: [],
   options: [],
   templateFiles: ['src/auth.rs'],
@@ -1676,10 +1802,10 @@ const restApiBrick: BrickDefinition = {
   iconName: 'Network',
   provides: ['rest_server', 'json_serialization', 'health_probes'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend', 'react-vite'],
+  compatibleWith: ['rust-backend', 'python-backend', 'go-backend', 'react-vite'],
   conflictsWith: [],
   options: [],
-  templateFiles: ['src/api.rs'],
+  templateFiles: ['src/api.rs', 'api.py', 'api.go'],
   tags: ['rest', 'json', 'crud'],
 
   generateFiles: (ctx) => {
@@ -1941,6 +2067,161 @@ pub fn router() -> Router {
           'Gestionnaires de requêtes REST (Health check, CRUD items) avec sérialisation JSON.'
         )
       );
+    } else if (ctx.spec.backend.language === 'python') {
+      const apiPy = `from threading import Lock
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+router = APIRouter(prefix="/api")
+
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+    version: str
+
+
+class Item(BaseModel):
+    id: int
+    title: str
+    completed: bool
+
+
+class CreateItemRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
+_items: list[Item] = []
+_items_lock = Lock()
+_next_item_id = 1
+
+
+@router.get("/health", response_model=HealthResponse)
+def health_check() -> HealthResponse:
+    return HealthResponse(
+        status="healthy",
+        service=${JSON.stringify(ctx.spec.project.slug)},
+        version=${JSON.stringify(ctx.spec.project.version)},
+    )
+
+
+@router.get("/items", response_model=list[Item])
+def list_items() -> list[Item]:
+    with _items_lock:
+        return list(_items)
+
+
+@router.post("/items", response_model=Item, status_code=201)
+def create_item(payload: CreateItemRequest) -> Item:
+    global _next_item_id
+
+    with _items_lock:
+        item = Item(id=_next_item_id, title=payload.title, completed=False)
+        _next_item_id += 1
+        _items.append(item)
+        return item
+`;
+      files.push(
+        makeFile(
+          'api.py',
+          apiPy,
+          'python',
+          'rest-api',
+          'RESTful API Engine',
+          '1.3.0',
+          'Routes FastAPI de santé et de démonstration, avec validation des entrées.'
+        )
+      );
+    } else if (ctx.spec.backend.language === 'go') {
+      const apiGo = `package main
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+	"strings"
+	"sync"
+)
+
+type item struct {
+	ID        int    \`json:"id"\`
+	Title     string \`json:"title"\`
+	Completed bool   \`json:"completed"\`
+}
+
+type createItemRequest struct {
+	Title string \`json:"title"\`
+}
+
+var (
+	itemsMu sync.RWMutex
+	items   = []item{}
+	nextID  = 1
+)
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		log.Printf("write JSON response: %v", err)
+	}
+}
+
+func newAPIRouter() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/health", healthCheck)
+	mux.HandleFunc("GET /api/items", listItems)
+	mux.HandleFunc("POST /api/items", createItem)
+	return mux
+}
+
+func healthCheck(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "healthy",
+		"service": ${JSON.stringify(ctx.spec.project.slug)},
+		"version": ${JSON.stringify(ctx.spec.project.version)},
+	})
+}
+
+func listItems(w http.ResponseWriter, _ *http.Request) {
+	itemsMu.RLock()
+	response := append([]item{}, items...)
+	itemsMu.RUnlock()
+	writeJSON(w, http.StatusOK, response)
+}
+
+func createItem(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var payload createItemRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	if strings.TrimSpace(payload.Title) == "" || len(payload.Title) > 200 {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "title must contain 1 to 200 characters"})
+		return
+	}
+
+	itemsMu.Lock()
+	created := item{ID: nextID, Title: payload.Title, Completed: false}
+	nextID++
+	items = append(items, created)
+	itemsMu.Unlock()
+	writeJSON(w, http.StatusCreated, created)
+}
+`;
+      files.push(
+        makeFile(
+          'api.go',
+          apiGo,
+          'go',
+          'rest-api',
+          'RESTful API Engine',
+          '1.3.0',
+          'Routes Go de santé et de démonstration, avec réponses JSON et validation des entrées.'
+        )
+      );
     }
     return files;
   },
@@ -1956,7 +2237,7 @@ const openapiBrick: BrickDefinition = {
   iconName: 'FileJson',
   provides: ['openapi_contract', 'api_documentation'],
   requires: ['rest_server'],
-  compatibleWith: ['rust-backend', 'python-backend', 'rest-api', 'react-vite'],
+  compatibleWith: ['rust-backend', 'python-backend', 'go-backend', 'rest-api', 'react-vite'],
   conflictsWith: [],
   options: [],
   templateFiles: ['openapi.yaml'],
@@ -2270,9 +2551,9 @@ components:
 
       const openapiYaml = `openapi: 3.0.3
 info:
-  title: ${ctx.spec.project.name}
-  version: ${ctx.spec.project.version}
-  description: ${ctx.spec.project.description}
+  title: ${ctx.spec.profile === 'python' || ctx.spec.profile === 'go' ? JSON.stringify(ctx.spec.project.name) : ctx.spec.project.name}
+  version: ${ctx.spec.profile === 'python' || ctx.spec.profile === 'go' ? JSON.stringify(ctx.spec.project.version) : ctx.spec.project.version}
+  description: ${ctx.spec.profile === 'python' || ctx.spec.profile === 'go' ? JSON.stringify(ctx.spec.project.description) : ctx.spec.project.description}
 
 servers:
   - url: http://localhost:${ctx.spec.backend.port}
@@ -2357,7 +2638,7 @@ const systemdInfraBrick: BrickDefinition = {
   iconName: 'ServerCog',
   provides: ['systemd_service', 'linux_service'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend'],
+  compatibleWith: ['rust-backend'],
   conflictsWith: [],
   options: [],
   templateFiles: ['deploy/systemd/app.service'],
@@ -2427,7 +2708,7 @@ const dockerInfraBrick: BrickDefinition = {
   iconName: 'Box',
   provides: ['container_image', 'compose_orchestration'],
   requires: ['backend_runtime'],
-  compatibleWith: ['rust-backend', 'python-backend', 'react-vite', 'postgres-storage'],
+  compatibleWith: ['rust-backend', 'react-vite', 'postgres-storage'],
   conflictsWith: ['tauri-desktop'],
   options: [],
   templateFiles: ['Dockerfile', 'docker-compose.yml'],
@@ -2649,30 +2930,50 @@ const qualitySuiteBrick: BrickDefinition = {
   name: 'Quality, Tests & GitHub Actions CI',
   category: 'quality',
   version: '1.3.0',
-  description: 'Suite automatisée de tests, formateur et pipeline GitHub Actions CI.',
+  description: 'Suite automatisée de tests, formatage et pipeline CI adaptés aux runtimes générés.',
   iconName: 'CheckCircle2',
   provides: ['ci_pipeline', 'linter_config', 'unit_tests'],
   requires: [],
-  compatibleWith: ['rust-backend', 'python-backend', 'react-vite', 'tauri-desktop'],
+  compatibleWith: ['rust-backend', 'python-backend', 'go-backend', 'react-vite', 'tauri-desktop'],
   conflictsWith: [],
   options: [],
   templateFiles: [
     '.github/workflows/ci.yml',
     '.gitignore',
     'tests/smoke_test.rs',
+    'tests/test_api.py',
+    'api_test.go',
     'rustfmt.toml',
     'frontend/.eslintrc.json',
   ],
-  tags: ['ci', 'tests', 'github-actions'],
+  tags: ['rust', 'python', 'go', 'tests', 'github-actions'],
 
   generateFiles: (ctx) => {
     const { spec } = ctx;
     const files: GeneratedFile[] = [];
+    const activeIds = ctx.activeBricks.map((brick) => brick.id);
+    const hasRust = activeIds.some((id) =>
+      ['rust-backend', 'rust-web-app', 'rust-web-frontend', 'rust-dioxus-mobile', 'tauri-desktop'].includes(id),
+    );
+    const hasRustBackend = spec.backend.enabled && spec.backend.language === 'rust';
+    const hasPython = spec.backend.enabled && spec.backend.language === 'python';
+    const hasGo = spec.backend.enabled && spec.backend.language === 'go';
+    const hasReact = activeIds.includes('react-vite');
 
+    const extraIgnoreEntries = hasPython
+      ? `__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.py[cod]
+`
+      : hasGo
+        ? 'vendor/\n'
+        : '';
     const gitignore = `target/
 dist/
 node_modules/
-*.db
+${extraIgnoreEntries}*.db
 *.sqlite
 data/*.db
 data/*.db-shm
@@ -2693,7 +2994,7 @@ data/*.db-wal
     );
 
     if (spec.quality.tests) {
-      if (spec.backend.enabled && spec.backend.language === 'rust') {
+      if (hasRustBackend) {
         const smokeTest = `//! Smoke tests et vérification structurelle générés par SpecForge
 
 #[test]
@@ -2722,31 +3023,119 @@ fn test_server_port_configuration() {
           )
         );
       }
+
+      if (hasPython) {
+        const pythonTests = `from fastapi.testclient import TestClient
+
+from main import app
+
+client = TestClient(app)
+
+
+def test_health_endpoint_returns_service_metadata() -> None:
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "healthy"
+
+
+def test_items_can_be_created_and_listed() -> None:
+    created = client.post("/api/items", json={"title": "First item"})
+
+    assert created.status_code == 201
+    assert created.json()["title"] == "First item"
+    assert client.get("/api/items").json()[-1]["id"] == created.json()["id"]
+`;
+        files.push(
+          makeFile(
+            'tests/test_api.py',
+            pythonTests,
+            'python',
+            'quality-suite',
+            'Quality, Tests & GitHub Actions CI',
+            '1.3.0',
+            'Tests HTTP FastAPI de la santé et des opérations de base de l’API.'
+          )
+        );
+      }
+
+      if (hasGo) {
+        const goTests = `package main
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestHealthEndpoint(t *testing.T) {
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	newAPIRouter().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.Code)
+	}
+	if !strings.Contains(response.Body.String(), \`"status":"healthy"\`) {
+		t.Fatalf("unexpected health response: %s", response.Body.String())
+	}
+}
+
+func TestCreateAndListItems(t *testing.T) {
+	router := newAPIRouter()
+	createResponse := httptest.NewRecorder()
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/items", strings.NewReader(\`{"title":"First item"}\`))
+	router.ServeHTTP(createResponse, createRequest)
+
+	if createResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, createResponse.Code)
+	}
+
+	listResponse := httptest.NewRecorder()
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/items", nil)
+	router.ServeHTTP(listResponse, listRequest)
+	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), "First item") {
+		t.Fatalf("unexpected item list response: %s", listResponse.Body.String())
+	}
+}
+`;
+        files.push(
+          makeFile(
+            'api_test.go',
+            goTests,
+            'go',
+            'quality-suite',
+            'Quality, Tests & GitHub Actions CI',
+            '2.0.0',
+            'Tests HTTP Go de la santé et des opérations de base de l’API.'
+          )
+        );
+      }
     }
 
-    if (spec.quality.lint) {
-      if (spec.backend.enabled && spec.backend.language === 'rust') {
-        const rustfmt = `# Configuration du formateur et linter de style Rust (rustfmt)
+    if (spec.quality.lint && hasRustBackend) {
+      const rustfmt = `# Configuration du formateur et linter de style Rust (rustfmt)
 edition = "2021"
 max_width = 100
 newline_style = "Unix"
 use_small_heuristics = "Default"
 `;
-        files.push(
-          makeFile(
-            'rustfmt.toml',
-            rustfmt,
-            'toml',
-            'quality-suite',
-            'Quality, Tests & GitHub Actions CI',
-            '1.3.0',
-            'Configuration de style et de formatage de code pour rustfmt.'
-          )
-        );
-      }
+      files.push(
+        makeFile(
+          'rustfmt.toml',
+          rustfmt,
+          'toml',
+          'quality-suite',
+          'Quality, Tests & GitHub Actions CI',
+          '1.3.0',
+          'Configuration de style et de formatage de code pour rustfmt.'
+        )
+      );
+    }
 
-      if (spec.frontend.enabled && spec.frontend.framework === 'react') {
-        const eslintConfig = `{
+    if (spec.quality.lint && hasReact) {
+      const eslintConfig = `{
   "env": {
     "browser": true,
     "es2020": true
@@ -2764,30 +3153,31 @@ use_small_heuristics = "Default"
   }
 }
 `;
-        files.push(
-          makeFile(
-            'frontend/.eslintrc.json',
-            eslintConfig,
-            'json',
-            'quality-suite',
-            'Quality, Tests & GitHub Actions CI',
-            '1.3.0',
-            'Configuration ESLint minimale pour l\'interface utilisateur React/TypeScript.'
-          )
-        );
-      }
+      files.push(
+        makeFile(
+          'frontend/.eslintrc.json',
+          eslintConfig,
+          'json',
+          'quality-suite',
+          'Quality, Tests & GitHub Actions CI',
+          '1.3.0',
+          'Configuration ESLint minimale pour l\'interface utilisateur React/TypeScript.'
+        )
+      );
     }
 
     if (spec.quality.ci) {
-      const mobileSystemDeps =
-        spec.template === 'mobile'
-          ? `      - name: System dependencies (Dioxus WebView)
+      let ci: string;
+      if (hasRust) {
+        const mobileSystemDeps =
+          spec.template === 'mobile'
+            ? `      - name: System dependencies (Dioxus WebView)
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev libudev-dev libayatana-appindicator3-dev libxdo-dev libglib2.0-dev
 `
-          : '';
-      const ci = `name: CI Pipeline
+            : '';
+        ci = `name: CI Pipeline
 
 on:
   push:
@@ -2807,8 +3197,73 @@ jobs:
       - name: Format
         run: cargo fmt --check
 ${mobileSystemDeps}      - name: Tests
-        run: cargo test
+        run: cargo test`;
+      } else {
+        const steps = ['      - uses: actions/checkout@v4'];
+        if (hasPython) {
+          const pythonChecks = spec.quality.tests || spec.quality.lint;
+          steps.push(`      - name: Python Toolchain
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"`);
+          if (pythonChecks) {
+            steps.push(`      - name: Install Python project
+        run: python -m pip install -e ".[dev]"`);
+          }
+          if (spec.quality.lint) {
+            steps.push(`      - name: Lint Python
+        run: ruff check .`);
+          }
+          if (spec.quality.tests) {
+            steps.push(`      - name: Test Python
+        run: pytest`);
+          }
+        }
+        if (hasGo) {
+          steps.push(`      - name: Go Toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Build Go
+        run: go build ./...`);
+          if (spec.quality.lint) {
+            steps.push(`      - name: Format Go
+        run: test -z "$(gofmt -l .)"
+      - name: Vet Go
+        run: go vet ./...`);
+          }
+          if (spec.quality.tests) {
+            steps.push(`      - name: Test Go
+        run: go test ./...`);
+          }
+        }
+        if (hasReact) {
+          steps.push(`      - name: Node.js Toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build React frontend
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build`);
+        }
+        ci = `name: CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+${steps.join('\n')}
 `;
+      }
+
       files.push(
         makeFile(
           '.github/workflows/ci.yml',
@@ -2847,6 +3302,46 @@ const docsPackBrick: BrickDefinition = {
     const files: GeneratedFile[] = [];
 
     if (spec.documentation.readme) {
+      const runtimeInstructions = spec.profile === 'python'
+        ? `## Démarrage local
+
+\`\`\`bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+uvicorn main:app --reload --port ${spec.backend.port}
+\`\`\`
+
+L’API expose \`/api/health\` et les opérations de démonstration \`/api/items\`.
+La documentation interactive FastAPI est disponible sur \`/docs\`; les données
+des éléments sont conservées en mémoire et ne sont pas persistées.
+
+Le site documentaire UI/UX autonome se trouve dans \`docs-site/\`.
+`
+        : spec.profile === 'go'
+          ? `## Démarrage local
+
+\`\`\`bash
+go run .
+go test ./...
+\`\`\`
+
+L’API expose \`/api/health\` et les opérations de démonstration \`/api/items\`.
+Le contrat OpenAPI est fourni dans \`openapi.yaml\`; les données des éléments
+sont conservées en mémoire et ne sont pas persistées.
+
+Le site documentaire UI/UX autonome se trouve dans \`docs-site/\`.
+`
+          : spec.profile === 'typescript'
+            ? `## Démarrage local
+
+\`\`\`bash
+cd frontend
+npm install
+npm run dev
+\`\`\`
+`
+            : '';
       const readme = `# ${spec.project.name}
 
 > ${spec.project.description}
@@ -2858,8 +3353,7 @@ const docsPackBrick: BrickDefinition = {
 - **Type d'application :** \`${spec.template}\`
 - **Auteur :** ${spec.project.author}
 - **Licence :** \`${spec.project.license}\`
-
-La documentation technique de référence du projet se trouve dans
+${runtimeInstructions ? `\n${runtimeInstructions}\n` : '\n'}La documentation technique de référence du projet se trouve dans
 \`project.yaml\`.
 
 Une représentation lisible de cette spécification est disponible dans
@@ -5916,6 +6410,7 @@ export const DEFAULT_BRICKS: BrickDefinition[] = [
   rustDioxusMobileBrick,
   rustWebAppBrick,
   pythonBackendBrick,
+  goBackendBrick,
   reactViteBrick,
   tauriDesktopBrick,
   sqliteStorageBrick,

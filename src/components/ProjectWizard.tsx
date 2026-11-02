@@ -5,7 +5,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { DropdownSelect } from './DropdownSelect';
-import { ProjectSpecification, ResolvedArchitecture, TechnicalProfile } from '../types/spec';
+import { ApplicationTemplate, ProjectSpecification, ResolvedArchitecture, TechnicalProfile } from '../types/spec';
 import { findPreset, PRESETS } from '../engine/presets';
 import { AnimatedHeading } from './AnimatedHeading';
 import { StaticWebEditor } from './StaticWebEditor';
@@ -32,6 +32,16 @@ const profileLabels: Record<TechnicalProfile, string> = {
   go: 'Go',
   'static-web': 'Static Web',
 };
+
+const documentedApplicationTypes: Array<{ template: ApplicationTemplate; label: string }> = [
+  { template: 'web-frontend', label: 'Web Frontend' },
+  { template: 'web-app', label: 'Web App' },
+  { template: 'web-platform', label: 'Web Platform' },
+  { template: 'api-service', label: 'API Service' },
+  { template: 'desktop', label: 'Desktop' },
+  { template: 'mobile', label: 'Mobile' },
+  { template: 'ecommerce', label: 'E-commerce' },
+];
 
 export const ProjectWizard: React.FC<ProjectWizardProps> = ({
   spec,
@@ -62,6 +72,9 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
   const selectedTemplate =
     templateOptions.find((preset) => preset.spec.template === spec.template)?.name ??
     spec.template;
+  const unavailableApplicationTypes = documentedApplicationTypes
+    .filter(({ template }) => !templateOptions.some((preset) => preset.spec.template === template))
+    .map(({ label }) => label);
   useEffect(() => {
     if (!isQuickCreateOpen || !quickCreateRef.current) return;
 
@@ -340,6 +353,12 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({
                       {flowError && (
                         <p role="alert" className="mt-2 text-xs text-red-200">
                           {flowError}
+                        </p>
+                      )}
+                      {unavailableApplicationTypes.length > 0 && (
+                        <p role="status" className="mt-2 text-xs text-neutral-500">
+                          Types pas encore disponibles pour {profileLabels[spec.profile]} :{' '}
+                          {unavailableApplicationTypes.join(', ')}.
                         </p>
                       )}
                     </div>

@@ -47,7 +47,7 @@ export interface ProjectInfo {
 export interface BackendConfig {
   enabled: boolean;
   language: 'rust' | 'python' | 'typescript' | 'go';
-  framework: 'axum' | 'actix-web' | 'fastapi' | 'express';
+  framework: 'axum' | 'actix-web' | 'fastapi' | 'express' | 'net/http';
   port: number;
   logging: boolean;
   cors: boolean;
@@ -272,6 +272,8 @@ export interface GeneratedFile {
   content: string;
   language:
     | 'rust'
+    | 'python'
+    | 'go'
     | 'typescript'
     | 'javascript'
     | 'json'

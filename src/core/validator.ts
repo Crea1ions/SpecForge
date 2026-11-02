@@ -22,6 +22,24 @@ export function validateSpecification(
   const uiUxConfig = spec.profile === 'static-web' ? spec.staticWeb : spec.uiUx;
   issues.push(...validateStaticWebConfig(spec.profile, spec.template, uiUxConfig));
 
+  const supportedTemplates: Record<ProjectSpecification['profile'], ProjectSpecification['template'][]> = {
+    rust: ['web-frontend', 'web-app', 'web-platform', 'ecommerce', 'api-service', 'desktop', 'mobile'],
+    python: ['api-service'],
+    go: ['api-service'],
+    typescript: ['web-frontend'],
+    'static-web': ['static-documentation', 'static-website', 'static-landing-page'],
+  };
+  if (!supportedTemplates[spec.profile].includes(spec.template)) {
+    issues.push({
+      id: `unsupported-profile-template-${spec.profile}-${spec.template}`,
+      severity: 'error',
+      title: 'Combinaison profil / template indisponible',
+      message: `Le template '${spec.template}' n’est pas encore implémenté pour le profil '${spec.profile}'.`,
+      source: 'compatibility',
+      fixSuggestion: 'Choisissez un template réellement proposé pour ce profil.',
+    });
+  }
+
   if (spec.profile === 'static-web') {
     if (spec.project.type !== 'static-site') {
       issues.push({
@@ -57,6 +75,169 @@ export function validateSpecification(
         title: 'Configuration frontend Static Web invalide',
         message: 'Le profil Static Web utilise du HTML/CSS/JavaScript sans framework ni bundler.',
         source: 'configuration',
+      });
+    }
+  }
+
+  if (spec.profile === 'typescript' &&
+      (!spec.frontend.enabled ||
+        spec.frontend.framework !== 'react' ||
+        spec.frontend.bundler !== 'vite' ||
+        spec.frontend.language !== 'typescript' ||
+        spec.backend.enabled)) {
+    issues.push({
+      id: 'typescript-web-frontend-configuration-invalid',
+      severity: 'error',
+      title: 'Configuration TypeScript Web Frontend invalide',
+      message: 'Le template TypeScript disponible nécessite React/Vite et ne fournit pas de backend TypeScript.',
+      source: 'configuration',
+      fixSuggestion: 'Restaurez le preset React/Vite TypeScript Web Frontend.',
+    });
+  }
+
+  if (
+    (spec.profile === 'python' || spec.profile === 'go') &&
+    (spec.template !== 'api-service' ||
+      !spec.backend.enabled ||
+      spec.backend.language !== spec.profile ||
+      spec.api.style !== 'rest')
+  ) {
+    issues.push({
+      id: `${spec.profile}-api-service-configuration-invalid`,
+      severity: 'error',
+      title: `Configuration API Service ${spec.profile} invalide`,
+      message: `Le premier template ${spec.profile} nécessite un backend ${spec.profile} actif et une API REST.`,
+      source: 'configuration',
+      fixSuggestion: `Restaurez le preset ${spec.profile} API Service.`,
+    });
+  }
+
+  if (
+    spec.profile === 'rust' &&
+    spec.backend.enabled &&
+    spec.backend.language !== 'rust'
+  ) {
+    issues.push({
+      id: 'rust-profile-backend-language-invalid',
+      severity: 'error',
+      title: 'Langage backend incompatible avec le profil Rust',
+      message: 'Un backend actif du profil Rust doit être généré en Rust.',
+      source: 'compatibility',
+      fixSuggestion: "Définissez 'backend.language: rust' ou choisissez le profil du backend cible.",
+    });
+  }
+
+  if (
+    spec.profile === 'go' &&
+    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(spec.project.slug)
+  ) {
+    issues.push({
+      id: 'go-module-slug-invalid',
+      severity: 'error',
+      title: 'Identifiant de module Go invalide',
+      message: 'Le slug du projet Go doit être composé de segments minuscules séparés par des tirets.',
+      source: 'configuration',
+      fixSuggestion: "Utilisez un slug comme 'go-api-service'.",
+    });
+  }
+
+  if (
+    spec.backend.enabled &&
+    spec.backend.language === 'python' &&
+    spec.backend.framework !== 'fastapi'
+  ) {
+    issues.push({
+      id: `unsupported-framework-python-${spec.backend.framework}`,
+      severity: 'error',
+      title: `Framework Python non supporté (${spec.backend.framework})`,
+      message: "Le profil Python génère actuellement des services avec FastAPI.",
+      source: 'configuration',
+      fixSuggestion: "Définissez 'backend.framework: fastapi'.",
+    });
+  }
+
+  if (
+    spec.backend.enabled &&
+    spec.backend.language === 'go' &&
+    spec.backend.framework !== 'net/http'
+  ) {
+    issues.push({
+      id: `unsupported-framework-go-${spec.backend.framework}`,
+      severity: 'error',
+      title: `Framework Go non supporté (${spec.backend.framework})`,
+      message: "Le premier template Go génère un service avec le serveur standard net/http.",
+      source: 'configuration',
+      fixSuggestion: "Définissez 'backend.framework: net/http'.",
+    });
+  }
+
+  if (spec.backend.enabled && spec.backend.language === 'typescript') {
+    issues.push({
+      id: 'unsupported-backend-typescript',
+      severity: 'error',
+      title: 'Backend TypeScript indisponible',
+      message: 'Le profil TypeScript implémenté couvre uniquement le frontend React/Vite.',
+      source: 'compatibility',
+      fixSuggestion: 'Désactivez le backend ou choisissez un profil backend réellement disponible.',
+    });
+  }
+
+  if (spec.backend.enabled && (!Number.isInteger(spec.backend.port) || spec.backend.port < 1 || spec.backend.port > 65535)) {
+    issues.push({
+      id: 'backend-port-invalid',
+      severity: 'error',
+      title: 'Port backend invalide',
+      message: 'Le port backend doit être un entier compris entre 1 et 65535.',
+      source: 'configuration',
+      fixSuggestion: 'Choisissez un port valide, par exemple 8000 ou 8080.',
+    });
+  }
+
+  if (
+    spec.backend.enabled &&
+    (spec.backend.language === 'python' || spec.backend.language === 'go')
+  ) {
+    if (spec.database.enabled) {
+      issues.push({
+        id: `unsupported-database-${spec.backend.language}`,
+        severity: 'error',
+        title: `Base de données non intégrée pour ${spec.backend.language}`,
+        message: `Le template ${spec.backend.language} API Service ne génère pas encore de persistance; les briques SQL disponibles génèrent actuellement du code Rust.`,
+        source: 'compatibility',
+        fixSuggestion: 'Désactivez la base de données jusqu’à ce qu’une intégration compatible soit livrée.',
+      });
+    }
+
+    if (spec.authentication.enabled || spec.api.auth) {
+      issues.push({
+        id: `unsupported-authentication-${spec.backend.language}`,
+        severity: 'error',
+        title: `Authentification non intégrée pour ${spec.backend.language}`,
+        message: `La brique JWT disponible génère actuellement du code Rust et ne peut pas être activée pour ${spec.backend.language}.`,
+        source: 'compatibility',
+        fixSuggestion: 'Désactivez JWT jusqu’à ce qu’une brique compatible soit livrée.',
+      });
+    }
+
+    if (spec.infrastructure.docker) {
+      issues.push({
+        id: `unsupported-docker-${spec.backend.language}`,
+        severity: 'error',
+        title: `Conteneurisation non intégrée pour ${spec.backend.language}`,
+        message: 'Le générateur Docker ne produit pas encore une image exécutable pour ce runtime.',
+        source: 'compatibility',
+        fixSuggestion: 'Désactivez Docker jusqu’à ce qu’un Dockerfile adapté soit disponible.',
+      });
+    }
+
+    if (spec.infrastructure.systemd) {
+      issues.push({
+        id: `unsupported-systemd-${spec.backend.language}`,
+        severity: 'error',
+        title: `Service systemd non intégré pour ${spec.backend.language}`,
+        message: 'Le générateur systemd actuel ne cible pas correctement ce runtime.',
+        source: 'compatibility',
+        fixSuggestion: 'Désactivez systemd jusqu’à ce qu’une unité adaptée soit générée.',
       });
     }
   }

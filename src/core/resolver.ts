@@ -53,6 +53,7 @@ export function resolveArchitecture(
     if (spec.backend.enabled) {
       if (spec.backend.language === 'rust') activeBrickIds.push('rust-backend');
       if (spec.backend.language === 'python') activeBrickIds.push('python-backend');
+      if (spec.backend.language === 'go') activeBrickIds.push('go-backend');
     }
 
     if (spec.frontend.enabled) {
@@ -211,13 +212,10 @@ const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
   }
 
   // Generic backend/API relationship
-  if (hasBrick('rust-backend') || hasBrick('python-backend')) {
-    const backendBrick = hasBrick('rust-backend')
-      ? 'rust-backend'
-      : 'python-backend';
-
+  const resolvedBackendBrick = ['rust-backend', 'python-backend', 'go-backend'].find(hasBrick);
+  if (resolvedBackendBrick) {
     addEdge(
-      backendBrick,
+      resolvedBackendBrick,
       'rest-api',
       'API',
       'HTTP/JSON'
@@ -239,24 +237,18 @@ const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
     // SQLite/SQLx persistence is part of the rust-web-app skeleton.
     // No separate sqlite-storage brick is required.
   } else {
-    const backendBrick = hasBrick('rust-backend')
-      ? 'rust-backend'
-      : hasBrick('python-backend')
-        ? 'python-backend'
-        : null;
-
-    if (backendBrick && hasBrick('sqlite-storage')) {
+    if (resolvedBackendBrick && hasBrick('sqlite-storage')) {
       addEdge(
-        backendBrick,
+        resolvedBackendBrick,
         'sqlite-storage',
         'Connection Pool',
         'Direct File I/O'
       );
     }
 
-    if (backendBrick && hasBrick('postgres-storage')) {
+    if (resolvedBackendBrick && hasBrick('postgres-storage')) {
       addEdge(
-        backendBrick,
+        resolvedBackendBrick,
         'postgres-storage',
         'Connection Pool',
         'TCP / SQLx Protocol'
@@ -284,6 +276,8 @@ const getBrickLayer = (brick: BrickDefinition): ArchitectureNode['layer'] => {
       ? 'rust-backend'
       : hasBrick('python-backend')
         ? 'python-backend'
+        : hasBrick('go-backend')
+          ? 'go-backend'
         : hasBrick('react-vite')
           ? 'react-vite'
           : null;
